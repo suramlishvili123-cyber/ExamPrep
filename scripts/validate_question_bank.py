@@ -257,7 +257,7 @@ def main() -> None:
         "warnings": warnings,
         "informationalNotes": informational_notes,
         "potentialDuplicatePairs": potential_duplicates,
-        "manuallyClearedNearPairs": [sorted(pair) for pair in KNOWN_NON_DUPLICATES],
+        "manuallyClearedNearPairs": sorted(sorted(pair) for pair in KNOWN_NON_DUPLICATES),
         "qualityAssurance": {
             "visualContactSheetReview": "complete",
             "cropsVisuallyReviewed": bank["summary"]["processedPotentiallyRelevant"],

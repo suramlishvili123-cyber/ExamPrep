@@ -17,7 +17,6 @@ import {
   Flag,
   Home,
   LibraryBig,
-  LogIn,
   LogOut,
   Menu,
   Moon,
@@ -60,7 +59,9 @@ import {
   type StoredState,
 } from "./lib/core";
 import {
-  loadAttemptsCloud,
+  deleteAttemptCloud,
+  firebaseConfigured,
+  loadUserStateCloud,
   observeUser,
   saveAttemptCloud,
   saveUserStateCloud,
@@ -104,6 +105,54 @@ const CAMBRIDGE_BENCHMARKS = [
   { cohort: "International applicants", maths1: 5.51, physics: 5.19, maths2: 5.38 },
   { cohort: "International offer holders", maths1: 7.41, physics: 7.2, maths2: 7.21 },
 ];
+
+function mergeAttempts(remote: Attempt[] = [], local: Attempt[] = []): Attempt[] {
+  const attempts = new Map<string, Attempt>();
+  for (const attempt of [...remote, ...local]) {
+    const current = attempts.get(attempt.attemptId);
+    const attemptTime = attempt.endedAt ?? attempt.startedAt;
+    const currentTime = current ? current.endedAt ?? current.startedAt : -1;
+    if (!current || attemptTime >= currentTime) attempts.set(attempt.attemptId, attempt);
+  }
+  return [...attempts.values()].sort(
+    (left, right) => (right.endedAt ?? right.startedAt) - (left.endedAt ?? left.startedAt),
+  );
+}
+
+function mergeCloudState(local: StoredState, remoteValue: Partial<StoredState>): StoredState {
+  const remote = mergeState(remoteValue);
+  const progress = { ...remote.progress };
+  for (const [questionId, localProgress] of Object.entries(local.progress)) {
+    const cloudProgress = progress[questionId];
+    if (!cloudProgress || (localProgress.lastAttemptedAt ?? 0) >= (cloudProgress.lastAttemptedAt ?? 0)) {
+      progress[questionId] = localProgress;
+    }
+  }
+  const mistakes = { ...remote.mistakes };
+  for (const [questionId, localMistake] of Object.entries(local.mistakes)) {
+    const localProgressTime = local.progress[questionId]?.lastAttemptedAt ?? 0;
+    const remoteProgressTime = remote.progress[questionId]?.lastAttemptedAt ?? 0;
+    if (!mistakes[questionId] || localProgressTime >= remoteProgressTime) mistakes[questionId] = localMistake;
+  }
+  return mergeState({
+    ...local,
+    attempts: mergeAttempts(remote.attempts, local.attempts),
+    progress,
+    mistakes,
+    targets: { ...local.targets, ...(remoteValue.targets ?? {}) },
+    settings: { ...local.settings, ...(remoteValue.settings ?? {}) },
+    notes: { ...local.notes, ...(remoteValue.notes ?? {}) },
+  });
+}
+
+function authMessage(error: unknown): string {
+  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+  if (code === "auth/unauthorized-domain") return "This production address is not yet authorised in Firebase. Add it under Authentication → Settings → Authorized domains, then try again.";
+  if (code === "auth/operation-not-allowed") return "Google sign-in is not enabled for this Firebase project yet.";
+  if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return "Sign-in was cancelled. Your progress has not been changed.";
+  if (code === "auth/network-request-failed") return "Firebase could not be reached. Check your connection and try again.";
+  return error instanceof Error ? error.message : "Google sign-in did not complete.";
+}
 
 function sourceLabel(question: Question): string {
   if (question.authored) return `Original · ${question.sourcePaper} · Q${question.originalQuestionNumber}`;
@@ -166,6 +215,54 @@ function Pill({ tone = "neutral", children }: { tone?: "neutral" | "good" | "war
   return <span className={`pill pill-${tone}`}>{children}</span>;
 }
 
+function LoginScreen({
+  busy,
+  error,
+  onSignIn,
+}: {
+  busy: boolean;
+  error: string | null;
+  onSignIn: () => void;
+}) {
+  return (
+    <main className="auth-shell">
+      <section className="auth-story">
+        <div className="auth-brand">
+          <span className="brand-mark">EA</span>
+          <div><strong>ESAT Atlas</strong><small>Cambridge Engineering preparation</small></div>
+        </div>
+        <div className="auth-story-copy">
+          <span className="auth-kicker"><ShieldCheck size={14} /> Private, focused preparation</span>
+          <h1>Your complete ESAT workspace, on every device.</h1>
+          <p>Train with the validated archive, sit high-difficulty original mocks, and turn every result into a clear revision plan.</p>
+          <div className="auth-benefits">
+            <div><Target size={18} /><span><strong>Structured practice</strong><small>Maths 1, Physics and Maths 2 in one place.</small></span></div>
+            <div><BarChart3 size={18} /><span><strong>Meaningful analytics</strong><small>Accuracy, pacing and first-exposure performance.</small></span></div>
+            <div><ShieldCheck size={18} /><span><strong>Private cloud progress</strong><small>Firebase keeps each account&apos;s revision data separate.</small></span></div>
+          </div>
+        </div>
+        <small className="auth-story-foot">Built for the 2026 ESAT preparation cycle</small>
+      </section>
+      <section className="auth-entry">
+        <div className="auth-card">
+          <div className="auth-card-icon"><UserRound size={22} /></div>
+          <span className="eyebrow">Secure account</span>
+          <h2>Sign in to ESAT Atlas</h2>
+          <p>Use Google through Firebase Authentication. Your progress will load automatically and stay synced to your private account.</p>
+          {!firebaseConfigured() ? <div className="auth-error"><TriangleAlert size={17} /><span>Firebase has not been configured for this deployment.</span></div> : null}
+          {error ? <div className="auth-error" role="alert"><TriangleAlert size={17} /><span>{error}</span></div> : null}
+          <button className="google-button" onClick={onSignIn} disabled={busy || !firebaseConfigured()}>
+            <span className="google-g" aria-hidden="true">G</span>
+            <span>{busy ? "Connecting securely…" : "Continue with Google"}</span>
+            {busy ? <i className="auth-spinner" /> : <ChevronRight size={17} />}
+          </button>
+          <div className="auth-trust"><ShieldCheck size={15} /><span>Authentication is handled by Google and Firebase. ESAT Atlas never receives your Google password.</span></div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 export default function EsatApp() {
   const [bank, setBank] = useState<BankPayload | null>(null);
   const [mockBank, setMockBank] = useState<MockPayload | null>(null);
@@ -174,7 +271,9 @@ export default function EsatApp() {
   const [view, setView] = useState<ViewId>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [result, setResult] = useState<Attempt | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -185,6 +284,8 @@ export default function EsatApp() {
   const [builderFilter, setBuilderFilter] = useState<QuestionFilter>("unseen");
   const [builderTiming, setBuilderTiming] = useState<"untimed" | "pace" | "module">("pace");
   const timedOutRef = useRef(false);
+  const syncedUserRef = useRef<string | null>(null);
+  const stateRef = useRef(state);
   const tabIdRef = useRef(`tab-${Math.random().toString(36).slice(2)}`);
   const active = state.activeAttempt;
   const activeAttemptId = active?.attemptId;
@@ -220,7 +321,39 @@ export default function EsatApp() {
       .catch(() => setToast("The original challenge mocks could not be loaded."));
   }, []);
 
-  useEffect(() => observeUser(setUser), []);
+  useEffect(() => observeUser(
+    (nextUser) => {
+      setUser(nextUser);
+      setAuthReady(true);
+    },
+    (error) => {
+      setAuthError(authMessage(error));
+      setAuthReady(true);
+    },
+  ), []);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    if (!hydrated || !user || syncedUserRef.current === user.uid) return;
+    syncedUserRef.current = user.uid;
+    setAuthBusy(true);
+    loadUserStateCloud(user.uid)
+      .then(async (remoteState) => {
+        const merged = mergeCloudState(stateRef.current, remoteState);
+        stateRef.current = merged;
+        setState(merged);
+        await saveUserStateCloud(user.uid, merged);
+        setToast("Signed in. Your private Firebase progress is up to date.");
+      })
+      .catch((error: unknown) => {
+        syncedUserRef.current = null;
+        setToast(error instanceof Error ? `Signed in, but cloud progress could not load: ${error.message}` : "Signed in, but cloud progress could not load.");
+      })
+      .finally(() => setAuthBusy(false));
+  }, [hydrated, user]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -492,22 +625,43 @@ export default function EsatApp() {
     else beginSession({ module, count: 27, mode: "exam", filter: "all", durationMinutes: 40, strictTimed: true, sequenceRemaining: rest });
   }
 
+  function discardActiveAttempt(): void {
+    const discarded = state.activeAttempt;
+    if (!discarded) return;
+    setState((current) => ({ ...current, activeAttempt: null }));
+    setReviewOpen(false);
+    setResult(null);
+    setView("dashboard");
+    timedOutRef.current = false;
+    if (user) {
+      deleteAttemptCloud(user.uid, discarded.attemptId).catch(() =>
+        setToast("The session was discarded locally, but its cloud autosave could not be removed."),
+      );
+    }
+  }
+
   async function handleSignIn(): Promise<void> {
     setAuthBusy(true);
+    setAuthError(null);
     try {
-      const signedIn = await signInWithGoogle();
-      const remoteAttempts = mergeState({ attempts: await loadAttemptsCloud(signedIn.uid) }).attempts;
-      if (remoteAttempts.length) {
-        setState((current) => ({
-          ...current,
-          attempts: [...remoteAttempts, ...current.attempts].filter(
-            (attempt, index, items) => items.findIndex((item) => item.attemptId === attempt.attemptId) === index,
-          ),
-        }));
-      }
-      setToast("Signed in. Local progress will sync to your private Firebase account.");
+      await signInWithGoogle();
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "Google sign-in did not complete.");
+      const message = authMessage(error);
+      setAuthError(message);
+      setToast(message);
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleSignOut(): Promise<void> {
+    setAuthBusy(true);
+    try {
+      await signOutUser();
+      syncedUserRef.current = null;
+      setToast("Signed out securely. Your cloud progress remains in Firebase.");
+    } catch {
+      setToast("Sign-out did not complete. Please try again.");
     } finally {
       setAuthBusy(false);
     }
@@ -520,7 +674,7 @@ export default function EsatApp() {
     .filter((attempt) => (attempt.endedAt ?? 0) >= weekStart)
     .reduce((sum, attempt) => sum + (attempt.durationMs ?? 0), 0);
 
-  if (!hydrated || !bank || !mockBank) {
+  if (!hydrated || !authReady) {
     return (
       <main className="loading-screen">
         <div className="brand-mark">EA</div>
@@ -528,6 +682,25 @@ export default function EsatApp() {
           <strong>Preparing ESAT Atlas</strong>
           <span>Loading the validated question bank…</span>
         </div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <LoginScreen
+        busy={authBusy}
+        error={authError}
+        onSignIn={handleSignIn}
+      />
+    );
+  }
+
+  if (!bank || !mockBank) {
+    return (
+      <main className="loading-screen">
+        <div className="brand-mark">EA</div>
+        <div><strong>Preparing ESAT Atlas</strong><span>Loading the validated question bank…</span></div>
       </main>
     );
   }
@@ -549,6 +722,11 @@ export default function EsatApp() {
         })}
         onFinish={() => {
           if (window.confirm("Submit this module now? You will not be able to change these answers.")) finishAttempt(false);
+        }}
+        onExit={() => {
+          if (window.confirm("Exit to the home page and discard this attempt? Your answers and timing for this session will not be saved.")) {
+            discardActiveAttempt();
+          }
         }}
         onPause={() =>
           updateActive((attempt) => {
@@ -631,16 +809,10 @@ export default function EsatApp() {
             <button className="icon-button" onClick={() => setState((current) => ({ ...current, settings: { ...current.settings, theme: current.settings.theme === "light" ? "dark" : "light" } }))} aria-label="Toggle theme">
               {state.settings.theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
-            {user ? (
-              <button className="account-button" onClick={() => signOutUser()} title="Sign out">
-                {user.photoURL ? <img src={user.photoURL} alt="" /> : <UserRound size={18} />}
-                <span>{user.displayName ?? user.email ?? "Signed in"}</span><LogOut size={15} />
-              </button>
-            ) : (
-              <button className="button button-secondary compact" onClick={handleSignIn} disabled={authBusy}>
-                <LogIn size={16} /> {authBusy ? "Connecting…" : "Sync with Google"}
-              </button>
-            )}
+            <button className="account-button" onClick={handleSignOut} title="Sign out" disabled={authBusy}>
+              {user.photoURL ? <img src={user.photoURL} alt="" /> : <UserRound size={18} />}
+              <span>{user.displayName ?? user.email ?? "Signed in"}</span><LogOut size={15} />
+            </button>
           </div>
         </header>
 
@@ -1003,7 +1175,7 @@ function SettingsView({ state, setState, onExportJson, onExportCsv }: { state: S
   );
 }
 
-function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSelect, onNavigate, onFlag, onConfidence, onFinish, onPause, pacingAid, multiTabWarning, dismissMultiTab }: { attempt: Attempt; questionMap: Record<string, Question>; now: number; reviewOpen: boolean; setReviewOpen: (value: boolean) => void; onSelect: (letter: string) => void; onNavigate: (index: number) => void; onFlag: () => void; onConfidence: (confidence: "Guess" | "Low" | "Medium" | "High") => void; onFinish: () => void; onPause: () => void; pacingAid: boolean; multiTabWarning: boolean; dismissMultiTab: () => void }) {
+function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSelect, onNavigate, onFlag, onConfidence, onFinish, onExit, onPause, pacingAid, multiTabWarning, dismissMultiTab }: { attempt: Attempt; questionMap: Record<string, Question>; now: number; reviewOpen: boolean; setReviewOpen: (value: boolean) => void; onSelect: (letter: string) => void; onNavigate: (index: number) => void; onFlag: () => void; onConfidence: (confidence: "Guess" | "Low" | "Medium" | "High") => void; onFinish: () => void; onExit: () => void; onPause: () => void; pacingAid: boolean; multiTabWarning: boolean; dismissMultiTab: () => void }) {
   const questionId = attempt.questionIds[attempt.currentIndex];
   const question = questionMap[questionId];
   const response = attempt.responses[questionId];
@@ -1015,7 +1187,7 @@ function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSe
   const displayedSource = sourceLabelForAttempt(question, attempt);
   return (
     <div className="exam-shell">
-      <header className="exam-header"><div className="exam-brand"><div className="brand-mark">EA</div><span><strong>{MODULE_LABELS[attempt.module]}</strong>{attempt.mode === "historic" ? attempt.sourceSetLabel : attempt.strictTimed ? "Strict exam simulation" : "Practice session"}</span></div><div className="exam-progress"><span>Question {attempt.currentIndex + 1} of {attempt.questionIds.length}</span><div><i style={{ width: `${(attempt.currentIndex + 1) / attempt.questionIds.length * 100}%` }} /></div></div><div className={`exam-timer ${timeLeft !== null && timeLeft < 300_000 ? "timer-low" : ""}`}><Clock3 size={19} /><span><small>Time remaining</small><strong>{timeLeft === null ? "Untimed" : formatDuration(timeLeft)}</strong></span></div></header>
+      <header className="exam-header"><div className="exam-brand"><div className="brand-mark">EA</div><span><strong>{MODULE_LABELS[attempt.module]}</strong>{attempt.mode === "historic" ? attempt.sourceSetLabel : attempt.strictTimed ? "Strict exam simulation" : "Practice session"}</span></div><div className="exam-progress"><span>Question {attempt.currentIndex + 1} of {attempt.questionIds.length}</span><div><i style={{ width: `${(attempt.currentIndex + 1) / attempt.questionIds.length * 100}%` }} /></div></div><div className="exam-header-actions"><button className="exam-exit" onClick={onExit}><Home size={16} /><span>Exit to home</span></button><div className={`exam-timer ${timeLeft !== null && timeLeft < 300_000 ? "timer-low" : ""}`}><Clock3 size={19} /><span><small>Time remaining</small><strong>{timeLeft === null ? "Untimed" : formatDuration(timeLeft)}</strong></span></div></div></header>
       {multiTabWarning ? <div className="multi-tab"><TriangleAlert size={18} /><span><strong>This attempt is open in another tab.</strong>Continue in one tab only to prevent competing saves.</span><button aria-label="Dismiss multi-tab warning" onClick={dismissMultiTab}><X size={16} /></button></div> : null}
       {attempt.pausedAt ? <div className="pause-overlay"><Pause size={28} /><h2>Practice paused</h2><p>Your timer and question visit are paused.</p><button className="button button-primary" onClick={onPause}><Play size={17} /> Resume session</button></div> : null}
       {reviewOpen ? (

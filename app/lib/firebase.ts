@@ -2,9 +2,13 @@
 
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import {
+  browserLocalPersistence,
+  getRedirectResult,
   GoogleAuthProvider,
   getAuth,
   onAuthStateChanged,
+  setPersistence,
+  signInWithRedirect,
   signInWithPopup,
   signOut,
   type Auth,
@@ -12,10 +16,14 @@ import {
 } from "firebase/auth";
 import {
   collection,
+  deleteDoc,
   doc,
-  enableIndexedDbPersistence,
+  getDoc,
   getDocs,
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   setDoc,
   type Firestore,
 } from "firebase/firestore";
@@ -28,10 +36,13 @@ interface FirebaseClient {
 }
 
 let client: FirebaseClient | null = null;
-let persistenceAttempted = false;
 
 function configAvailable(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY && process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
+}
+
+export function firebaseConfigured(): boolean {
+  return configAvailable();
 }
 
 export function getFirebaseClient(): FirebaseClient | null {
@@ -48,32 +59,49 @@ export function getFirebaseClient(): FirebaseClient | null {
         appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
         measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
       });
-  const db = getFirestore(app);
-  if (!persistenceAttempted && typeof window !== "undefined") {
-    persistenceAttempted = true;
-    enableIndexedDbPersistence(db).catch(() => {
-      // Another tab may already own IndexedDB persistence. Local attempt state
-      // remains authoritative during an active module.
+  let db: Firestore;
+  try {
+    db = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     });
+  } catch {
+    // Hot reload can preserve an already-initialized Firebase app.
+    db = getFirestore(app);
   }
   client = { app, auth: getAuth(app), db };
   return client;
 }
 
-export function observeUser(callback: (user: User | null) => void): () => void {
+export function observeUser(
+  callback: (user: User | null) => void,
+  onRedirectError?: (error: unknown) => void,
+): () => void {
   const firebase = getFirebaseClient();
   if (!firebase) {
     callback(null);
     return () => undefined;
   }
+  getRedirectResult(firebase.auth).catch((error: unknown) => onRedirectError?.(error));
   return onAuthStateChanged(firebase.auth, callback);
 }
 
-export async function signInWithGoogle(): Promise<User> {
+export async function signInWithGoogle(): Promise<User | null> {
   const firebase = getFirebaseClient();
   if (!firebase) throw new Error("Firebase environment variables are not configured.");
-  const result = await signInWithPopup(firebase.auth, new GoogleAuthProvider());
-  return result.user;
+  await setPersistence(firebase.auth, browserLocalPersistence);
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  try {
+    const result = await signInWithPopup(firebase.auth, provider);
+    return result.user;
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+    if (code === "auth/popup-blocked") {
+      await signInWithRedirect(firebase.auth, provider);
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function signOutUser(): Promise<void> {
@@ -87,6 +115,12 @@ export async function saveAttemptCloud(uid: string, attempt: Attempt): Promise<v
   await setDoc(doc(firebase.db, "users", uid, "attempts", attempt.attemptId), attempt, { merge: true });
 }
 
+export async function deleteAttemptCloud(uid: string, attemptId: string): Promise<void> {
+  const firebase = getFirebaseClient();
+  if (!firebase) return;
+  await deleteDoc(doc(firebase.db, "users", uid, "attempts", attemptId));
+}
+
 export async function saveUserStateCloud(uid: string, state: StoredState): Promise<void> {
   const firebase = getFirebaseClient();
   if (!firebase) return;
@@ -94,6 +128,7 @@ export async function saveUserStateCloud(uid: string, state: StoredState): Promi
     setDoc(doc(firebase.db, "users", uid), { updatedAt: Date.now(), schemaVersion: 1 }, { merge: true }),
     setDoc(doc(firebase.db, "users", uid, "settings", "main"), state.settings, { merge: true }),
     setDoc(doc(firebase.db, "users", uid, "targets", "main"), state.targets, { merge: true }),
+    setDoc(doc(firebase.db, "users", uid, "notes", "main"), state.notes, { merge: true }),
   ];
   for (const [questionId, progress] of Object.entries(state.progress)) {
     batchWrites.push(
@@ -113,4 +148,25 @@ export async function loadAttemptsCloud(uid: string): Promise<Attempt[]> {
   if (!firebase) return [];
   const snapshot = await getDocs(collection(firebase.db, "users", uid, "attempts"));
   return snapshot.docs.map((record) => record.data() as Attempt);
+}
+
+export async function loadUserStateCloud(uid: string): Promise<Partial<StoredState>> {
+  const firebase = getFirebaseClient();
+  if (!firebase) return {};
+  const [attempts, settings, targets, notes, progressSnapshot, mistakesSnapshot] = await Promise.all([
+    loadAttemptsCloud(uid),
+    getDoc(doc(firebase.db, "users", uid, "settings", "main")),
+    getDoc(doc(firebase.db, "users", uid, "targets", "main")),
+    getDoc(doc(firebase.db, "users", uid, "notes", "main")),
+    getDocs(collection(firebase.db, "users", uid, "questionProgress")),
+    getDocs(collection(firebase.db, "users", uid, "mistakeQueue")),
+  ]);
+  return {
+    attempts,
+    settings: settings.exists() ? (settings.data() as StoredState["settings"]) : undefined,
+    targets: targets.exists() ? (targets.data() as StoredState["targets"]) : undefined,
+    notes: notes.exists() ? (notes.data() as StoredState["notes"]) : undefined,
+    progress: Object.fromEntries(progressSnapshot.docs.map((record) => [record.id, record.data()])) as StoredState["progress"],
+    mistakes: Object.fromEntries(mistakesSnapshot.docs.map((record) => [record.id, record.data()])) as StoredState["mistakes"],
+  };
 }
