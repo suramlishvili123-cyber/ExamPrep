@@ -172,6 +172,12 @@ export const STORAGE_KEY = "esat-atlas-state-v4";
 export const QUESTION_BANK_VERSION = "esat-archive-2016-2023-v3";
 export const SPECIFICATION_VERSION = "ESAT-2026-v7.1.1";
 export const BENCHMARK_VERSION = "uat-uk-2026_cambridge-foi-2025-1097-v1";
+export const ESAT_MODULE_QUESTION_COUNT = 27;
+export const ESAT_MODULE_DURATION_MS = 40 * 60_000;
+
+export function esatPacedDurationMs(questionCount: number): number {
+  return Math.round(Math.max(0, questionCount) * ESAT_MODULE_DURATION_MS / ESAT_MODULE_QUESTION_COUNT);
+}
 
 export function defaultState(): StoredState {
   return {

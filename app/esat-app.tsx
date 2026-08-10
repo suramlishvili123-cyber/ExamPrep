@@ -44,6 +44,7 @@ import {
   daysUntil,
   defaultState,
   eligibleQuestions,
+  esatPacedDurationMs,
   finalizeAttempt,
   formatDuration,
   mergeState,
@@ -593,7 +594,8 @@ export default function EsatApp() {
       return;
     }
     const sourceDetail = sourceExam === "ENGAA" ? "Part B" : sourceExam === "TMUA" ? "Paper 1" : "Section 1";
-    beginQuestionList(pool, module, "historic", null, false, true, undefined, "archive", { exam: sourceExam, year, label: `${sourceExam} ${year} · ${sourceDetail}` });
+    const durationMinutes = esatPacedDurationMs(pool.length) / 60_000;
+    beginQuestionList(pool, module, "historic", durationMinutes, true, true, undefined, "archive", { exam: sourceExam, year, label: `${sourceExam} ${year} · ${sourceDetail}` });
   }
 
   function beginOriginal(module: ModuleId, sequenceRemaining: ModuleId[] = []): void {
@@ -1153,10 +1155,11 @@ function PapersView({ state, bank, onStart }: { state: StoredState; bank: BankPa
     }
     return map;
   }, new Map<string, { sourceExam: string; year: number; module: ModuleId; count: number; sourcePart: string }>()).values()).sort((a, b) => a.sourceExam.localeCompare(b.sourceExam) || b.year - a.year || a.module.localeCompare(b.module));
+  const completedPapers = state.attempts.filter((attempt) => attempt.mode === "historic" && attempt.rawScore !== null);
   return (
-    <><section className="page-heading"><div><span className="eyebrow">Source-set library</span><h1>Every completion keeps its paper, year and module.</h1><p>NSAA, uncrossed ENGAA Part B, and TMUA Paper 1 practice stay visibly separate so you can tell exactly what you completed.</p></div></section>
+    <><section className="page-heading"><div><span className="eyebrow">Source-set library</span><h1>Every completion keeps its paper, year and module.</h1><p>NSAA, uncrossed ENGAA Part B, and TMUA Paper 1 stay visibly separate. You have completed {completedPapers.length} timed archive set{completedPapers.length === 1 ? "" : "s"}.</p></div><Pill tone="good"><Timer size={13} /> 40 min / 27-question ESAT pace</Pill></section>
       <div className="integrity-banner"><TriangleAlert size={18} /><div><strong>Raw marks are exact; live ESAT scaled scores cannot be reconstructed here.</strong><span>UAT-UK equates different forms with a Rasch model. The archive contains no complete validated conversion tables, so this platform will not fabricate a 1.0–9.0 score.</span></div></div>
-      <section className="panel paper-library"><div className="paper-library-row header-row"><span>Source</span><span>Year / set</span><span>Module</span><span>Questions</span><span>Your latest</span><span /></div>{sets.map((set) => { const latest = state.attempts.find((attempt) => attempt.mode === "historic" && attempt.module === set.module && attempt.sourceYears.includes(set.year) && (attempt.sourceExams ?? []).includes(set.sourceExam)); const setLabel = set.sourceExam === "ENGAA" ? "Part B · crossed items removed · repeats shown once" : set.sourceExam === "TMUA" ? "Paper 1" : set.sourcePart === "E" ? "Section 1 · Part E" : "Section 1"; return <div className="paper-library-row" key={`${set.sourceExam}-${set.year}-${set.module}`}><strong>{set.sourceExam}</strong><span>{set.year}<small>{setLabel}</small></span><span>{MODULE_LABELS[set.module]}</span><span>{set.count}</span><strong>{latest ? `${latest.rawScore}/${latest.questionIds.length}` : "—"}</strong><button onClick={() => onStart(set.sourceExam, set.year, set.module)}>Open set <ChevronRight size={15} /></button></div>; })}</section>
+      <section className="panel paper-library"><div className="paper-library-row header-row"><span>Source</span><span>Year / set</span><span>Module</span><span>Questions / cap</span><span>Attempts</span><span>Your latest</span><span /></div>{sets.map((set) => { const completions = state.attempts.filter((attempt) => attempt.mode === "historic" && attempt.module === set.module && attempt.sourceYears.includes(set.year) && (attempt.sourceExams ?? []).includes(set.sourceExam)); const latest = completions[0]; const setLabel = set.sourceExam === "ENGAA" ? "Part B · crossed items removed · repeats shown once" : set.sourceExam === "TMUA" ? "Paper 1" : set.sourcePart === "E" ? "Section 1 · Part E" : "Section 1"; return <div className="paper-library-row" key={`${set.sourceExam}-${set.year}-${set.module}`}><strong>{set.sourceExam}</strong><span>{set.year}<small>{setLabel}</small></span><span>{MODULE_LABELS[set.module]}</span><span>{set.count}<small>{formatDuration(esatPacedDurationMs(set.count))} strict</small></span><strong>{completions.length}</strong><strong>{latest ? `${latest.rawScore}/${latest.questionIds.length}` : "—"}</strong><button onClick={() => onStart(set.sourceExam, set.year, set.module)}>Open timed set <ChevronRight size={15} /></button></div>; })}</section>
       <section className="panel benchmark-panel"><div className="panel-heading"><div><span className="eyebrow">Cambridge Engineering · 2025 cycle</span><h2>Published cohort averages—not cutoffs</h2></div><Pill tone="warn">Do not infer offer probability</Pill></div><div className="benchmark-table"><div className="benchmark-row header-row"><span>Cohort</span><span>Maths 1</span><span>Physics</span><span>Maths 2</span></div>{CAMBRIDGE_BENCHMARKS.map((row) => <div className="benchmark-row" key={row.cohort}><strong>{row.cohort}</strong><span>{row.maths1.toFixed(2)}</span><span>{row.physics.toFixed(2)}</span><span>{row.maths2.toFixed(2)}</span></div>)}</div><p className="source-footnote">Cambridge FOI 2025-1097, Engineering H100, 2025 admissions cycle. These are cohort means, not thresholds; Cambridge colleges consider ESAT alongside the rest of an application. UAT-UK reports a typical candidate around 4.5 and approximately 10% above 7.0.</p><div className="source-links"><a href="https://www.whatdotheyknow.com/request/esat_statistics_2025_cycle" target="_blank" rel="noreferrer">Cambridge data request</a><a href="https://esat-tmua.ac.uk/test-results/" target="_blank" rel="noreferrer">Official scoring method</a></div></section>
     </>
   );

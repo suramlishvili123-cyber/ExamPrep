@@ -5,6 +5,7 @@ import {
   createAttempt,
   defaultState,
   eligibleQuestions,
+  esatPacedDurationMs,
   finalizeAttempt,
   moduleStats,
   remainingMs,
@@ -49,6 +50,12 @@ test("strict timer stores exact timestamps and derives remaining time", () => {
   assert.equal(remainingMs(attempt, attempt.startedAt + 35_000), 2_365_000);
   assert.equal(remainingMs({ ...attempt, pausedAt: attempt.startedAt + 10_000 }, attempt.startedAt + 99_000), 2_390_000);
   assert.equal(remainingMs(attempt, attempt.startedAt + 3_000_000), 0);
+});
+
+test("historic paper limits preserve the exact ESAT pace", () => {
+  assert.equal(esatPacedDurationMs(27), 2_400_000);
+  assert.equal(esatPacedDurationMs(20), 1_777_778);
+  assert.equal(esatPacedDurationMs(0), 0);
 });
 
 test("scoring handles correct, incorrect and unanswered with no negative marks", () => {
