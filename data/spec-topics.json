@@ -1,0 +1,36 @@
+{
+  "specificationVersion": "ESAT-2026-v7.1.1",
+  "source": "https://uat-wp.s3.eu-west-2.amazonaws.com/wp-content/uploads/2024/05/03165424/ESAT_Content_Specification.pdf",
+  "assessmentCycle": "October 2026 and January 2027",
+  "retrievalDate": "2026-08-10",
+  "modules": {
+    "maths1": [
+      { "code": "M1", "topic": "Units" },
+      { "code": "M2", "topic": "Number" },
+      { "code": "M3", "topic": "Ratio and proportion" },
+      { "code": "M4", "topic": "Algebra" },
+      { "code": "M5", "topic": "Geometry" },
+      { "code": "M6", "topic": "Statistics" },
+      { "code": "M7", "topic": "Probability" }
+    ],
+    "physics": [
+      { "code": "P1", "topic": "Electricity" },
+      { "code": "P2", "topic": "Magnetism" },
+      { "code": "P3", "topic": "Mechanics" },
+      { "code": "P4", "topic": "Thermal physics" },
+      { "code": "P5", "topic": "Matter" },
+      { "code": "P6", "topic": "Waves" },
+      { "code": "P7", "topic": "Radioactivity" }
+    ],
+    "maths2": [
+      { "code": "MM1", "topic": "Algebra and functions" },
+      { "code": "MM2", "topic": "Sequences and series" },
+      { "code": "MM3", "topic": "Coordinate geometry" },
+      { "code": "MM4", "topic": "Trigonometry" },
+      { "code": "MM5", "topic": "Exponentials and logarithms" },
+      { "code": "MM6", "topic": "Differentiation" },
+      { "code": "MM7", "topic": "Integration" },
+      { "code": "MM8", "topic": "Graphs of functions" }
+    ]
+  }
+}

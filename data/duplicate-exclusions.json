@@ -1,0 +1,137 @@
+[
+  {
+    "excludedId": "engaa-2017-s1b-q29",
+    "retainedId": "nsaa-2017-s1-q73",
+    "tokenJaccard": 0.8235
+  },
+  {
+    "excludedId": "engaa-2017-s1b-q31",
+    "retainedId": "nsaa-2017-s1-q75",
+    "tokenJaccard": 0.8837
+  },
+  {
+    "excludedId": "engaa-2017-s1b-q33",
+    "retainedId": "nsaa-2017-s1-q77",
+    "tokenJaccard": 1.0
+  },
+  {
+    "excludedId": "engaa-2017-s1b-q39",
+    "retainedId": "nsaa-2017-s1-q79",
+    "tokenJaccard": 0.9474
+  },
+  {
+    "excludedId": "engaa-2017-s1b-q43",
+    "retainedId": "nsaa-2017-s1-q81",
+    "tokenJaccard": 0.9259
+  },
+  {
+    "excludedId": "engaa-2017-s1b-q45",
+    "retainedId": "nsaa-2017-s1-q83",
+    "tokenJaccard": 0.9149
+  },
+  {
+    "excludedId": "engaa-2017-s1b-q47",
+    "retainedId": "nsaa-2017-s1-q85",
+    "tokenJaccard": 0.8049
+  },
+  {
+    "excludedId": "engaa-2017-s1b-q49",
+    "retainedId": "nsaa-2017-s1-q87",
+    "tokenJaccard": 0.75
+  },
+  {
+    "excludedId": "engaa-2017-s1b-q53",
+    "retainedId": "nsaa-2017-s1-q89",
+    "tokenJaccard": 0.8776
+  },
+  {
+    "excludedId": "engaa-2018-s1b-q29",
+    "retainedId": "nsaa-2018-s1-q73",
+    "tokenJaccard": 0.871
+  },
+  {
+    "excludedId": "engaa-2018-s1b-q31",
+    "retainedId": "nsaa-2018-s1-q75",
+    "tokenJaccard": 1.0
+  },
+  {
+    "excludedId": "engaa-2018-s1b-q33",
+    "retainedId": "nsaa-2018-s1-q77",
+    "tokenJaccard": 0.8485
+  },
+  {
+    "excludedId": "engaa-2018-s1b-q37",
+    "retainedId": "nsaa-2018-s1-q79",
+    "tokenJaccard": 0.8421
+  },
+  {
+    "excludedId": "engaa-2018-s1b-q41",
+    "retainedId": "nsaa-2018-s1-q81",
+    "tokenJaccard": 0.7391
+  },
+  {
+    "excludedId": "engaa-2018-s1b-q43",
+    "retainedId": "nsaa-2018-s1-q83",
+    "tokenJaccard": 0.7879
+  },
+  {
+    "excludedId": "engaa-2018-s1b-q47",
+    "retainedId": "nsaa-2018-s1-q85",
+    "tokenJaccard": 0.8
+  },
+  {
+    "excludedId": "engaa-2018-s1b-q49",
+    "retainedId": "nsaa-2018-s1-q87",
+    "tokenJaccard": 0.8485
+  },
+  {
+    "excludedId": "engaa-2018-s1b-q53",
+    "retainedId": "nsaa-2018-s1-q89",
+    "tokenJaccard": 0.9111
+  },
+  {
+    "excludedId": "engaa-2019-s1b-q21",
+    "retainedId": "nsaa-2019-s1-q73",
+    "tokenJaccard": 0.8387
+  },
+  {
+    "excludedId": "engaa-2019-s1b-q23",
+    "retainedId": "nsaa-2019-s1-q75",
+    "tokenJaccard": 1.0
+  },
+  {
+    "excludedId": "engaa-2019-s1b-q27",
+    "retainedId": "nsaa-2019-s1-q77",
+    "tokenJaccard": 0.8182
+  },
+  {
+    "excludedId": "engaa-2019-s1b-q29",
+    "retainedId": "nsaa-2019-s1-q79",
+    "tokenJaccard": 0.8511
+  },
+  {
+    "excludedId": "engaa-2019-s1b-q31",
+    "retainedId": "nsaa-2019-s1-q81",
+    "tokenJaccard": 0.7931
+  },
+  {
+    "excludedId": "engaa-2019-s1b-q33",
+    "retainedId": "nsaa-2019-s1-q83",
+    "tokenJaccard": 0.8611
+  },
+  {
+    "excludedId": "engaa-2019-s1b-q35",
+    "retainedId": "nsaa-2019-s1-q85",
+    "tokenJaccard": 0.8378
+  },
+  {
+    "excludedId": "engaa-2019-s1b-q37",
+    "retainedId": "nsaa-2019-s1-q87",
+    "tokenJaccard": 0.9667
+  },
+  {
+    "excludedId": "engaa-2019-s1b-q39",
+    "retainedId": "nsaa-2019-s1-q89",
+    "tokenJaccard": 0.7857
+  }
+]
