@@ -10,7 +10,7 @@ An evidence-led Cambridge Engineering ESAT preparation platform built from the s
 - Strict 27-question, 40-minute modules and sequential three-module Engineering mocks.
 - Custom practice, exact historic source sets, mistake diagnosis, spaced retrieval and fresh-versus-retake analytics.
 - Timestamp-derived timing, automatic submission, reload recovery and multi-tab warnings.
-- Device-local persistence by default, with optional private Google/Firebase sync.
+- Mandatory Google sign-in through Firebase Authentication with private per-user Firestore data.
 - Exact raw marks and qualitative practice signals. No invented practice-to-ESAT scaled-score conversion.
 
 ENGAA Part A is ignored because it duplicates NSAA material. The crossed-out even-numbered Part B questions are excluded as outside ESAT; 27 remaining Part B questions that duplicate NSAA are linked as alternate sources rather than shipped twice. TMUA intake is restricted to Paper 1.
@@ -23,7 +23,18 @@ python -m pip install -r requirements.txt
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` to enable Firebase sync. In Firebase, enable Google Authentication and deploy `firestore.rules`.
+The supplied Firebase web configuration is included because Firebase client configuration is public by design. In Firebase, enable Google Authentication, add each deployed hostname to **Authentication → Settings → Authorized domains**, and deploy `firestore.rules`.
+
+## Publish with GitHub Pages
+
+The repository includes a static entry point and a GitHub Actions workflow. See `GITHUB-PAGES.md` for the short setup checklist.
+
+```bash
+npm ci
+npm run build:github
+```
+
+The command produces `github-pages-dist/` with a standalone `index.html`, compiled CSS/JavaScript, Firebase client code, the complete question bank and every required image/resource.
 
 The generated-data commands automatically use the bundled Codex PDF runtime when available. Elsewhere, install `requirements.txt` or set `ESAT_PYTHON` to a compatible interpreter.
 

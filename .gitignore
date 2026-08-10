@@ -40,6 +40,9 @@ dev.*.log
 .vercel
 
 /dist/
+/github-pages-dist/
+/exports/
+*.zip
 /.wrangler/
 /outputs/
 /work/
