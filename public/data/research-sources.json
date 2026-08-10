@@ -1,0 +1,82 @@
+{
+  "version": "uat-uk-2026_cambridge-foi-2025-1097-v1",
+  "retrievalDate": "2026-08-10",
+  "sources": [
+    {
+      "id": "uat-esat-content-spec-2026",
+      "title": "Engineering and Science Admissions Test Content Specification",
+      "url": "https://uat-wp.s3.eu-west-2.amazonaws.com/wp-content/uploads/2024/05/03165424/ESAT_Content_Specification.pdf",
+      "sourceDate": "2026",
+      "cycle": "October 2026 and January 2027 assessment",
+      "sourceQuality": "official primary",
+      "notes": "Authoritative structure and topic taxonomy; 27 questions, 40 minutes, separately timed, no calculator, no negative marking."
+    },
+    {
+      "id": "uat-esat-overview-2026",
+      "title": "UAT-UK ESAT overview",
+      "url": "https://esat-tmua.ac.uk/about-the-tests/esat-test/",
+      "sourceDate": "2026",
+      "cycle": "2027 entry",
+      "sourceQuality": "official primary",
+      "notes": "Confirms module format, reported 1-9 score scale and separate module results."
+    },
+    {
+      "id": "uat-results-method-2025-26",
+      "title": "UAT-UK Test Results and scoring method",
+      "url": "https://esat-tmua.ac.uk/test-results/",
+      "sourceDate": "2026",
+      "cycle": "October 2025 and January 2026 sittings",
+      "sourceQuality": "official primary",
+      "notes": "Rasch item-response equating; a typical candidate scores around 4.5. No deterministic practice conversion is supported."
+    },
+    {
+      "id": "uat-results-explanation-2025-26",
+      "title": "ESAT Explanation of Results — October 2025 and January 2026",
+      "url": "https://uat-wp.s3.eu-west-2.amazonaws.com/wp-content/uploads/2026/02/11111430/ESAT_Explanation_of_Results-October2025_and_January2026.pdf",
+      "sourceDate": "2026",
+      "cycle": "October 2025 and January 2026 sittings",
+      "sourceQuality": "official primary",
+      "notes": "States that a typical candidate scores around 4.5 and approximately 10% score above 7.0."
+    },
+    {
+      "id": "uat-esat-preparation-materials-2026",
+      "title": "UAT-UK ESAT preparation materials",
+      "url": "https://esat-tmua.ac.uk/esat-preparation-materials/",
+      "sourceDate": "2026",
+      "cycle": "2027 entry",
+      "sourceQuality": "official primary",
+      "notes": "Identifies historic NSAA and ENGAA papers as ESAT-style practice and marks content that is outside the current specification."
+    },
+    {
+      "id": "cambridge-engineering-esat-2026",
+      "title": "Cambridge Engineering ESAT requirement",
+      "url": "https://www.undergraduate.study.cam.ac.uk/apply/how/science-engineering-admission-test",
+      "sourceDate": "2026",
+      "cycle": "2027 entry",
+      "sourceQuality": "official primary",
+      "notes": "Engineering applicants complete Mathematics 1, Physics and Mathematics 2."
+    },
+    {
+      "id": "cambridge-foi-2025-1097",
+      "title": "Cambridge FOI 2025-1097 - Engineering H100 ESAT averages",
+      "url": "https://www.whatdotheyknow.com/request/esat_statistics_2025_cycle",
+      "sourceDate": "2025",
+      "cycle": "2025 admissions cycle",
+      "sourceQuality": "Cambridge FOI request and published response",
+      "notes": "Cohort means for applicants and offer holders by Home/International domicile. These are not cutoffs and cannot support offer probabilities."
+    }
+  ],
+  "benchmarks": {
+    "globalEsat": {
+      "typicalScore": 4.5,
+      "topDecileAnchor": 7.0,
+      "precision": "anchor only"
+    },
+    "cambridgeEngineering2025": [
+      { "cohort": "Home applicants", "maths1": 4.25, "physics": 4.32, "maths2": 4.24 },
+      { "cohort": "Home offer holders", "maths1": 5.67, "physics": 5.85, "maths2": 5.67 },
+      { "cohort": "International applicants", "maths1": 5.51, "physics": 5.19, "maths2": 5.38 },
+      { "cohort": "International offer holders", "maths1": 7.41, "physics": 7.20, "maths2": 7.21 }
+    ]
+  }
+}

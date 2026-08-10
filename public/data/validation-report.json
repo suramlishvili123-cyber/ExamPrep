@@ -1,0 +1,47 @@
+{
+  "status": "passed",
+  "questionBankVersion": "esat-archive-2016-2023-v3",
+  "questionCount": 517,
+  "approvedCounts": {
+    "maths1": 134,
+    "physics": 134,
+    "maths2": 249
+  },
+  "heldForReview": 0,
+  "excludedSourceMarkedOutOfScope": {
+    "ENGAA Part A ignored as requested": 184,
+    "Crossed in ENGAA source as outside ESAT coverage": 89
+  },
+  "sourceFileCount": 46,
+  "errors": [],
+  "warnings": [],
+  "informationalNotes": [
+    "Historical scaled-score lookup is intentionally disabled: no complete official practice conversion files were supplied and live forms are Rasch-equated."
+  ],
+  "potentialDuplicatePairs": [],
+  "manuallyClearedNearPairs": [
+    [
+      "nsaa-2017-s1-q87",
+      "nsaa-2019-s1-q89"
+    ],
+    [
+      "nsaa-2022-s1-q01",
+      "nsaa-2022-s1-q07"
+    ],
+    [
+      "tmua-2016-p1-q04",
+      "tmua-2016-p1-q11"
+    ]
+  ],
+  "qualityAssurance": {
+    "visualContactSheetReview": "complete",
+    "cropsVisuallyReviewed": 660,
+    "inScopeCropsShipped": 517,
+    "independentOfficialAnswerChecks": 517,
+    "moduleAndYearCountChecks": "passed"
+  },
+  "historicalConversionValidation": {
+    "status": "not-run",
+    "reason": "No complete conversion source files were supplied; the UI refuses historical scaled scores."
+  }
+}

@@ -1,0 +1,46 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /users/{userId} {
+      allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
+
+      match /{subcollection}/{document=**} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /questions/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /papers/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /specTopics/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /scoreConversions/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /benchmarks/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /contentVersions/{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
