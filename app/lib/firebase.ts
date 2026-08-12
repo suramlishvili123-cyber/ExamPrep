@@ -118,6 +118,15 @@ export async function saveAttemptCloud(uid: string, attempt: Attempt): Promise<v
   await setDoc(doc(firebase.db, "users", uid, "attempts", attempt.attemptId), attempt, { merge: true });
 }
 
+export async function saveSettingsCloud(uid: string, settings: StoredState["settings"]): Promise<void> {
+  const firebase = getFirebaseClient();
+  if (!firebase) return;
+  await Promise.all([
+    setDoc(doc(firebase.db, "users", uid), { updatedAt: Date.now(), schemaVersion: 2 }, { merge: true }),
+    setDoc(doc(firebase.db, "users", uid, "settings", "main"), settings, { merge: true }),
+  ]);
+}
+
 export async function deleteAttemptCloud(uid: string, attemptId: string): Promise<void> {
   const firebase = getFirebaseClient();
   if (!firebase) return;
@@ -128,7 +137,7 @@ export async function saveUserStateCloud(uid: string, state: StoredState): Promi
   const firebase = getFirebaseClient();
   if (!firebase) return;
   const batchWrites: Promise<void>[] = [
-    setDoc(doc(firebase.db, "users", uid), { updatedAt: Date.now(), schemaVersion: 1 }, { merge: true }),
+    setDoc(doc(firebase.db, "users", uid), { updatedAt: Date.now(), schemaVersion: 2 }, { merge: true }),
     setDoc(doc(firebase.db, "users", uid, "settings", "main"), state.settings, { merge: true }),
     setDoc(doc(firebase.db, "users", uid, "targets", "main"), state.targets, { merge: true }),
     setDoc(doc(firebase.db, "users", uid, "notes", "main"), state.notes, { merge: true }),

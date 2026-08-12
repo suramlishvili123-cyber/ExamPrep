@@ -128,6 +128,11 @@ export interface Attempt {
   rawScore: number | null;
   freshQuestionCount: number;
   sequenceRemaining?: ModuleId[];
+  /** Stable context for attempts launched from the derived adaptive study plan. */
+  planSessionId?: string;
+  planSessionKind?: "retrieval" | "maintenance" | "baseline" | "focus" | "coverage" | "simulation";
+  planSessionTitle?: string;
+  planSessionEstimatedMinutes?: number;
 }
 
 export interface QuestionProgress {
@@ -159,6 +164,8 @@ export interface Settings {
   examDate: string;
   /** Weekly study target in hours, compared against recorded session time. */
   weeklyHours: number;
+  /** Maximum planned question time for one adaptive study session. */
+  adaptivePlanMinutes: number;
   pacingAid: boolean;
   /** Show the estimated 1.0-9.0 conversion alongside every raw mark. */
   showScoreEstimate: boolean;
@@ -206,6 +213,7 @@ export function defaultState(): StoredState {
       keyboardShortcuts: true,
       examDate: "2026-10-12",
       weeklyHours: 8,
+      adaptivePlanMinutes: 45,
       pacingAid: false,
       showScoreEstimate: true,
     },
@@ -222,6 +230,10 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     sourceSetLabel: attempt.sourceSetLabel ?? (attempt.sourceYears?.length ? `Archive ${attempt.sourceYears.join(", ")}` : "Practice set"),
     sequenceSource: attempt.sequenceSource ?? "archive",
   });
+  const savedPlanMinutes = Number(value.settings?.adaptivePlanMinutes);
+  const adaptivePlanMinutes = Number.isFinite(savedPlanMinutes)
+    ? Math.min(120, Math.max(15, Math.round(savedPlanMinutes / 15) * 15))
+    : base.settings.adaptivePlanMinutes;
   return {
     ...base,
     ...value,
@@ -231,7 +243,7 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     mistakes: value.mistakes ?? base.mistakes,
     notes: value.notes ?? base.notes,
     targets: { ...base.targets, ...(value.targets ?? {}) },
-    settings: { ...base.settings, ...(value.settings ?? {}) },
+    settings: { ...base.settings, ...(value.settings ?? {}), adaptivePlanMinutes },
   };
 }
 

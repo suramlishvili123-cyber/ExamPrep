@@ -16,7 +16,7 @@
     "build:bank": "node scripts/run_python.mjs scripts/build_question_bank.py && node scripts/run_python.mjs scripts/build_extended_bank.py",
     "build:mocks": "node scripts/run_python.mjs scripts/build_original_mocks.py",
     "validate:bank": "node scripts/run_python.mjs scripts/validate_question_bank.py",
-    "test:unit": "node --import tsx --test tests/core.test.ts tests/scoring.test.ts tests/math-markup.test.ts tests/math-render.test.ts tests/original-mocks.test.ts",
+    "test:unit": "node --import tsx --test tests/core.test.ts tests/scoring.test.ts tests/math-markup.test.ts tests/math-render.test.ts tests/original-mocks.test.ts tests/study-plan.test.ts",
     "test:build": "node --test tests/static-build.test.mjs",
     "test": "npm run validate:bank && npm run typecheck && npm run lint && npm run test:unit && npm run build && npm run test:build"
   },

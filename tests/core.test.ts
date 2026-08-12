@@ -7,6 +7,7 @@ import {
   eligibleQuestions,
   esatPacedDurationMs,
   finalizeAttempt,
+  mergeState,
   moduleStats,
   remainingMs,
   type Question,
@@ -56,6 +57,15 @@ test("historic paper limits preserve the exact ESAT pace", () => {
   assert.equal(esatPacedDurationMs(27), 2_400_000);
   assert.equal(esatPacedDurationMs(20), 1_777_778);
   assert.equal(esatPacedDurationMs(0), 0);
+});
+
+test("adaptive plan settings migrate safely from older or malformed stored state", () => {
+  assert.equal(mergeState({ settings: { ...defaultState().settings, adaptivePlanMinutes: 74 } }).settings.adaptivePlanMinutes, 75);
+  assert.equal(mergeState({ settings: { ...defaultState().settings, adaptivePlanMinutes: 999 } }).settings.adaptivePlanMinutes, 120);
+  assert.equal(mergeState({ settings: { ...defaultState().settings, adaptivePlanMinutes: Number.NaN } }).settings.adaptivePlanMinutes, 45);
+  const legacy = structuredClone(defaultState()) as unknown as { settings: Record<string, unknown> };
+  delete legacy.settings.adaptivePlanMinutes;
+  assert.equal(mergeState(legacy as never).settings.adaptivePlanMinutes, 45);
 });
 
 test("scoring handles correct, incorrect and unanswered with no negative marks", () => {

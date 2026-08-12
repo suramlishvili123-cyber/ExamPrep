@@ -22,6 +22,10 @@ Firestore storage. There is no server to run and no other authentication path.
   estimated score, standing, per-section (topic) breakdown, pacing analysis and a full
   question-by-question log.
 - **Mistake diagnosis and spaced retrieval** on a transparent 1–3–7–14–30 day schedule.
+- **Adaptive daily study plan.** A deterministic, evidence-led plan combines due
+  retrieval, missing baselines, first-exposure topic weakness, fresh coverage, exam
+  phase and available study time. Every recommendation shows its rationale, launches
+  the exact selected questions and keeps retakes separate from readiness evidence.
 - **Data portability.** JSON and CSV export of every attempt, response and note.
 
 ENGAA Part A is ignored because it duplicates NSAA material. The crossed-out

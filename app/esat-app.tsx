@@ -6,6 +6,7 @@ import {
   BarChart3,
   BookOpen,
   Brain,
+  CalendarCheck2,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -46,7 +47,6 @@ import {
   attemptPaperKey,
   chooseQuestions,
   createAttempt,
-  daysUntil,
   defaultState,
   eligibleQuestions,
   esatPacedDurationMs,
@@ -68,6 +68,7 @@ import {
   type PaperSet,
   type Question,
   type ResponseRecord,
+  type Settings,
   type StoredState,
 } from "./lib/core";
 import {
@@ -83,6 +84,11 @@ import {
   type ScoreEstimate,
   type SectionRow,
 } from "./lib/scoring";
+import {
+  buildAdaptiveStudyPlan,
+  type AdaptiveStudyPlan,
+  type StudyPlanSession,
+} from "./lib/study-plan";
 import { MathText } from "./math-text";
 import {
   deleteAttemptCloud,
@@ -90,18 +96,20 @@ import {
   loadUserStateCloud,
   observeUser,
   saveAttemptCloud,
+  saveSettingsCloud,
   saveUserStateCloud,
   signInWithGoogle,
   signOutUser,
 } from "./lib/firebase";
 
-type ViewId = "dashboard" | "practice" | "originals" | "analytics" | "mistakes" | "papers" | "settings";
+type ViewId = "dashboard" | "plan" | "practice" | "originals" | "analytics" | "mistakes" | "papers" | "settings";
 type QuestionFilter = "all" | "unseen" | "incorrect" | "due";
 type HistoryFilter = "all" | "paper" | "original" | "strict" | "practice";
 type AttemptKind = "paper" | "original" | "strict" | "practice";
 
 const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
   { id: "dashboard", label: "Overview", icon: Home },
+  { id: "plan", label: "Study plan", icon: CalendarCheck2 },
   { id: "practice", label: "Practice", icon: BookOpen },
   { id: "originals", label: "Original mocks", icon: Sparkles },
   { id: "papers", label: "Paper history", icon: LibraryBig },
@@ -230,6 +238,7 @@ const KIND_LABELS: Record<AttemptKind, string> = {
 
 function attemptTitle(attempt: Attempt): string {
   if (attempt.mode === "historic") return attempt.sourceSetLabel || "Archive paper";
+  if (attempt.planSessionTitle) return attempt.planSessionTitle;
   if (attempt.mode === "original") return "Challenge Mock A";
   if (attempt.strictTimed) return "Strict 27-question module";
   if (attempt.mode === "retry") return "Targeted retry";
@@ -408,6 +417,7 @@ export default function EsatApp() {
   const [openAttemptId, setOpenAttemptId] = useState<string | null>(null);
   const timedOutRef = useRef(false);
   const syncedUserRef = useRef<string | null>(null);
+  const cloudSettingsReadyUserRef = useRef<string | null>(null);
   const stateRef = useRef(state);
   const activeAttemptRef = useRef<Attempt | null>(null);
   const storageWarnedRef = useRef(false);
@@ -451,6 +461,7 @@ export default function EsatApp() {
 
   useEffect(() => observeUser(
     (nextUser) => {
+      if (!nextUser) cloudSettingsReadyUserRef.current = null;
       setUser(nextUser);
       setAuthReady(true);
     },
@@ -475,6 +486,7 @@ export default function EsatApp() {
         stateRef.current = merged;
         setState(merged);
         await saveUserStateCloud(user.uid, merged);
+        cloudSettingsReadyUserRef.current = user.uid;
         setToast("Signed in. Your private Firebase progress is up to date.");
       })
       .catch((error: unknown) => {
@@ -512,6 +524,16 @@ export default function EsatApp() {
       document.removeEventListener("visibilitychange", flush);
     };
   }, [state, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || !user || authBusy || cloudSettingsReadyUserRef.current !== user.uid) return;
+    const timeout = window.setTimeout(() => {
+      saveSettingsCloud(user.uid, state.settings).catch(() =>
+        setToast("Settings saved locally; cloud sync will retry after your next session."),
+      );
+    }, 600);
+    return () => window.clearTimeout(timeout);
+  }, [authBusy, hydrated, state.settings, user]);
 
   useEffect(() => {
     if (!toast) return;
@@ -581,6 +603,7 @@ export default function EsatApp() {
   }, [activeAttemptId]);
 
   const effectiveQuestions = useMemo(() => [...(bank?.questions ?? []), ...(mockBank?.questions ?? [])], [bank, mockBank]);
+  const supplementalQuestionIds = useMemo(() => new Set((mockBank?.questions ?? []).map((question) => question.id)), [mockBank]);
   const questionMap = useMemo(
     () => Object.fromEntries(effectiveQuestions.map((question) => [question.id, question])),
     [effectiveQuestions],
@@ -590,6 +613,15 @@ export default function EsatApp() {
     [bank],
   );
   const paperSets = useMemo(() => listPaperSets(bank?.questions ?? []), [bank]);
+  const adaptivePlan = useMemo(
+    () => buildAdaptiveStudyPlan({
+      archiveQuestions: bank?.questions ?? [],
+      supplementalQuestions: mockBank?.questions ?? [],
+      state,
+      now: tick,
+    }),
+    [bank, mockBank, state, tick],
+  );
 
   const finishAttempt = useCallback(
     (timedOut = false) => {
@@ -755,7 +787,13 @@ export default function EsatApp() {
     sequenceRemaining?: ModuleId[],
     sequenceSource: "archive" | "original" = "archive",
     sourceOverride?: { exam: string; year: number; label: string },
+    planContext?: Pick<StudyPlanSession, "id" | "kind" | "title" | "estimatedMinutes">,
   ): void {
+    const currentState = stateRef.current;
+    if (currentState.activeAttempt) {
+      setToast("A session is already active. Continue or submit it before starting another.");
+      return;
+    }
     if (!pool.length) {
       setToast("No questions matched that request.");
       return;
@@ -768,7 +806,7 @@ export default function EsatApp() {
       strictTimed,
       generated: !originalHistoricSet,
       originalHistoricSet,
-      progress: state.progress,
+      progress: currentState.progress,
       sequenceRemaining,
       sequenceSource,
     });
@@ -780,11 +818,22 @@ export default function EsatApp() {
         sourceSetLabel: sourceOverride.label,
       };
     }
+    if (planContext) {
+      attempt = {
+        ...attempt,
+        planSessionId: planContext.id,
+        planSessionKind: planContext.kind,
+        planSessionTitle: planContext.title,
+        planSessionEstimatedMinutes: planContext.estimatedMinutes,
+      };
+    }
     setResult(null);
     setOpenAttemptId(null);
     setMultiTabWarning(false);
     timedOutRef.current = false;
-    setState((current) => ({ ...current, activeAttempt: attempt }));
+    const nextState = { ...currentState, activeAttempt: attempt };
+    stateRef.current = nextState;
+    setState(nextState);
   }
 
   function beginSession(args: {
@@ -856,6 +905,29 @@ export default function EsatApp() {
     beginSession({ module: "maths1", count: 27, mode: "exam", filter: "all", durationMinutes: 40, strictTimed: true, requireExactCount: true, sequenceRemaining: ["physics", "maths2"] });
   }
 
+  function beginPlanSession(session: StudyPlanSession): void {
+    const pool = session.questionIds
+      .map((questionId) => questionMap[questionId])
+      .filter((question): question is Question => Boolean(question) && question.targetModule === session.module && !question.excluded && !question.reviewRequired);
+    if (!pool.length || pool.length !== session.questionIds.length) {
+      setToast("The question bank changed, so today’s plan has been refreshed. Choose the updated session instead.");
+      return;
+    }
+    const sequenceSource = pool.every((question) => supplementalQuestionIds.has(question.id)) ? "original" : "archive";
+    beginQuestionList(
+      pool,
+      session.module,
+      session.mode,
+      session.durationMinutes,
+      session.strictTimed,
+      session.mode === "historic",
+      undefined,
+      sequenceSource,
+      session.source,
+      session,
+    );
+  }
+
   function continueSequence(attempt: Attempt): void {
     const [module, ...rest] = attempt.sequenceRemaining ?? [];
     if (!module) {
@@ -908,6 +980,7 @@ export default function EsatApp() {
     try {
       await signOutUser();
       syncedUserRef.current = null;
+      cloudSettingsReadyUserRef.current = null;
       setToast("Signed out securely. Your cloud progress remains in Firebase.");
     } catch {
       setToast("Sign-out did not complete. Please try again.");
@@ -916,12 +989,9 @@ export default function EsatApp() {
     }
   }
 
-  const daysRemaining = daysUntil(state.settings.examDate);
-  const dueCount = Object.values(state.mistakes).filter((item) => item.dueDate <= tick).length;
-  const weekStart = tick - 7 * 86_400_000;
-  const studyMs = state.attempts
-    .filter((attempt) => (attempt.endedAt ?? 0) >= weekStart)
-    .reduce((sum, attempt) => sum + (attempt.durationMs ?? 0), 0);
+  const daysRemaining = adaptivePlan.daysRemaining;
+  const dueCount = adaptivePlan.dueCount;
+  const studyMs = adaptivePlan.completedMinutesThisWeek * 60_000;
 
   if (!hydrated || !authReady) {
     return (
@@ -1008,8 +1078,9 @@ export default function EsatApp() {
         attempt={result}
         questionMap={questionMap}
         showScoreEstimate={state.settings.showScoreEstimate}
+        returnLabel={result.planSessionId ? "Continue today’s plan" : "Back to dashboard"}
         previous={state.attempts.find((attempt) => attempt.attemptId !== result.attemptId && attempt.module === result.module && attemptKind(attempt) === attemptKind(result) && attempt.rawScore !== null) ?? null}
-        onClose={() => { setResult(null); setView("dashboard"); }}
+        onClose={() => { setResult(null); setView(result.planSessionId ? "plan" : "dashboard"); }}
         onContinue={() => continueSequence(result)}
         onRetryMissed={() => {
           const missed = Object.values(result.responses)
@@ -1118,26 +1189,24 @@ export default function EsatApp() {
                   dueCount={dueCount}
                   studyMs={studyMs}
                   questionMap={questionMap}
+                  plan={adaptivePlan}
                   onPractice={() => setView("practice")}
+                  onViewPlan={() => setView("plan")}
+                  onStartPlanSession={beginPlanSession}
                   onOpenAttempt={setOpenAttemptId}
-                  onRecommended={() => {
-                    const dueQuestions = Object.values(state.mistakes)
-                      .filter((item) => item.dueDate <= tick)
-                      .map((item) => questionMap[item.questionId])
-                      .filter((question): question is Question => Boolean(question));
-                    if (dueQuestions.length) {
-                      const focusModule = dueQuestions[0].targetModule;
-                      const focus = dueQuestions.filter((question) => question.targetModule === focusModule).slice(0, 10);
-                      beginQuestionList(focus, focusModule, "retry", null, false);
-                    } else {
-                      const weakest = [...MODULE_ORDER].sort((left, right) => {
-                        const leftStats = moduleStats(state.attempts, left).freshAccuracy ?? 1;
-                        const rightStats = moduleStats(state.attempts, right).freshAccuracy ?? 1;
-                        return leftStats - rightStats;
-                      })[0];
-                      beginSession({ module: weakest, count: 10, mode: "practice", filter: "unseen", durationMinutes: null, strictTimed: false });
-                    }
-                  }}
+                />
+              ) : null}
+              {view === "plan" ? (
+                <AdaptiveStudyPlanView
+                  plan={adaptivePlan}
+                  settings={state.settings}
+                  onStart={beginPlanSession}
+                  onPractice={() => setView("practice")}
+                  onSettings={() => setView("settings")}
+                  onPlanMinutesChange={(minutes) => setState((current) => ({
+                    ...current,
+                    settings: { ...current.settings, adaptivePlanMinutes: minutes },
+                  }))}
                 />
               ) : null}
               {view === "practice" ? (
@@ -1236,7 +1305,7 @@ export default function EsatApp() {
                   onExportJson={() => download("esat-atlas-export.json", JSON.stringify(state, null, 2), "application/json")}
                   onExportCsv={() => {
                     const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-                    const rows = ["attemptId,kind,module,mode,sourceSet,sourceExams,sourceYears,startedAt,endedAt,rawScore,questionCount,accuracyPercent,estimatedScore,freshQuestionCount,durationMs"];
+                    const rows = ["attemptId,kind,module,mode,sourceSet,sourceExams,sourceYears,startedAt,endedAt,rawScore,questionCount,accuracyPercent,estimatedScore,freshQuestionCount,durationMs,planSessionId,planSessionKind,planSessionTitle,planSessionEstimatedMinutes"];
                     for (const attempt of state.attempts) {
                       const estimate = attempt.rawScore === null ? null : scoreEstimate(attempt.rawScore, attempt.questionIds.length, attempt.module);
                       rows.push([
@@ -1255,6 +1324,10 @@ export default function EsatApp() {
                         estimate ? estimate.scaledScore.toFixed(1) : "",
                         attempt.freshQuestionCount,
                         attempt.durationMs ?? "",
+                        attempt.planSessionId ?? "",
+                        attempt.planSessionKind ?? "",
+                        attempt.planSessionTitle ?? "",
+                        attempt.planSessionEstimatedMinutes ?? "",
                       ].map(csvCell).join(","));
                     }
                     download("esat-atlas-attempts.csv", rows.join("\n"), "text/csv");
@@ -1291,8 +1364,10 @@ function Dashboard({
   dueCount,
   studyMs,
   questionMap,
+  plan,
   onPractice,
-  onRecommended,
+  onViewPlan,
+  onStartPlanSession,
   onOpenAttempt,
 }: {
   state: StoredState;
@@ -1302,8 +1377,10 @@ function Dashboard({
   dueCount: number;
   studyMs: number;
   questionMap: Record<string, Question>;
+  plan: AdaptiveStudyPlan;
   onPractice: () => void;
-  onRecommended: () => void;
+  onViewPlan: () => void;
+  onStartPlanSession: (session: StudyPlanSession) => void;
   onOpenAttempt: (attemptId: string) => void;
 }) {
   const stats = Object.fromEntries(MODULE_ORDER.map((module) => [module, moduleStats(state.attempts, module)])) as Record<ModuleId, ReturnType<typeof moduleStats>>;
@@ -1322,10 +1399,9 @@ function Dashboard({
       .filter((item) => item.recentRawAverage !== null && item.recentQuestionAverage !== null)
       .map((item) => ({ rawScore: item.recentRawAverage ?? 0, questionCount: item.recentQuestionAverage ?? 1 })),
   );
-  const weeklyTargetMs = state.settings.weeklyHours * 3_600_000;
-  const weakest = [...MODULE_ORDER]
-    .filter((module) => stats[module].freshAccuracy !== null)
-    .sort((left, right) => (stats[left].freshAccuracy ?? 1) - (stats[right].freshAccuracy ?? 1))[0];
+  const weeklyTargetMs = plan.weeklyTargetMinutes * 60_000;
+  const recordedHours = Math.floor(plan.completedMinutesThisWeek / 6) / 10;
+  const nextPlanSession = plan.sessions[0] ?? null;
 
   return (
     <>
@@ -1335,8 +1411,10 @@ function Dashboard({
           <h1>Your readiness, measured honestly.</h1>
           <p>Fresh performance predicts. Retakes teach. ESAT Atlas keeps them separate and shows an estimated score alongside every exact raw mark.</p>
         </div>
-        <button className="button button-primary" onClick={onRecommended}><Play size={17} /> Recommended session</button>
+        <button className="button button-primary" onClick={onViewPlan}><CalendarCheck2 size={17} /> Today’s study plan</button>
       </section>
+
+      <DashboardPlanPreview plan={plan} onView={onViewPlan} onStart={onStartPlanSession} />
 
       <section className="readiness-grid">
         {MODULE_ORDER.map((module) => {
@@ -1370,7 +1448,7 @@ function Dashboard({
       <section className="metric-strip">
         <div><CalendarDays size={18} /><span>Exam countdown<strong>{daysRemaining === null ? "Not set" : `${daysRemaining} days`}</strong></span></div>
         <div><RotateCcw size={18} /><span>Due for retrieval<strong>{dueCount} questions</strong></span></div>
-        <div><Clock3 size={18} /><span>Study this week<strong>{(studyMs / 3_600_000).toFixed(1)} / {state.settings.weeklyHours} h</strong></span></div>
+        <div><Clock3 size={18} /><span>Study this week<strong>{recordedHours.toFixed(1)} / {(plan.weeklyTargetMinutes / 60).toFixed(plan.weeklyTargetMinutes % 60 ? 1 : 0)} h</strong></span></div>
         <div><Activity size={18} /><span>Archive coverage<strong>{attempted ? `${Math.min(100, Math.round(coverage * 100))}%` : "Not started"}</strong></span></div>
       </section>
       <div className="week-progress" aria-hidden="true"><i><b style={{ width: `${Math.min(100, weeklyTargetMs ? (studyMs / weeklyTargetMs) * 100 : 0)}%` }} /></i></div>
@@ -1394,16 +1472,14 @@ function Dashboard({
             <EmptyState icon={BarChart3} title="No fresh trend yet" body="Sit a past paper or a strict 27-question module to establish your first honest baseline." action={<button className="button button-secondary" onClick={onPractice}>Choose a paper</button>} />
           )}
         </article>
-        <article className="panel action-panel">
-          <span className="eyebrow">Next best action</span>
+        <article className="panel action-panel plan-rationale-card">
+          <span className="eyebrow">Why this comes next</span>
           <div className="action-icon"><Brain size={22} /></div>
-          <h2>{dueCount ? `Clear ${dueCount} retrieval question${dueCount === 1 ? "" : "s"}` : weakest ? `Strengthen ${MODULE_LABELS[weakest]}` : "Build a fresh baseline"}</h2>
-          <p>{dueCount
-            ? "These questions are due under the 1–3–7–14–30 day retrieval schedule."
-            : weakest
-              ? `${MODULE_LABELS[weakest]} has your lowest first-exposure accuracy, so unseen questions there add the most information.`
-              : "No mistake items are due, so an unseen session expands coverage without inflating readiness."}</p>
-          <button className="text-button" onClick={onRecommended}>Start recommended session <ChevronRight size={16} /></button>
+          <h2>{nextPlanSession?.title ?? "Your core work is complete"}</h2>
+          <p>{nextPlanSession?.rationale[0] ?? plan.summary}</p>
+          {nextPlanSession
+            ? <button className="text-button" onClick={() => onStartPlanSession(nextPlanSession)}>Start this session <ChevronRight size={16} /></button>
+            : <button className="text-button" onClick={onViewPlan}>Review today’s plan <ChevronRight size={16} /></button>}
         </article>
       </section>
 
@@ -1443,6 +1519,209 @@ function Dashboard({
       <section className="source-ribbon">
         <div><ShieldCheck size={20} /><span><strong>{bank.questions.length} verified in-scope questions</strong>{approvedCounts.maths1} Mathematics 1 · {approvedCounts.physics} Physics · {approvedCounts.maths2} Mathematics 2</span></div>
         <div><strong>Raw marks are exact</strong><span>The 1.0–9.0 figure is an ESAT Atlas estimate from published anchors, not a UAT-UK conversion.</span></div>
+      </section>
+    </>
+  );
+}
+
+const PLAN_PHASE_DETAILS: Record<AdaptiveStudyPlan["phase"], { label: string; note: string; tone: "neutral" | "good" | "warn" | "bad" | "blue" }> = {
+  foundation: { label: "Foundation phase", note: "Build representative coverage and establish honest baselines.", tone: "good" },
+  consolidation: { label: "Consolidation phase", note: "Close reliable topic gaps while refreshing timed evidence.", tone: "blue" },
+  simulation: { label: "Simulation phase", note: "Practise complete module rhythm while protecting retrieval work.", tone: "blue" },
+  taper: { label: "Taper phase", note: "Keep recall sharp and avoid unnecessary cognitive load.", tone: "warn" },
+  "date-needed": { label: "Exam date needed", note: "Confirm the exam date before time-sensitive planning is applied.", tone: "bad" },
+};
+
+const PLAN_KIND_LABELS: Record<StudyPlanSession["kind"], string> = {
+  retrieval: "Due retrieval",
+  maintenance: "Maintenance review",
+  baseline: "Paced baseline",
+  focus: "Priority focus",
+  coverage: "Fresh coverage",
+  simulation: "Strict simulation",
+};
+
+const PLAN_MINUTE_OPTIONS = [15, 30, 45, 60, 75, 90, 105, 120] as const;
+
+function planProgress(plan: AdaptiveStudyPlan): number {
+  return plan.weeklyTargetMinutes
+    ? Math.min(100, Math.floor((plan.completedMinutesThisWeek / plan.weeklyTargetMinutes) * 100))
+    : 0;
+}
+
+function DashboardPlanPreview({ plan, onView, onStart }: {
+  plan: AdaptiveStudyPlan;
+  onView: () => void;
+  onStart: (session: StudyPlanSession) => void;
+}) {
+  const phase = PLAN_PHASE_DETAILS[plan.phase];
+  const first = plan.sessions[0] ?? null;
+  const progress = planProgress(plan);
+  return (
+    <section className={`dashboard-plan-preview plan-phase-${plan.phase}`} aria-labelledby="dashboard-plan-title">
+      <div className="plan-preview-copy">
+        <div className="plan-preview-kicker">
+          <Pill tone={phase.tone}><CalendarCheck2 size={13} /> {phase.label}</Pill>
+          <span>{plan.confidence} confidence</span>
+        </div>
+        <h2 id="dashboard-plan-title">{plan.headline}</h2>
+        <p>{plan.summary}</p>
+        <div className="plan-preview-meta" aria-label="Today’s plan summary">
+          <span><strong>{plan.totalEstimatedMinutes}</strong> planned min</span>
+          <span><strong>{plan.totalQuestions}</strong> questions</span>
+          <span><strong>{plan.sessions.length}</strong> session{plan.sessions.length === 1 ? "" : "s"}</span>
+        </div>
+      </div>
+      <div className={`plan-preview-action${first ? "" : " plan-preview-action-empty"}`}>
+        <div className="plan-mini-progress">
+          <span><strong>{progress}%</strong> of weekly target recorded</span>
+          <div role="progressbar" aria-label="Weekly study target" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: `${progress}%` }} /></div>
+        </div>
+        {first ? <button type="button" className="button button-light" onClick={() => onStart(first)}><Play size={17} /> Start first session</button> : null}
+        <button type="button" className={first ? "plan-link-light" : "button button-light"} onClick={onView}>{first ? "Review the full plan" : "Open study plan"}<ChevronRight size={16} /></button>
+      </div>
+    </section>
+  );
+}
+
+function PlanPhaseRail({ active }: { active: AdaptiveStudyPlan["phase"] }) {
+  const phases: Array<Exclude<AdaptiveStudyPlan["phase"], "date-needed">> = ["foundation", "consolidation", "simulation", "taper"];
+  return (
+    <div className={`plan-phase-rail plan-phase-${active}`} role="list" aria-label={`Current preparation phase: ${PLAN_PHASE_DETAILS[active].label}`}>
+      {phases.map((phase, index) => (
+        <div key={phase} role="listitem" aria-current={active === phase ? "step" : undefined} className={active === phase ? "active" : ""}>
+          <i aria-hidden="true">{index + 1}</i>
+          <span>{PLAN_PHASE_DETAILS[phase].label.replace(" phase", "")}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PlanSessionCard({ session, index, onStart }: { session: StudyPlanSession; index: number; onStart: (session: StudyPlanSession) => void }) {
+  return (
+    <li className={`plan-session-card plan-kind-${session.kind}`}>
+      <span className="plan-step"><span className="plan-step-label">Step </span>{String(index + 1).padStart(2, "0")}</span>
+      <div className="plan-session-copy">
+        <div className="plan-session-kicker">
+          <Pill tone={session.kind === "retrieval" ? "warn" : session.kind === "simulation" ? "blue" : "good"}>{PLAN_KIND_LABELS[session.kind]}</Pill>
+          <span><i className={`module-dot ${session.module}`} />{MODULE_LABELS[session.module]}</span>
+        </div>
+        <h3>{session.title}</h3>
+        <p>{session.summary}</p>
+        <div className="plan-session-meta">
+          <span><Clock3 size={14} /> About {session.estimatedMinutes} min</span>
+          <span><LibraryBig size={14} /> {session.questionIds.length} question{session.questionIds.length === 1 ? "" : "s"}</span>
+          <span><ShieldCheck size={14} /> {session.strictTimed ? "Strict timing" : "Pause enabled"}</span>
+          <span><Activity size={14} /> {session.evidenceConfidence} evidence</span>
+        </div>
+        <details className="plan-session-reason">
+          <summary>Why this session?<ChevronRight size={15} /></summary>
+          <ul>{session.rationale.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+        </details>
+      </div>
+      <div className="plan-session-action">
+        <button type="button" className="button button-primary" onClick={() => onStart(session)}><Play size={16} /> Start session</button>
+        {session.topic ? <span>Focus: {session.topic}</span> : <span>{session.durationMinutes === null ? "Untimed" : `${Math.round(session.durationMinutes)} min cap`}</span>}
+      </div>
+    </li>
+  );
+}
+
+function AdaptiveStudyPlanView({ plan, settings, onStart, onPractice, onSettings, onPlanMinutesChange }: {
+  plan: AdaptiveStudyPlan;
+  settings: Settings;
+  onStart: (session: StudyPlanSession) => void;
+  onPractice: () => void;
+  onSettings: () => void;
+  onPlanMinutesChange: (minutes: number) => void;
+}) {
+  const phase = PLAN_PHASE_DETAILS[plan.phase];
+  const progress = planProgress(plan);
+  const first = plan.sessions[0] ?? null;
+  return (
+    <>
+      <section className="page-heading plan-page-heading">
+        <div>
+          <Pill tone={phase.tone}><CalendarCheck2 size={13} /> {phase.label}</Pill>
+          <h1 id="adaptive-plan-title">A focused plan for today.</h1>
+          <p>Built from due retrieval, first-exposure accuracy, topic coverage, recent strict evidence, your exam date, and the time you have chosen.</p>
+        </div>
+        {first ? <button type="button" className="button button-primary" onClick={() => onStart(first)}><Play size={17} /> Start first session</button> : null}
+      </section>
+
+      <section className={`plan-hero plan-phase-${plan.phase}`} aria-labelledby="plan-hero-title">
+        <div className="plan-hero-copy">
+          <div className="plan-hero-kicker"><span>Your adaptive plan</span><Pill tone="neutral">{plan.confidence} confidence</Pill></div>
+          <h2 id="plan-hero-title">{plan.headline}</h2>
+          <p>{plan.summary}</p>
+          <div className="plan-hero-stats">
+            <div><span>Remaining plan</span><strong>{plan.totalEstimatedMinutes} min</strong></div>
+            <div><span>Questions</span><strong>{plan.totalQuestions}</strong></div>
+            <div><span>Core sessions</span><strong>{plan.sessions.length}</strong></div>
+            <div><span>ESAT countdown</span><strong>{plan.daysRemaining === null ? "Confirm date" : `${plan.daysRemaining} days`}</strong></div>
+          </div>
+        </div>
+        <div className="plan-week-card">
+          <div><span>This week</span><strong>{plan.completedMinutesThisWeek} / {plan.weeklyTargetMinutes} min</strong></div>
+          <div className="plan-week-track" role="progressbar" aria-label="Weekly recorded question time" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: `${progress}%` }} /></div>
+          <p>{progress >= 100 ? "Your weekly target is complete. Only genuinely due retrieval will be prioritised." : `${Math.max(0, plan.weeklyTargetMinutes - plan.completedMinutesThisWeek)} recorded minutes remain against this week’s target.`}</p>
+        </div>
+      </section>
+
+      {plan.phase !== "date-needed" ? <PlanPhaseRail active={plan.phase} /> : (
+        <section className="integrity-banner plan-date-alert"><TriangleAlert size={18} /><div><strong>Confirm your ESAT date</strong><span>The planner can still protect retrieval and coverage, but it will not schedule time-sensitive simulation or taper work until the date is valid.</span></div><button type="button" className="button button-secondary compact" onClick={onSettings}>Open settings</button></section>
+      )}
+
+      <section className="plan-layout">
+        <div className="plan-main-column">
+          <article className="panel plan-sessions-panel">
+            <div className="panel-heading">
+              <div><span className="eyebrow">Today’s core work</span><h2>{plan.sessions.length ? "Complete these in order" : "Nothing essential remains"}</h2></div>
+              {plan.dueCount ? <Pill tone="warn">{plan.dueCount} due now</Pill> : <Pill tone="good"><CheckCircle2 size={13} /> Queue protected</Pill>}
+            </div>
+            {plan.sessions.length ? (
+              <ol className="plan-session-list">
+                {plan.sessions.map((session, index) => <PlanSessionCard key={session.id} session={session} index={index} onStart={onStart} />)}
+              </ol>
+            ) : plan.status === "complete" ? (
+              <div className="plan-complete-state">
+                <span><CheckCircle2 size={26} /></span>
+                <h3>Today’s core plan is complete.</h3>
+                <p>{plan.summary} The planner will update after your next recorded result or when retrieval becomes due.</p>
+                <button type="button" className="button button-secondary" onClick={onPractice}>Optional extra practice</button>
+              </div>
+            ) : (
+              <EmptyState icon={TriangleAlert} title="No safe session is available" body={plan.summary} action={<button type="button" className="button button-secondary" onClick={onPractice}>Open practice builder</button>} />
+            )}
+          </article>
+
+          <article className="panel plan-adjust-panel">
+            <div><span className="eyebrow">Adjust today</span><h2>How much focused time do you have?</h2><p>The plan rebuilds immediately. It never fills a short session with repeated questions while calling them fresh.</p></div>
+            <div className="plan-minute-options" role="group" aria-label="Adaptive plan length">
+              {PLAN_MINUTE_OPTIONS.map((minutes) => <button type="button" key={minutes} aria-pressed={settings.adaptivePlanMinutes === minutes} className={settings.adaptivePlanMinutes === minutes ? "selected" : ""} onClick={() => onPlanMinutesChange(minutes)}>{minutes}<small>min</small></button>)}
+            </div>
+            <p className="plan-update-status" role="status" aria-live="polite" aria-atomic="true">Today’s plan now has {plan.totalEstimatedMinutes} minutes across {plan.sessions.length} core session{plan.sessions.length === 1 ? "" : "s"}.</p>
+          </article>
+        </div>
+
+        <aside className="plan-side-column">
+          <article className="panel plan-why-panel">
+            <div className="panel-heading"><div><span className="eyebrow">Planning rationale</span><h2>Why today looks like this</h2></div><Brain size={19} /></div>
+            <ul>{plan.rationale.map((reason) => <li key={reason}><Check size={15} /> <span>{reason}</span></li>)}</ul>
+            {plan.unavailableDueCount ? <div className="plan-data-note"><TriangleAlert size={15} /><span>The current validated bank no longer contains {plan.unavailableDueCount} question{plan.unavailableDueCount === 1 ? "" : "s"} referenced by due records.</span></div> : null}
+          </article>
+          <article className="panel plan-integrity-panel">
+            <ShieldCheck size={20} />
+            <div><span className="eyebrow">Evidence integrity</span><h2>Retakes teach; they do not predict.</h2><p>Weakness priorities use first exposure. Retrieval results update mastery, but they never inflate the readiness signal shown elsewhere.</p></div>
+          </article>
+          <article className="panel plan-phase-note">
+            <span className="eyebrow">Current strategy</span>
+            <h2>{phase.label}</h2>
+            <p>{phase.note}</p>
+            <button type="button" className="text-button" onClick={onSettings}>Review planning settings <ChevronRight size={16} /></button>
+          </article>
+        </aside>
       </section>
     </>
   );
@@ -2215,6 +2494,13 @@ function SettingsView({ state, setState, onExportJson, onExportCsv, onReset }: {
             <span>Weekly hours<small>Compared against your recorded session time</small></span>
             <input type="number" min="1" max="40" value={state.settings.weeklyHours} onChange={(event) => setState((current) => ({ ...current, settings: { ...current.settings, weeklyHours: Math.min(40, Math.max(1, Math.round(Number(event.target.value) || 1))) } }))} />
           </label>
+          <label className="setting-row">
+            <span>Typical plan length<small>Maximum question time scheduled for one day</small></span>
+            <select value={state.settings.adaptivePlanMinutes} onChange={(event) => setState((current) => ({ ...current, settings: { ...current.settings, adaptivePlanMinutes: Number(event.target.value) } }))}>
+              {PLAN_MINUTE_OPTIONS.map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
+            </select>
+          </label>
+          <p className="panel-footnote">The adaptive plan uses this as a daily cap. Weekly hours remain your wider target, so optional extra practice may still be useful on some days.</p>
         </article>
         <article className="panel">
           <div className="panel-heading"><div><span className="eyebrow">Player and reporting</span><h2>Interaction</h2></div></div>
@@ -2365,10 +2651,11 @@ function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSe
   );
 }
 
-function ResultScreen({ attempt, questionMap, showScoreEstimate, previous, onClose, onContinue, onRetryMissed, onTag }: {
+function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, previous, onClose, onContinue, onRetryMissed, onTag }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   showScoreEstimate: boolean;
+  returnLabel: string;
   previous: Attempt | null;
   onClose: () => void;
   onContinue: () => void;
@@ -2393,13 +2680,13 @@ function ResultScreen({ attempt, questionMap, showScoreEstimate, previous, onClo
     <main className="result-screen">
       <header className="result-header">
         <div className="sidebar-brand"><div className="brand-mark">EA</div><div><strong>ESAT Atlas</strong><span>Session result</span></div></div>
-        <button className="button button-secondary" onClick={onClose}>Back to dashboard</button>
+        <button className="button button-secondary" onClick={onClose}>{returnLabel}</button>
       </header>
       <section className="result-hero">
         <div>
           <Pill tone={attempt.completionStatus === "timed-out" ? "warn" : "good"}>{attempt.completionStatus === "timed-out" ? "Time expired · automatically submitted" : "Module submitted"}</Pill>
           <h1>{MODULE_LABELS[attempt.module]}</h1>
-          <p>{attemptTitle(attempt)} · {attempt.strictTimed ? "strict evidence" : "practice evidence"} · {attempt.freshQuestionCount} fresh</p>
+          <p>{attempt.planSessionTitle ? `${attempt.planSessionTitle} · adaptive plan` : attemptTitle(attempt)} · {attempt.strictTimed ? "strict evidence" : "practice evidence"} · {attempt.freshQuestionCount} fresh</p>
         </div>
         <div className="raw-score">
           <strong>{attempt.rawScore}</strong>
@@ -2472,7 +2759,7 @@ function ResultScreen({ attempt, questionMap, showScoreEstimate, previous, onClo
       <footer className="result-actions">
         {attempt.sequenceRemaining?.length
           ? <button className="button button-primary" onClick={onContinue}>Continue to {MODULE_LABELS[attempt.sequenceRemaining[0]]} <ChevronRight size={17} /></button>
-          : <button className="button button-primary" onClick={onClose}>Finish review</button>}
+          : <button className="button button-primary" onClick={onClose}>{attempt.planSessionId ? "Continue today’s plan" : "Finish review"}</button>}
       </footer>
     </main>
   );
