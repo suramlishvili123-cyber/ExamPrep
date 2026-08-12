@@ -243,7 +243,7 @@ def main() -> None:
     if inventory["summary"]["fileCount"] != 46:
         errors.append("source inventory should contain 46 PDFs")
     if inventory["summary"]["scoreConversionFiles"] == 0:
-        informational_notes.append("Historical scaled-score lookup is intentionally disabled: no complete official practice conversion files were supplied and live forms are Rasch-equated.")
+        informational_notes.append("Official scaled-score reconstruction is intentionally disabled: no complete official conversion files were supplied and live forms are Rasch-equated. The interface shows only a clearly labelled estimate derived from published UAT-UK anchors.")
 
     report = {
         "status": "failed" if errors else "passed",
@@ -267,7 +267,7 @@ def main() -> None:
         },
         "historicalConversionValidation": {
             "status": "not-run",
-            "reason": "No complete conversion source files were supplied; the UI refuses historical scaled scores.",
+            "reason": "No complete conversion source files were supplied, so no official conversion is reproduced; the interface shows a labelled estimate built from published UAT-UK anchors instead.",
         },
     }
     (DATA_DIR / "validation-report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

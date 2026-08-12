@@ -1,46 +1,30 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import eslint from "@eslint/js";
-import next from "@next/eslint-plugin-next";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-const eslintConfig = defineConfig([
-  globalIgnores([
-    ".next/**",
-    "dist/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
+export default defineConfig([
+  globalIgnores(["dist/**", "node_modules/**", "public/**", "exports/**"]),
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   react.configs.flat.recommended,
   react.configs.flat["jsx-runtime"],
   reactHooks.configs.flat["recommended-latest"],
   jsxA11y.flatConfigs.recommended,
-  next.configs["core-web-vitals"],
   {
     languageOptions: {
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-        ...globals.serviceworker,
-      },
+      globals: { ...globals.browser, ...globals.node },
     },
     settings: {
-      react: {
-        version: "detect",
-      },
+      react: { version: "detect" },
     },
     rules: {
       // Question crops must preserve the exact source raster and intrinsic
       // dimensions; the signed-in avatar is an arbitrary external URL.
-      "@next/next/no-img-element": "off",
+      "jsx-a11y/alt-text": ["error", { img: ["img"] }],
     },
   },
 ]);
-
-export default eslintConfig;

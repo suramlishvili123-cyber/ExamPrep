@@ -3,17 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#103f36" />
+    <!-- Every asset is resolved against this base so repository sub-path URLs work. -->
     <meta name="esat-asset-base" content="./" />
-    <meta name="description" content="Evidence-led ESAT practice, exam simulation, mistake diagnosis and spaced retrieval for Cambridge Engineering." />
+    <meta name="description" content="Sit ESAT past papers by year, take harder-than-exam original mocks, and get section-level analysis with an estimated 1.0-9.0 score for Cambridge Engineering preparation." />
     <meta property="og:title" content="ESAT Atlas" />
-    <meta property="og:description" content="Fresh performance. Honest evidence." />
-    <meta property="og:image" content="./og.png" />
+    <meta property="og:description" content="Past papers by year. Section-level analysis. Honest evidence." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="./og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./favicon.svg" />
+    <link rel="preconnect" href="https://firestore.googleapis.com" />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" />
     <title>ESAT Atlas | Cambridge Engineering Preparation</title>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <p style="padding: 32px; font-family: system-ui, sans-serif;">
+        ESAT Atlas needs JavaScript to run the exam player, timing and analytics. Please enable it and reload.
+      </p>
+    </noscript>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>

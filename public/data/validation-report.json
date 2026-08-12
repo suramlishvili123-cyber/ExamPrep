@@ -16,7 +16,7 @@
   "errors": [],
   "warnings": [],
   "informationalNotes": [
-    "Historical scaled-score lookup is intentionally disabled: no complete official practice conversion files were supplied and live forms are Rasch-equated."
+    "Official scaled-score reconstruction is intentionally disabled: no complete official conversion files were supplied and live forms are Rasch-equated. The interface shows only a clearly labelled estimate derived from published UAT-UK anchors."
   ],
   "potentialDuplicatePairs": [],
   "manuallyClearedNearPairs": [
@@ -42,6 +42,6 @@
   },
   "historicalConversionValidation": {
     "status": "not-run",
-    "reason": "No complete conversion source files were supplied; the UI refuses historical scaled scores."
+    "reason": "No complete conversion source files were supplied, so no official conversion is reproduced; the interface shows a labelled estimate built from published UAT-UK anchors instead."
   }
 }

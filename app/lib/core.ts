@@ -58,10 +58,20 @@ export interface MockPayload {
   generatedAt: string;
   label: string;
   disclaimer: string;
+  qualityPolicy?: string;
   questions: Question[];
   summary: {
     questionCount: number;
-    perModule: Record<ModuleId, number>;
+    distinctArchetypes: number;
+    distinctPromptTemplates: number;
+    numberSwapDuplicates: number;
+    allTopLevelSpecificationTopicsCovered: boolean;
+    perModule: Record<ModuleId, {
+      questionCount: number;
+      distinctArchetypes: number;
+      distinctPromptTemplates: number;
+      topicCounts: Record<string, number>;
+    }>;
     verification: string;
   };
 }
@@ -147,9 +157,11 @@ export interface Settings {
   theme: "light" | "dark";
   keyboardShortcuts: boolean;
   examDate: string;
+  /** Weekly study target in hours, compared against recorded session time. */
   weeklyHours: number;
-  preferredDays: string[];
   pacingAid: boolean;
+  /** Show the estimated 1.0-9.0 conversion alongside every raw mark. */
+  showScoreEstimate: boolean;
 }
 
 export interface StoredState {
@@ -167,6 +179,9 @@ export const MODULE_LABELS: Record<ModuleId, string> = {
   physics: "Physics",
   maths2: "Mathematics 2",
 };
+
+/** The order the three ESAT modules are sat in. */
+export const MODULE_ORDER: ModuleId[] = ["maths1", "physics", "maths2"];
 
 export const STORAGE_KEY = "esat-atlas-state-v4";
 export const QUESTION_BANK_VERSION = "esat-archive-2016-2023-v3";
@@ -191,8 +206,8 @@ export function defaultState(): StoredState {
       keyboardShortcuts: true,
       examDate: "2026-10-12",
       weeklyHours: 8,
-      preferredDays: ["Mon", "Wed", "Sat"],
       pacingAid: false,
+      showScoreEstimate: true,
     },
     notes: {},
   };
@@ -212,6 +227,9 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     ...value,
     attempts: (value.attempts ?? []).map(normalizeAttempt),
     activeAttempt: value.activeAttempt ? normalizeAttempt(value.activeAttempt) : null,
+    progress: value.progress ?? base.progress,
+    mistakes: value.mistakes ?? base.mistakes,
+    notes: value.notes ?? base.notes,
     targets: { ...base.targets, ...(value.targets ?? {}) },
     settings: { ...base.settings, ...(value.settings ?? {}) },
   };
@@ -225,6 +243,99 @@ export function eligibleQuestions(
     .filter((question) => question.targetModule === module && !question.excluded && !question.reviewRequired);
 }
 
+export interface PaperSet {
+  key: string;
+  sourceExam: string;
+  year: number;
+  module: ModuleId;
+  sourcePart: string;
+  sectionLabel: string;
+  label: string;
+  questionCount: number;
+  durationMs: number;
+}
+
+export function paperSetKey(sourceExam: string, year: number, module: ModuleId): string {
+  return `${sourceExam}|${year}|${module}`;
+}
+
+export function paperSectionLabel(sourceExam: string, sourcePart: string): string {
+  if (sourceExam === "ENGAA") return "Part B · crossed items removed";
+  if (sourceExam === "TMUA") return "Paper 1";
+  if (sourcePart === "E") return "Section 1 · Part E";
+  if (sourcePart === "A") return "Section 1 · Part A";
+  if (sourcePart === "B") return "Section 1 · Part B";
+  return "Section 1";
+}
+
+/** Every (exam, year, module) paper the validated archive can serve, newest first. */
+export function listPaperSets(questions: Question[]): PaperSet[] {
+  const sets = new Map<string, PaperSet>();
+  for (const question of questions) {
+    if (question.excluded || question.reviewRequired) continue;
+    const origins = [
+      { sourceExam: question.sourceExam, sourcePart: question.sourcePart },
+      ...(question.alternateSources ?? []).map((source) => ({ sourceExam: source.sourceExam, sourcePart: source.sourcePart })),
+    ];
+    for (const origin of origins) {
+      const key = paperSetKey(origin.sourceExam, question.year, question.targetModule);
+      const existing = sets.get(key);
+      if (existing) {
+        existing.questionCount += 1;
+        existing.durationMs = esatPacedDurationMs(existing.questionCount);
+        continue;
+      }
+      const sectionLabel = paperSectionLabel(origin.sourceExam, origin.sourcePart);
+      sets.set(key, {
+        key,
+        sourceExam: origin.sourceExam,
+        year: question.year,
+        module: question.targetModule,
+        sourcePart: origin.sourcePart,
+        sectionLabel,
+        label: `${origin.sourceExam} ${question.year} · ${sectionLabel}`,
+        questionCount: 1,
+        durationMs: esatPacedDurationMs(1),
+      });
+    }
+  }
+  return [...sets.values()].sort(
+    (left, right) =>
+      right.year - left.year
+      || left.sourceExam.localeCompare(right.sourceExam)
+      || MODULE_ORDER.indexOf(left.module) - MODULE_ORDER.indexOf(right.module),
+  );
+}
+
+/** The exact paper, in the question order printed on the original paper. */
+export function paperQuestions(
+  questions: Question[],
+  sourceExam: string,
+  year: number,
+  module: ModuleId,
+): Question[] {
+  const numberFor = (question: Question): number => {
+    if (question.sourceExam === sourceExam) return question.originalQuestionNumber;
+    const alternate = question.alternateSources?.find((source) => source.sourceExam === sourceExam);
+    return alternate?.originalQuestionNumber ?? question.originalQuestionNumber;
+  };
+  return eligibleQuestions(questions, module)
+    .filter((question) => question.year === year && (
+      question.sourceExam === sourceExam
+      || Boolean(question.alternateSources?.some((source) => source.sourceExam === sourceExam))
+    ))
+    .sort((left, right) => numberFor(left) - numberFor(right));
+}
+
+/** The paper an attempt belongs to, or null for generated and original sets. */
+export function attemptPaperKey(attempt: Attempt): string | null {
+  if (attempt.mode !== "historic") return null;
+  const sourceExam = attempt.sourceExams?.[0];
+  const year = attempt.sourceYears?.[0];
+  if (!sourceExam || !year) return null;
+  return paperSetKey(sourceExam, year, attempt.module);
+}
+
 function shuffle<T>(items: T[]): T[] {
   const output = [...items];
   for (let index = output.length - 1; index > 0; index -= 1) {
@@ -232,6 +343,17 @@ function shuffle<T>(items: T[]): T[] {
     [output[index], output[swap]] = [output[swap], output[index]];
   }
   return output;
+}
+
+/** Specification topics available in a module, with how many approved questions each has. */
+export function listTopics(questions: Question[], module: ModuleId): Array<{ topic: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const question of eligibleQuestions(questions, module)) {
+    counts.set(question.esatTopic, (counts.get(question.esatTopic) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([topic, count]) => ({ topic, count }))
+    .sort((left, right) => left.topic.localeCompare(right.topic));
 }
 
 export function chooseQuestions(
@@ -242,10 +364,12 @@ export function chooseQuestions(
   filter: "all" | "unseen" | "incorrect" | "due" = "all",
   mistakes: Record<string, MistakeItem> = {},
   year?: number,
+  topic?: string,
 ): Question[] {
   const now = Date.now();
   const pool = eligibleQuestions(questions, module).filter((question) => {
     if (year && question.year !== year) return false;
+    if (topic && question.esatTopic !== topic) return false;
     const item = progress[question.id];
     if (filter === "unseen") return !item || item.neverSeen;
     if (filter === "incorrect") return Boolean(item && item.totalIncorrect > 0 && !item.mastered);
@@ -357,7 +481,10 @@ export function finalizeAttempt(
   for (const questionId of settled.questionIds) {
     const question = questionMap[questionId];
     const response = responses[questionId];
-    const correct = response.selectedAnswer === question.correctAnswer;
+    if (!response) continue;
+    // A question can disappear if the bank is rebuilt mid-attempt; the response is kept
+    // but cannot be marked, so it is recorded as unanswered rather than crashing.
+    const correct = Boolean(question) && response.selectedAnswer !== null && response.selectedAnswer === question.correctAnswer;
     if (correct) rawScore += 1;
     responses[questionId] = {
       ...response,
@@ -382,8 +509,12 @@ const RETRY_INTERVALS = [1, 3, 7, 14, 30];
 export function applyCompletedAttempt(state: StoredState, attempt: Attempt): StoredState {
   const progress = { ...state.progress };
   const mistakes = { ...state.mistakes };
+  // Schedule retrieval from when the attempt actually ended so that a late sync does
+  // not silently push every interval forward.
+  const completedAt = attempt.endedAt ?? Date.now();
   for (const questionId of attempt.questionIds) {
     const response = attempt.responses[questionId];
+    if (!response) continue;
     const prior = progress[questionId];
     const wasNeverSeen = !prior || prior.neverSeen;
     const item: QuestionProgress = prior
@@ -420,7 +551,7 @@ export function applyCompletedAttempt(state: StoredState, attempt: Attempt): Sto
     if (!response.correct) {
       mistakes[questionId] = {
         questionId,
-        dueDate: Date.now() + RETRY_INTERVALS[0] * 86_400_000,
+        dueDate: completedAt + RETRY_INTERVALS[0] * 86_400_000,
         intervalDays: RETRY_INTERVALS[0],
         correctStreak: 0,
         lastResult: false,
@@ -431,7 +562,7 @@ export function applyCompletedAttempt(state: StoredState, attempt: Attempt): Sto
       const interval = RETRY_INTERVALS[Math.min(streak, RETRY_INTERVALS.length - 1)];
       mistakes[questionId] = {
         questionId,
-        dueDate: Date.now() + interval * 86_400_000,
+        dueDate: completedAt + interval * 86_400_000,
         intervalDays: interval,
         correctStreak: streak,
         lastResult: true,
@@ -454,8 +585,14 @@ export interface ModuleStats {
   freshAttemptCount: number;
   freshAccuracy: number | null;
   retakeAccuracy: number | null;
+  /** Mean raw mark over the recent strict attempts. */
   recentRawAverage: number | null;
-  recentFloor: number | null;
+  /** Mean number of questions in those attempts; papers are not all 27 questions. */
+  recentQuestionAverage: number | null;
+  /** Mean proportion correct, which is the only figure comparable across papers. */
+  recentAccuracy: number | null;
+  /** Lowest proportion correct across the recent strict attempts. */
+  recentFloorAccuracy: number | null;
   trend: "improving" | "declining" | "stable" | "insufficient data";
 }
 
@@ -472,13 +609,16 @@ export function moduleStats(attempts: Attempt[], module: ModuleId): ModuleStats 
     .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0));
   const recent = strict.slice(0, 5);
   const recentScores = recent.map((attempt) => attempt.rawScore ?? 0);
+  const recentCounts = recent.map((attempt) => Math.max(1, attempt.questionIds.length));
+  // Papers differ in length (18 to 27 questions), so trend and comparison must run on
+  // the proportion correct rather than the raw mark.
+  const recentAccuracies = recentScores.map((score, index) => score / recentCounts[index]);
+  const mean = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / values.length;
   let trend: ModuleStats["trend"] = "insufficient data";
-  if (recentScores.length >= 3) {
-    const newest = recentScores.slice(0, Math.ceil(recentScores.length / 2));
-    const oldest = recentScores.slice(Math.floor(recentScores.length / 2));
-    const newestMean = newest.reduce((sum, value) => sum + value, 0) / newest.length;
-    const oldestMean = oldest.reduce((sum, value) => sum + value, 0) / oldest.length;
-    trend = newestMean > oldestMean + 0.5 ? "improving" : newestMean < oldestMean - 0.5 ? "declining" : "stable";
+  if (recentAccuracies.length >= 3) {
+    const newestMean = mean(recentAccuracies.slice(0, Math.ceil(recentAccuracies.length / 2)));
+    const oldestMean = mean(recentAccuracies.slice(Math.floor(recentAccuracies.length / 2)));
+    trend = newestMean > oldestMean + 0.02 ? "improving" : newestMean < oldestMean - 0.02 ? "declining" : "stable";
   }
   return {
     attemptCount: completed.length,
@@ -489,10 +629,10 @@ export function moduleStats(attempts: Attempt[], module: ModuleId): ModuleStats 
     retakeAccuracy: retakeResponses.length
       ? retakeResponses.filter((response) => response.correct).length / retakeResponses.length
       : null,
-    recentRawAverage: recentScores.length
-      ? recentScores.reduce((sum, value) => sum + value, 0) / recentScores.length
-      : null,
-    recentFloor: recentScores.length ? Math.min(...recentScores) : null,
+    recentRawAverage: recentScores.length ? mean(recentScores) : null,
+    recentQuestionAverage: recentCounts.length ? mean(recentCounts) : null,
+    recentAccuracy: recentAccuracies.length ? mean(recentAccuracies) : null,
+    recentFloorAccuracy: recentAccuracies.length ? Math.min(...recentAccuracies) : null,
     trend,
   };
 }
@@ -502,6 +642,16 @@ export function formatDuration(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** Human-readable elapsed time for summaries, e.g. "1 h 24 m" or "8 m 05 s". */
+export function formatLongDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours) return `${hours} h ${String(minutes).padStart(2, "0")} m`;
+  return `${minutes} m ${String(seconds).padStart(2, "0")} s`;
 }
 
 export function daysUntil(dateString: string): number | null {

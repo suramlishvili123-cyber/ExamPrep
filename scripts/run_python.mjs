@@ -8,11 +8,13 @@ if (!scriptArgs.length) {
   process.exit(2);
 }
 
+// Tried in order; the first interpreter that can import the PDF packages wins. The
+// bundled runtime is kept as a fallback because the system Python often lacks them.
 const candidates = [
   process.env.ESAT_PYTHON,
-  join(homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe"),
   "python",
   "python3",
+  join(homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe"),
 ].filter(Boolean);
 
 const required = "import pdfplumber, pypdfium2, PIL, pypdf";

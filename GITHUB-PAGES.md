@@ -1,14 +1,34 @@
-# Publish ESAT Atlas from GitHub
+# Publish ESAT Atlas on GitHub Pages
 
-This repository contains a static GitHub Pages build in addition to the Sites/Vinext build.
+ESAT Atlas is one static site with one build. Push the repository and the included
+workflow does the rest.
 
-1. Create a GitHub repository and upload the contents of the `source/` folder from the export ZIP.
+## One-time setup
+
+1. Push this repository to GitHub (the `main` branch).
 2. In the repository, open **Settings → Pages**.
-3. Under **Build and deployment**, select **GitHub Actions** as the source.
-4. Push to `main` or run the **Deploy ESAT Atlas to GitHub Pages** workflow manually.
-5. In Firebase Console, open **Authentication → Settings → Authorized domains** and add your GitHub Pages hostname, for example `your-name.github.io`.
-6. In Firebase Authentication, ensure the Google provider is enabled. Deploy `firestore.rules` to the `esat-a6d5d` project if those rules are not already active.
+3. Under **Build and deployment**, set the source to **GitHub Actions**.
+4. In the [Firebase console](https://console.firebase.google.com/), open
+   **Authentication → Sign-in method** and make sure the **Google** provider is enabled.
+5. Still in Firebase, open **Authentication → Settings → Authorized domains** and add your
+   Pages hostname, for example `your-name.github.io`. Sign-in fails with
+   `auth/unauthorized-domain` until this is done.
+6. Deploy `firestore.rules` to the `esat-a6d5d` project if those rules are not already
+   active, so each signed-in user can only read and write their own data.
 
-The workflow runs `npm run build:github` and publishes `github-pages-dist`. The static output contains `index.html`, compiled CSS/JavaScript, the full validated question bank, original mocks and all question images. Paths are relative, so repository-name URLs work correctly.
+## Deploying
 
-The precompiled `site/` folder in the export ZIP can also be hosted by any static host. Do not open `index.html` with a `file://` URL because browsers block module and Firebase requests there; serve it over HTTPS or a local HTTP server.
+Every push to `main` runs the **Deploy ESAT Atlas to GitHub Pages** workflow, which runs
+`npm ci`, `npm run build` and publishes `dist/`. You can also start it manually from the
+**Actions** tab.
+
+The build output contains `index.html`, a `404.html` fallback, compiled CSS/JavaScript,
+the full validated question bank, the original mocks and every question image. All paths
+are relative, so `https://your-name.github.io/your-repo/` works without extra
+configuration.
+
+## Hosting the built folder somewhere else
+
+`dist/` is a plain static folder and works on any static host. Serve it over HTTP(S) —
+opening `index.html` from a `file://` URL will not work, because browsers block ES module
+and Firebase requests from that origin.
