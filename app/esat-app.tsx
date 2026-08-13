@@ -65,7 +65,6 @@ import {
   remainingMs,
   settleCurrentVisit,
   storageKeyForUser,
-  touchSyncSection,
   type Attempt,
   type AttemptMode,
   type BankPayload,
@@ -105,10 +104,8 @@ import {
 } from "./lib/learning";
 import { MathText } from "./math-text";
 import {
-  deleteAccountAndData,
   deleteActiveAttemptCloud,
   deleteAttemptCloud,
-  deleteUserStateCloud,
   firebaseConfigured,
   loadActiveAttemptCloud,
   loadUserStateCloud,
@@ -2490,50 +2487,6 @@ function QuestionLearningSupport({ question }: { question: Question }) {
     return <p className="panel-footnote">The verified answer is {question.correctAnswer}. A technique guide for this topic is being reviewed.</p>;
   }
 
-  async function handleResetProgress(): Promise<void> {
-    if (!user || !window.confirm("Permanently erase all attempts, active sessions, notes, targets and progress from this account and this browser? This cannot be undone.")) return;
-    destructiveCloudActionRef.current = true;
-    setAuthBusy(true);
-    try {
-      await deleteUserStateCloud(user.uid);
-      const cleared = defaultState();
-      localStorage.removeItem(storageKeyForUser(user.uid));
-      stateRef.current = cleared;
-      activeAttemptRef.current = null;
-      setState(cleared);
-      setResult(null);
-      setReviewOpen(false);
-      cloudSettingsReadyUserRef.current = user.uid;
-      setToast("Your revision data was permanently reset in Firebase and on this device.");
-    } catch (error) {
-      setToast(error instanceof Error ? `Your data could not be reset: ${error.message}` : "Your data could not be reset. Please try again.");
-    } finally {
-      destructiveCloudActionRef.current = false;
-      setAuthBusy(false);
-    }
-  }
-
-  async function handleDeleteAccount(): Promise<void> {
-    if (!user || !window.confirm("Permanently delete this ESAT Atlas account and all of its cloud and device data? Google will ask you to confirm the account. This cannot be undone.")) return;
-    const storageKey = storageKeyForUser(user.uid);
-    destructiveCloudActionRef.current = true;
-    setAuthBusy(true);
-    try {
-      await deleteAccountAndData(user);
-      localStorage.removeItem(storageKey);
-      stateRef.current = defaultState();
-      activeAttemptRef.current = null;
-      setState(defaultState());
-      setResult(null);
-      setReviewOpen(false);
-      setToast("Your ESAT Atlas account and stored revision data were permanently deleted.");
-    } catch (error) {
-      setToast(error instanceof Error ? `Account deletion did not complete: ${error.message}` : "Account deletion did not complete. Please try again.");
-    } finally {
-      destructiveCloudActionRef.current = false;
-      setAuthBusy(false);
-    }
-  }
   const hasExactAuthoredSolution = Boolean(question.authored && question.explanation);
   const hasOfficialSolution = Boolean(question.workedSolutionImage);
 

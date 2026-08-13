@@ -231,8 +231,11 @@ export async function saveSettingsCloud(
   ]);
 }
 
+/** The profile sections this write replaces; attempts and progress are synced separately. */
+export type UserProfile = Pick<StoredState, "settings" | "targets" | "notes" | "syncMetadata">;
+
 /** Persist all independently editable profile sections using replacement semantics. */
-export async function saveUserProfileCloud(uid: string, state: StoredState): Promise<void> {
+export async function saveUserProfileCloud(uid: string, state: UserProfile): Promise<void> {
   const firebase = getFirebaseClient();
   if (!firebase) return;
   const syncMetadata = normalizeSyncMetadata(state.syncMetadata);
