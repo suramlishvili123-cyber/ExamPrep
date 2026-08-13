@@ -32,8 +32,8 @@ export class AppErrorBoundary extends Component<Props, State> {
       <main className="loading-screen loading-screen-error">
         <div className="brand-mark">EA</div>
         <div>
-          <strong>Something went wrong</strong>
-          <span>{error.message || "An unexpected error stopped the interface."} Your saved progress is untouched.</span>
+          <h1>Something went wrong</h1>
+          <span>An unexpected error stopped the interface. Your saved progress is untouched.</span>
         </div>
         <button className="button button-light" onClick={() => window.location.reload()}>Reload ESAT Atlas</button>
       </main>

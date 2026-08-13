@@ -18,8 +18,16 @@ export interface Question {
   specificationVersion: string;
   questionImage?: string;
   questionText?: string;
+  /** Supplemental authored figure. Unlike questionImage, this never replaces the stem. */
+  questionDiagram?: string;
+  /** Meaningful text alternative describing the diagram and all data required to answer. */
+  questionDiagramAlt?: string;
   optionText?: Record<string, string>;
   explanation?: string;
+  /** A rendered worked solution supplied by the source publisher. */
+  workedSolutionImage?: string;
+  /** Human-readable provenance for workedSolutionImage. */
+  workedSolutionSource?: string;
   difficulty?: "standard" | "stretch";
   authored?: boolean;
   answerOptions: string[];
@@ -66,6 +74,8 @@ export interface MockPayload {
     distinctPromptTemplates: number;
     numberSwapDuplicates: number;
     allTopLevelSpecificationTopicsCovered: boolean;
+    /** Authored items that ship a supplementary figure. */
+    questionsWithDiagrams?: number;
     perModule: Record<ModuleId, {
       questionCount: number;
       distinctArchetypes: number;
@@ -171,6 +181,15 @@ export interface Settings {
   showScoreEstimate: boolean;
 }
 
+export type SyncSection = "settings" | "targets" | "notes";
+
+/**
+ * Last local edit time for independently mergeable user-owned sections. These values are
+ * persisted both locally and in the user root document so an offline client can resolve a
+ * later cloud merge without blindly preferring whichever copy happened to load last.
+ */
+export type SyncMetadata = Record<SyncSection, number>;
+
 export interface StoredState {
   attempts: Attempt[];
   activeAttempt: Attempt | null;
@@ -179,6 +198,7 @@ export interface StoredState {
   targets: Record<ModuleId, number>;
   settings: Settings;
   notes: Record<string, string>;
+  syncMetadata: SyncMetadata;
 }
 
 export const MODULE_LABELS: Record<ModuleId, string> = {
@@ -197,6 +217,43 @@ export const BENCHMARK_VERSION = "uat-uk-2026_cambridge-foi-2025-1097-v1";
 export const ESAT_MODULE_QUESTION_COUNT = 27;
 export const ESAT_MODULE_DURATION_MS = 40 * 60_000;
 
+/** A local-storage namespace that cannot collide between signed-in Firebase users. */
+export function storageKeyForUser(uid: string): string {
+  if (!uid) throw new Error("A non-empty Firebase UID is required for user-scoped storage.");
+  return `${STORAGE_KEY}:user:${encodeURIComponent(uid)}`;
+}
+
+function validSyncTimestamp(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : 0;
+}
+
+export function normalizeSyncMetadata(value: Partial<SyncMetadata> | null | undefined): SyncMetadata {
+  return {
+    settings: validSyncTimestamp(value?.settings),
+    targets: validSyncTimestamp(value?.targets),
+    notes: validSyncTimestamp(value?.notes),
+  };
+}
+
+/** Mark one mergeable section as edited while remaining monotonic across clock rollback. */
+export function touchSyncSection(
+  state: StoredState,
+  section: SyncSection,
+  updatedAt = Date.now(),
+): StoredState {
+  const timestamp = validSyncTimestamp(updatedAt);
+  const current = normalizeSyncMetadata(state.syncMetadata);
+  return {
+    ...state,
+    syncMetadata: {
+      ...current,
+      [section]: Math.max(current[section], timestamp),
+    },
+  };
+}
+
 export function esatPacedDurationMs(questionCount: number): number {
   return Math.round(Math.max(0, questionCount) * ESAT_MODULE_DURATION_MS / ESAT_MODULE_QUESTION_COUNT);
 }
@@ -211,13 +268,14 @@ export function defaultState(): StoredState {
     settings: {
       theme: "light",
       keyboardShortcuts: true,
-      examDate: "2026-10-12",
+      examDate: "",
       weeklyHours: 8,
       adaptivePlanMinutes: 45,
       pacingAid: false,
       showScoreEstimate: true,
     },
     notes: {},
+    syncMetadata: normalizeSyncMetadata(null),
   };
 }
 
@@ -244,6 +302,7 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     notes: value.notes ?? base.notes,
     targets: { ...base.targets, ...(value.targets ?? {}) },
     settings: { ...base.settings, ...(value.settings ?? {}), adaptivePlanMinutes },
+    syncMetadata: normalizeSyncMetadata(value.syncMetadata),
   };
 }
 
@@ -465,6 +524,27 @@ export function remainingMs(attempt: Attempt, now = Date.now()): number | null {
   return Math.max(0, attempt.endsAt - effectiveNow);
 }
 
+/** The authoritative expiry predicate, including the frozen clock of a paused attempt. */
+export function isAttemptExpired(attempt: Attempt, now = Date.now()): boolean {
+  const remaining = remainingMs(attempt, now);
+  return remaining !== null && remaining === 0;
+}
+
+/**
+ * A late browser wake-up must not award time beyond the stored deadline. Manual submission
+ * still records the real submission time, while clock rollback can never precede the start.
+ */
+export function effectiveAttemptEndTime(
+  attempt: Attempt,
+  timedOut = false,
+  now = Date.now(),
+): number {
+  const candidate = timedOut && attempt.endsAt !== null
+    ? Math.min(now, attempt.endsAt)
+    : now;
+  return Math.max(attempt.startedAt, candidate);
+}
+
 export function settleCurrentVisit(attempt: Attempt, now = Date.now()): Attempt {
   const questionId = attempt.questionIds[attempt.currentIndex];
   if (!questionId || attempt.pausedAt) return attempt;
@@ -487,7 +567,8 @@ export function finalizeAttempt(
   timedOut = false,
   now = Date.now(),
 ): Attempt {
-  const settled = settleCurrentVisit(attempt, now);
+  const endedAt = effectiveAttemptEndTime(attempt, timedOut, now);
+  const settled = settleCurrentVisit(attempt, endedAt);
   const responses = { ...settled.responses };
   let rawScore = 0;
   for (const questionId of settled.questionIds) {
@@ -502,14 +583,20 @@ export function finalizeAttempt(
       ...response,
       finalAnswer: response.selectedAnswer,
       correct,
-      unanswered: response.selectedAnswer === null,
+      unanswered: response.selectedAnswer === null || !question,
     };
   }
+  const activePauseDuration = attempt.pausedAt === null
+    ? 0
+    : Math.max(0, endedAt - attempt.pausedAt);
   return {
     ...settled,
     responses,
-    endedAt: now,
-    durationMs: now - settled.startedAt - settled.totalPausedDuration,
+    endedAt,
+    durationMs: Math.max(
+      0,
+      endedAt - settled.startedAt - Math.max(0, settled.totalPausedDuration) - activePauseDuration,
+    ),
     completionStatus: timedOut ? "timed-out" : "submitted",
     rawScore,
     pausedAt: null,
@@ -592,6 +679,45 @@ export function applyCompletedAttempt(state: StoredState, attempt: Attempt): Sto
   };
 }
 
+/**
+ * The smallest fresh strict sample a cohort estimate may run on. Archive papers hold 18 to
+ * 27 questions, so this admits every real paper while rejecting ad-hoc short sets, where a
+ * single lucky answer would move the estimated score by a whole band.
+ */
+export const MIN_REPRESENTATIVE_QUESTIONS = 18;
+
+export type ScoreEstimateEligibilityReason =
+  | "eligible"
+  | "incomplete"
+  | "retrieval"
+  | "practice"
+  | "original"
+  | "not-strict"
+  | "too-short"
+  | "repeated";
+
+/**
+ * The single source of truth for "is this attempt readiness evidence?". The cohort estimate
+ * and the module readiness statistics must agree: if they drifted apart, the dashboard would
+ * average an attempt that its own breakdown refuses to score.
+ *
+ * Order matters only for which reason is reported; any non-eligible reason disqualifies.
+ */
+export function scoreEstimateEligibility(attempt: Attempt): ScoreEstimateEligibilityReason {
+  if (attempt.rawScore === null) return "incomplete";
+  if (attempt.mode === "retry") return "retrieval";
+  if (attempt.mode === "practice") return "practice";
+  if (attempt.mode === "original") return "original";
+  if (!attempt.strictTimed) return "not-strict";
+  if (attempt.questionIds.length < MIN_REPRESENTATIVE_QUESTIONS) return "too-short";
+  if (attempt.freshQuestionCount !== attempt.questionIds.length) return "repeated";
+  return "eligible";
+}
+
+export function isReadinessEvidence(attempt: Attempt): boolean {
+  return scoreEstimateEligibility(attempt) === "eligible";
+}
+
 export interface ModuleStats {
   attemptCount: number;
   freshAttemptCount: number;
@@ -617,7 +743,7 @@ export function moduleStats(attempts: Attempt[], module: ModuleId): ModuleStats 
     Object.values(attempt.responses).filter((response) => !response.firstExposure),
   );
   const strict = completed
-    .filter((attempt) => attempt.strictTimed && attempt.freshQuestionCount > 0)
+    .filter(isReadinessEvidence)
     .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0));
   const recent = strict.slice(0, 5);
   const recentScores = recent.map((attempt) => attempt.rawScore ?? 0);

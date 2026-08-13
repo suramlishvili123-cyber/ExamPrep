@@ -20,7 +20,10 @@
  *   - "Low scores are capped at 1.0 and high scores are capped at 9.0."
  */
 
-import type { ModuleId, Question, ResponseRecord } from "./core";
+import { scoreEstimateEligibility } from "./core";
+import type { Attempt, ModuleId, Question, ResponseRecord, ScoreEstimateEligibilityReason } from "./core";
+
+export type { ScoreEstimateEligibilityReason } from "./core";
 
 export const SCORE_MODEL = {
   version: "esat-atlas-estimate-v2",
@@ -125,6 +128,44 @@ export interface ScoreEstimate {
   tone: ScoreTone;
   /** Which module's published distribution was used, if any. */
   distributionModule: ModuleId | null;
+}
+
+export interface AttemptScoreReport {
+  estimate: ScoreEstimate | null;
+  accuracy: number;
+  eligible: boolean;
+  reason: ScoreEstimateEligibilityReason;
+  label: string;
+}
+
+const ELIGIBILITY_LABELS: Record<ScoreEstimateEligibilityReason, string> = {
+  eligible: "Representative fresh strict set",
+  incomplete: "Complete the session to see a result",
+  retrieval: "Retrieval result — not readiness evidence",
+  practice: "Practice result — not readiness evidence",
+  original: "Uncalibrated challenge result — raw mark only",
+  "not-strict": "Untimed result — raw mark only",
+  "too-short": "Too few questions for a reliable estimate",
+  repeated: "Repeated material — raw mark only",
+};
+
+/**
+ * A cohort standing is only meaningful for a representative, fully fresh, strictly timed
+ * exam sample. Exact raw marks remain available for every other activity, and the reason
+ * an estimate was withheld is carried through to the interface rather than left blank.
+ */
+export function scoreReportForAttempt(attempt: Attempt): AttemptScoreReport {
+  const count = Math.max(0, attempt.questionIds.length);
+  const raw = Math.max(0, Math.min(count, attempt.rawScore ?? 0));
+  const reason = scoreEstimateEligibility(attempt);
+  const eligible = reason === "eligible";
+  return {
+    estimate: eligible ? scoreEstimate(raw, count, attempt.module) : null,
+    accuracy: count ? raw / count : 0,
+    eligible,
+    reason,
+    label: ELIGIBILITY_LABELS[reason],
+  };
 }
 
 export function estimatedScaledScore(accuracy: number): number {

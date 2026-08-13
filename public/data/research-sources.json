@@ -1,6 +1,6 @@
 {
   "version": "uat-uk-2026_cambridge-foi-2025-1097-v1",
-  "retrievalDate": "2026-08-10",
+  "retrievalDate": "2026-08-13",
   "sources": [
     {
       "id": "uat-esat-content-spec-2026",
@@ -46,6 +46,15 @@
       "cycle": "2027 entry",
       "sourceQuality": "official primary",
       "notes": "Identifies historic NSAA and ENGAA papers as ESAT-style practice and marks content that is outside the current specification."
+    },
+    {
+      "id": "pearson-uatuk-specimen-tests-2026",
+      "title": "Pearson VUE UAT-UK specimen tests",
+      "url": "https://www.pearsonvue.com/us/en/uatuk.html",
+      "sourceDate": "2026",
+      "cycle": "2027 entry",
+      "sourceQuality": "official delivery partner",
+      "notes": "Confirms the computer-based desktop presentation and that official specimen questions include explained answers. Used to review the post-attempt explanation pattern; ESAT Atlas teaching shortcuts remain clearly labelled as original guidance."
     },
     {
       "id": "cambridge-engineering-esat-2026",

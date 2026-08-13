@@ -4,12 +4,20 @@ import {
   applyCompletedAttempt,
   createAttempt,
   defaultState,
+  effectiveAttemptEndTime,
   eligibleQuestions,
   esatPacedDurationMs,
   finalizeAttempt,
+  isAttemptExpired,
+  isReadinessEvidence,
   mergeState,
+  MIN_REPRESENTATIVE_QUESTIONS,
   moduleStats,
   remainingMs,
+  scoreEstimateEligibility,
+  storageKeyForUser,
+  touchSyncSection,
+  type Attempt,
   type Question,
 } from "../app/lib/core";
 
@@ -51,6 +59,43 @@ test("strict timer stores exact timestamps and derives remaining time", () => {
   assert.equal(remainingMs(attempt, attempt.startedAt + 35_000), 2_365_000);
   assert.equal(remainingMs({ ...attempt, pausedAt: attempt.startedAt + 10_000 }, attempt.startedAt + 99_000), 2_390_000);
   assert.equal(remainingMs(attempt, attempt.startedAt + 3_000_000), 0);
+  assert.equal(isAttemptExpired(attempt, attempt.endsAt ?? 0), true);
+  assert.equal(
+    isAttemptExpired({ ...attempt, pausedAt: attempt.startedAt + 10_000 }, (attempt.endsAt ?? 0) + 1_000_000),
+    false,
+  );
+});
+
+test("a delayed timeout finalizes at the deadline rather than browser wake time", () => {
+  const item = question("q1");
+  const attempt = createAttempt({ questions: [item], module: "maths1", mode: "exam", durationMinutes: 40, strictTimed: true, generated: true, progress: {} });
+  const deadline = attempt.endsAt ?? 0;
+  const lateWake = deadline + 600_000;
+  attempt.responses.q1.selectedAnswer = "A";
+
+  assert.equal(effectiveAttemptEndTime(attempt, true, lateWake), deadline);
+  const finalized = finalizeAttempt(attempt, { q1: item }, true, lateWake);
+  assert.equal(finalized.endedAt, deadline);
+  assert.equal(finalized.durationMs, 2_400_000);
+  assert.equal(finalized.responses.q1.timeSpentMs, 2_400_000);
+  assert.equal(finalized.completionStatus, "timed-out");
+});
+
+test("manual submission excludes an in-progress pause from active duration", () => {
+  const item = question("q1");
+  const attempt = createAttempt({ questions: [item], module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
+  const pausedAt = attempt.startedAt + 10_000;
+  const paused = {
+    ...attempt,
+    pausedAt,
+    lastVisitStartedAt: pausedAt,
+    responses: {
+      q1: { ...attempt.responses.q1, timeSpentMs: 10_000 },
+    },
+  };
+  const finalized = finalizeAttempt(paused, { q1: item }, false, pausedAt + 90_000);
+  assert.equal(finalized.durationMs, 10_000);
+  assert.equal(finalized.pausedAt, null);
 });
 
 test("historic paper limits preserve the exact ESAT pace", () => {
@@ -66,6 +111,27 @@ test("adaptive plan settings migrate safely from older or malformed stored state
   const legacy = structuredClone(defaultState()) as unknown as { settings: Record<string, unknown> };
   delete legacy.settings.adaptivePlanMinutes;
   assert.equal(mergeState(legacy as never).settings.adaptivePlanMinutes, 45);
+});
+
+test("personal defaults and sync metadata migrate without stale or invalid timestamps", () => {
+  const state = defaultState();
+  assert.equal(state.settings.examDate, "");
+  assert.deepEqual(state.syncMetadata, { settings: 0, targets: 0, notes: 0 });
+  const migrated = mergeState({
+    syncMetadata: { settings: 123.9, targets: Number.NaN, notes: -5 },
+  });
+  assert.deepEqual(migrated.syncMetadata, { settings: 123, targets: 0, notes: 0 });
+  const touched = touchSyncSection(migrated, "settings", 200);
+  assert.equal(touched.syncMetadata.settings, 200);
+  assert.equal(touchSyncSection(touched, "settings", 150).syncMetadata.settings, 200);
+});
+
+test("user-scoped storage keys are stable, encoded and collision-resistant", () => {
+  const first = storageKeyForUser("user/a");
+  assert.equal(first, storageKeyForUser("user/a"));
+  assert.notEqual(first, storageKeyForUser("user%2Fa"));
+  assert.equal(first.includes("/"), false);
+  assert.throws(() => storageKeyForUser(""), /non-empty Firebase UID/);
 });
 
 test("scoring handles correct, incorrect and unanswered with no negative marks", () => {
@@ -123,16 +189,53 @@ test("attempts preserve exact source provenance and authored bank version", () =
   assert.equal(attempt.sequenceSource, "original");
 });
 
+const SEEN_ONCE = {
+  neverSeen: false, firstSeenAt: 1, firstAttemptCorrect: true, firstAttemptTime: 1,
+  firstAttemptMode: "exam" as const, totalAttempts: 1, totalCorrect: 1, totalIncorrect: 0,
+  mostRecentResult: true, mastered: false, exposureCount: 1, lastAttemptedAt: 1,
+};
+
+/** A full-length fresh strict paper: the only shape that counts as readiness evidence. */
+function representativePaper(): { attempt: Attempt; map: Record<string, Question> } {
+  const items = Array.from({ length: MIN_REPRESENTATIVE_QUESTIONS }, (_, index) => question(`q${index + 1}`));
+  const map = Object.fromEntries(items.map((item) => [item.id, item]));
+  const attempt = createAttempt({ questions: items, module: "maths1", mode: "exam", durationMinutes: 40, strictTimed: true, generated: true, progress: {} });
+  for (const item of items) attempt.responses[item.id].selectedAnswer = "A";
+  return { attempt: finalizeAttempt(attempt, map, false, attempt.startedAt + 10_000), map };
+}
+
 test("readiness statistics use fresh responses separately from retakes", () => {
-  const item = question("q1");
-  const strict = createAttempt({ questions: [item], module: "maths1", mode: "exam", durationMinutes: 40, strictTimed: true, generated: true, progress: {} });
-  strict.responses.q1.selectedAnswer = "A";
-  const first = finalizeAttempt(strict, { q1: item }, false, strict.startedAt + 10_000);
-  const retry = createAttempt({ questions: [item], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: { q1: { neverSeen: false, firstSeenAt: 1, firstAttemptCorrect: true, firstAttemptTime: 1, firstAttemptMode: "exam", totalAttempts: 1, totalCorrect: 1, totalIncorrect: 0, mostRecentResult: true, mastered: false, exposureCount: 1, lastAttemptedAt: 1 } } });
+  const { attempt: first, map } = representativePaper();
+  const retry = createAttempt({ questions: [map.q1], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: { q1: SEEN_ONCE } });
   retry.responses.q1.selectedAnswer = "B";
-  const second = finalizeAttempt(retry, { q1: item }, false, retry.startedAt + 10_000);
+  const second = finalizeAttempt(retry, map, false, retry.startedAt + 10_000);
   const stats = moduleStats([first, second], "maths1");
   assert.equal(stats.freshAccuracy, 1);
   assert.equal(stats.retakeAccuracy, 0);
   assert.equal(stats.freshAttemptCount, 1);
+});
+
+test("only a complete, fresh, strictly timed full-length paper is readiness evidence", () => {
+  const { attempt: paper } = representativePaper();
+  assert.equal(scoreEstimateEligibility(paper), "eligible");
+  assert.equal(isReadinessEvidence(paper), true);
+
+  // Each disqualifying condition, reported one at a time.
+  assert.equal(scoreEstimateEligibility({ ...paper, rawScore: null }), "incomplete");
+  assert.equal(scoreEstimateEligibility({ ...paper, mode: "retry" }), "retrieval");
+  assert.equal(scoreEstimateEligibility({ ...paper, mode: "practice" }), "practice");
+  assert.equal(scoreEstimateEligibility({ ...paper, mode: "original" }), "original");
+  assert.equal(scoreEstimateEligibility({ ...paper, strictTimed: false }), "not-strict");
+  assert.equal(scoreEstimateEligibility({ ...paper, freshQuestionCount: paper.questionIds.length - 1 }), "repeated");
+
+  const short = paper.questionIds.slice(0, MIN_REPRESENTATIVE_QUESTIONS - 1);
+  assert.equal(
+    scoreEstimateEligibility({ ...paper, questionIds: short, freshQuestionCount: short.length }),
+    "too-short",
+  );
+
+  // A short set must not reach the readiness average even when every answer is correct.
+  const shortPaper = { ...paper, questionIds: short, freshQuestionCount: short.length, rawScore: short.length };
+  assert.equal(moduleStats([shortPaper], "maths1").freshAttemptCount, 0);
+  assert.equal(moduleStats([shortPaper], "maths1").recentAccuracy, null);
 });

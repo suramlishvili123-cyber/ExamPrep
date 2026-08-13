@@ -10,6 +10,8 @@ type MockQuestion = {
   questionArchetype: string;
   promptTemplateHash: string;
   questionText: string;
+  questionDiagram?: string;
+  questionDiagramAlt?: string;
   answerOptions: string[];
   optionText: Record<string, string>;
   correctAnswer: string;
@@ -30,6 +32,7 @@ type MockPayload = {
     numberSwapDuplicates: number;
     allTopLevelSpecificationTopicsCovered: boolean;
     optionsPerQuestion: number;
+    questionsWithDiagrams: number;
   };
 };
 
@@ -72,7 +75,7 @@ const reviewedAnswerKey: Record<MockQuestion["targetModule"], string[]> = {
 };
 
 test("original challenge bank contains three complete ESAT-paced modules", () => {
-  assert.equal(payload.version, "esat-atlas-original-challenge-a-v4");
+  assert.equal(payload.version, "esat-atlas-original-challenge-a-v5");
   assert.equal(payload.questions.length, 81);
   assert.equal(new Set(payload.questions.map((question) => question.id)).size, 81);
   for (const module of modules) {
@@ -163,5 +166,35 @@ test("every authored string carries balanced, renderable maths markup", () => {
       assert.doesNotMatch(rendered, /\\[A-Za-z]+/, `${question.id}: unrendered command in "${rendered}"`);
       assert.doesNotMatch(rendered, /[{}$]/, `${question.id}: markup leaked into "${rendered}"`);
     }
+  }
+});
+
+test("every shipped figure exists, is paired with alt text and belongs to its question", async () => {
+  const withDiagram = payload.questions.filter((question) => question.questionDiagram);
+  assert.ok(withDiagram.length > 0, "expected the challenge bank to ship figures");
+  assert.equal(payload.summary.questionsWithDiagrams, withDiagram.length);
+
+  for (const question of payload.questions) {
+    const diagram = question.questionDiagram ?? "";
+    const alt = question.questionDiagramAlt ?? "";
+    if (!diagram) {
+      // Alt text without a figure would be read out with nothing to describe.
+      assert.equal(alt, "", `${question.id}: alt text without a diagram`);
+      continue;
+    }
+    // The figure is the only place some values appear, so the alt text must restate them.
+    assert.ok(alt.length >= 40, `${question.id}: alt text too short to replace the figure`);
+    // The filename encodes the question the figure was drawn for; a mismatch means the
+    // learner is shown a figure for a different stem.
+    const number = Number(question.id.slice(-2));
+    assert.match(
+      diagram,
+      new RegExp(`q0?${number}[^0-9]`),
+      `${question.id}: figure ${diagram} is named for a different question`,
+    );
+    await assert.doesNotReject(
+      readFile(new URL(`../public/${diagram}`, import.meta.url)),
+      `${question.id}: figure ${diagram} is missing from public/`,
+    );
   }
 });

@@ -3,6 +3,8 @@ name: Deploy ESAT Atlas to GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,14 +13,11 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -30,6 +29,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Audit production dependencies
+        run: npm run audit:prod
       - name: Check types
         run: npm run typecheck
       - name: Lint
@@ -41,11 +42,30 @@ jobs:
       - name: Verify built output
         run: npm run test:build
       - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Verify external launch approvals
+        run: node scripts/check_release_gate.mjs
+        env:
+          CONTENT_RIGHTS_CONFIRMED: ${{ vars.CONTENT_RIGHTS_CONFIRMED }}
+          PRIVACY_NOTICE_COMPLETE: ${{ vars.PRIVACY_NOTICE_COMPLETE }}
+          AUTHENTICATED_A11Y_REVIEW_COMPLETE: ${{ vars.AUTHENTICATED_A11Y_REVIEW_COMPLETE }}
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

@@ -1,5 +1,5 @@
 {
-  "version": "esat-atlas-original-challenge-a-v4",
+  "version": "esat-atlas-original-challenge-a-v5",
   "generatedAt": "2026-08-10",
   "label": "Challenge Mock A",
   "disclaimer": "Original ESAT Atlas practice - not official UAT-UK material. Deliberately pitched above archive difficulty; any estimated score is a floor, not a forecast.",
@@ -7,7 +7,7 @@
   "questions": [
     {
       "id": "atlas-challenge-a-maths1-q01",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -25,12 +25,14 @@
       "promptTemplateHash": "d4bb494750b8b0914476b38d530235744731f86c29b23339d61725a45b19e13c",
       "questionImage": "",
       "questionText": "A pump delivers 15 litres of water per minute through a pipe of cross-sectional area $2.5\\text{ cm}^2$. What is the mean speed of the water in the pipe?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$6\\text{ m/s}$",
-        "B": "$1\\text{ m/s}$",
-        "C": "$0.1\\text{ m/s}$",
-        "D": "$10\\text{ m/s}$",
-        "E": "$0.06\\text{ m/s}$"
+        "A": "$0.1\\text{ m/s}$",
+        "B": "$10\\text{ m/s}$",
+        "C": "$0.06\\text{ m/s}$",
+        "D": "$1\\text{ m/s}$",
+        "E": "$6\\text{ m/s}$"
       },
       "answerOptions": [
         "A",
@@ -39,7 +41,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "D",
       "verifiedCorrectText": "$1\\text{ m/s}$",
       "explanation": "The flow rate is $0.015\\text{ m}^3$ per $60\\text{ s}$, which is $2.5 \\times 10^{-4}\\text{ m}^3\\text{/s}$, and $2.5\\text{ cm}^2 = 2.5 \\times 10^{-4}\\text{ m}^2$. Speed is flow rate divided by area, giving $1\\text{ m/s}$.",
       "difficulty": "stretch",
@@ -54,7 +56,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q02",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -72,11 +74,13 @@
       "promptTemplateHash": "6c408e24788c0e1da0510fa03ebb82ccf087de0dd5ab6ba2a84b98853b37fafe",
       "questionImage": "",
       "questionText": "A solid cube of side $20\\text{ cm}$ is made from a material of density $2.7\\text{ g/cm}^3$. Taking $g = 10\\text{ N/kg}$, what pressure does the cube exert on the ground when it rests on one face?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$54\\,000\\text{ Pa}$",
-        "B": "$216\\text{ Pa}$",
+        "A": "$216\\text{ Pa}$",
+        "B": "$5400\\text{ Pa}$",
         "C": "$2700\\text{ Pa}$",
-        "D": "$5400\\text{ Pa}$",
+        "D": "$54\\,000\\text{ Pa}$",
         "E": "$540\\text{ Pa}$"
       },
       "answerOptions": [
@@ -86,7 +90,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$5400\\text{ Pa}$",
       "explanation": "The volume is $8000\\text{ cm}^3$, so the mass is $21.6\\text{ kg}$ and the weight is $216\\text{ N}$. The face area is $0.04\\text{ m}^2$, giving $216 \\div 0.04 = 5400\\text{ Pa}$.",
       "difficulty": "stretch",
@@ -101,7 +105,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q03",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -119,12 +123,14 @@
       "promptTemplateHash": "30d30495bdd4bbb7d91005c6b2c76f4af1fe12fe0334e1ae05506b5b4cb9ab02",
       "questionImage": "",
       "questionText": "Evaluate $\\frac{(2.4 \\times 10^{-5})(5 \\times 10^{12})}{8 \\times 10^{3}}$, giving your answer in standard form.",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$1.5 \\times 10^{4}$",
-        "B": "$1.5 \\times 10^{3}$",
-        "C": "$1.5 \\times 10^{5}$",
-        "D": "$15 \\times 10^{3}$",
-        "E": "$1.2 \\times 10^{4}$"
+        "A": "$1.5 \\times 10^{5}$",
+        "B": "$1.2 \\times 10^{4}$",
+        "C": "$15 \\times 10^{3}$",
+        "D": "$1.5 \\times 10^{4}$",
+        "E": "$1.5 \\times 10^{3}$"
       },
       "answerOptions": [
         "A",
@@ -133,7 +139,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "D",
       "verifiedCorrectText": "$1.5 \\times 10^{4}$",
       "explanation": "Combine the coefficients and the powers separately: $\\frac{2.4 \\times 5}{8} = 1.5$ and $10^{-5 + 12 - 3} = 10^{4}$, so the value is $1.5 \\times 10^{4}$.",
       "difficulty": "stretch",
@@ -148,7 +154,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q04",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -166,11 +172,13 @@
       "promptTemplateHash": "76b859ccccce86fcd9c6ece7aa3cf234709654179479706e0b1bd011a3cb3fea",
       "questionImage": "",
       "questionText": "Write $\\frac{\\sqrt{5} + \\sqrt{2}}{\\sqrt{5} - \\sqrt{2}}$ in the form $\\frac{a + b\\sqrt{10}}{c}$, where $a$, $b$ and $c$ are integers.",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$7 + 2\\sqrt{10}$",
-        "B": "$\\frac{3 + 2\\sqrt{10}}{3}$",
-        "C": "$\\frac{7 + 2\\sqrt{10}}{3}$",
-        "D": "$\\frac{7 - 2\\sqrt{10}}{3}$",
+        "A": "$\\frac{7 - 2\\sqrt{10}}{3}$",
+        "B": "$7 + 2\\sqrt{10}$",
+        "C": "$\\frac{3 + 2\\sqrt{10}}{3}$",
+        "D": "$\\frac{7 + 2\\sqrt{10}}{3}$",
         "E": "$\\frac{7 + 2\\sqrt{10}}{7}$"
       },
       "answerOptions": [
@@ -180,7 +188,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "D",
       "verifiedCorrectText": "$\\frac{7 + 2\\sqrt{10}}{3}$",
       "explanation": "Multiply top and bottom by $\\sqrt{5} + \\sqrt{2}$. The denominator becomes $5 - 2 = 3$ and the numerator becomes $5 + 2 + 2\\sqrt{10} = 7 + 2\\sqrt{10}$.",
       "difficulty": "stretch",
@@ -195,7 +203,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q05",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -213,12 +221,14 @@
       "promptTemplateHash": "1ddd94abf253ca145c6cfbeeb9b27a1838158d93f57e36b03ea2eb3b1b05f6a6",
       "questionImage": "",
       "questionText": "The decimal $0.41666\\ldots$, in which only the digit $6$ repeats, is written as a fraction in its lowest terms. What is that fraction?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\frac{41}{99}$",
-        "B": "$\\frac{5}{11}$",
-        "C": "$\\frac{37}{90}$",
+        "A": "$\\frac{5}{12}$",
+        "B": "$\\frac{37}{90}$",
+        "C": "$\\frac{5}{11}$",
         "D": "$\\frac{3}{7}$",
-        "E": "$\\frac{5}{12}$"
+        "E": "$\\frac{41}{99}$"
       },
       "answerOptions": [
         "A",
@@ -227,7 +237,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$\\frac{5}{12}$",
       "explanation": "Let $x = 0.41666\\ldots$ Then $100x = 41.666\\ldots$ and $1000x = 416.666\\ldots$, so $900x = 375$ and $x = \\frac{375}{900} = \\frac{5}{12}$.",
       "difficulty": "stretch",
@@ -242,7 +252,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q06",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -260,12 +270,14 @@
       "promptTemplateHash": "6362b4ec29974b56d3700deae0a28a1773d3f7dc0842f9e5d66e7ace182ffda7",
       "questionImage": "",
       "questionText": "A rectangle is measured as $12.0\\text{ cm}$ by $7.5\\text{ cm}$, each correct to the nearest $0.1\\text{ cm}$. Taking the measured values as nominal, what is the greatest possible percentage error in the calculated area, to 2 significant figures?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$0.55\\%$",
-        "B": "$1.1\\%$",
-        "C": "$0.83\\%$",
-        "D": "$1.3\\%$",
-        "E": "$2.2\\%$"
+        "A": "$1.1\\%$",
+        "B": "$2.2\\%$",
+        "C": "$0.55\\%$",
+        "D": "$0.83\\%$",
+        "E": "$1.3\\%$"
       },
       "answerOptions": [
         "A",
@@ -274,7 +286,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$1.1\\%$",
       "explanation": "The upper bounds are $12.05\\text{ cm}$ and $7.55\\text{ cm}$, giving a maximum area of $90.9775\\text{ cm}^2$ against a nominal $90\\text{ cm}^2$. The error is $\\frac{0.9775}{90} = 1.086\\%$, which is $1.1\\%$ to 2 significant figures.",
       "difficulty": "stretch",
@@ -289,7 +301,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q07",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -307,12 +319,14 @@
       "promptTemplateHash": "8229b1a6fc14f98634c7fdfeecace817ae2ed247e3d44a00ca642362e3777bb0",
       "questionImage": "",
       "questionText": "In a mixture the masses of $A$ and $B$ are in the ratio $5 : 3$. When a further $24\\text{ g}$ of $B$ is added the ratio becomes $5 : 4$. What was the total mass of the original mixture?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$216\\text{ g}$",
-        "B": "$144\\text{ g}$",
-        "C": "$240\\text{ g}$",
-        "D": "$192\\text{ g}$",
-        "E": "$168\\text{ g}$"
+        "A": "$240\\text{ g}$",
+        "B": "$168\\text{ g}$",
+        "C": "$216\\text{ g}$",
+        "D": "$144\\text{ g}$",
+        "E": "$192\\text{ g}$"
       },
       "answerOptions": [
         "A",
@@ -321,7 +335,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$192\\text{ g}$",
       "explanation": "Write $A = 5k$ and $B = 3k$. Then $\\frac{5k}{3k + 24} = \\frac{5}{4}$ gives $20k = 15k + 120$, so $k = 24$ and the original total is $8k = 192\\text{ g}$.",
       "difficulty": "stretch",
@@ -336,7 +350,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q08",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -354,12 +368,14 @@
       "promptTemplateHash": "846758403fecb8a18880b4d4de397cfe486445047c52505895d6a955790db793",
       "questionImage": "",
       "questionText": "$y$ is directly proportional to $x^2$ and inversely proportional to $\\sqrt{z}$. When $x = 4$ and $z = 9$, $y = 32$. What is $y$ when $x = 6$ and $z = 25$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$43.2$",
-        "B": "$48$",
-        "C": "$38.4$",
+        "A": "$28.8$",
+        "B": "$43.2$",
+        "C": "$48$",
         "D": "$54$",
-        "E": "$28.8$"
+        "E": "$38.4$"
       },
       "answerOptions": [
         "A",
@@ -368,7 +384,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$43.2$",
       "explanation": "From $y = \\frac{kx^2}{\\sqrt{z}}$, substituting gives $32 = \\frac{16k}{3}$, so $k = 6$. Then $y = \\frac{6 \\times 36}{5} = 43.2$.",
       "difficulty": "stretch",
@@ -383,7 +399,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q09",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -401,12 +417,14 @@
       "promptTemplateHash": "baeef2fb20a4f0929f0c221d39ffba28b9e80e2db5774a568b12d850967185e0",
       "questionImage": "",
       "questionText": "A price is increased by $15\\%$ and the new price is then reduced by $12\\%$. The final price is £253. What was the original price?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "£245",
-        "B": "£260",
-        "C": "£250",
-        "D": "£247",
-        "E": "£256"
+        "A": "£260",
+        "B": "£247",
+        "C": "£256",
+        "D": "£250",
+        "E": "£245"
       },
       "answerOptions": [
         "A",
@@ -415,7 +433,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "D",
       "verifiedCorrectText": "£250",
       "explanation": "Successive changes multiply, so the overall factor is $1.15 \\times 0.88 = 1.012$. The original price is $\\frac{253}{1.012} = £250$.",
       "difficulty": "stretch",
@@ -430,7 +448,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q10",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -448,11 +466,13 @@
       "promptTemplateHash": "838e6b061d530f2815f43ad94220968af0701d47ac89c7f895ae690832983e56",
       "questionImage": "",
       "questionText": "The line $y = 2x + c$ is a tangent to the circle $x^2 + y^2 = 20$. What are the possible values of $c$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$c = 5$ or $c = -5$",
-        "B": "$c = 2\\sqrt{5}$ or $c = -2\\sqrt{5}$",
-        "C": "$c = 20$ or $c = -20$",
-        "D": "$c = 10$ only",
+        "B": "$c = 20$ or $c = -20$",
+        "C": "$c = 10$ only",
+        "D": "$c = 2\\sqrt{5}$ or $c = -2\\sqrt{5}$",
         "E": "$c = 10$ or $c = -10$"
       },
       "answerOptions": [
@@ -477,7 +497,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q11",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -495,12 +515,14 @@
       "promptTemplateHash": "587249c323596ed87f670e51e01af8673c39ad8665f590ffc890445160fb47aa",
       "questionImage": "",
       "questionText": "The function $f$ is defined for all real $x$ by $f(x) = 2x^2 - 12x + 23$. What is the range of $f$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$f(x) \\le 5$",
-        "B": "$f(x) \\ge 5$",
+        "A": "$f(x) \\ge 5$",
+        "B": "$f(x) \\ge -5$",
         "C": "$f(x) \\ge 23$",
-        "D": "$f(x) \\ge -5$",
-        "E": "$f(x) \\ge 3$"
+        "D": "$f(x) \\ge 3$",
+        "E": "$f(x) \\le 5$"
       },
       "answerOptions": [
         "A",
@@ -509,7 +531,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$f(x) \\ge 5$",
       "explanation": "Completing the square gives $f(x) = 2(x - 3)^2 + 5$. The squared term is never negative, so the least value is $5$, taken at $x = 3$.",
       "difficulty": "stretch",
@@ -524,7 +546,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q12",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -542,12 +564,14 @@
       "promptTemplateHash": "f3e7c19a63dd7fad23d284dee1dd641fa55f1699efee3d64a7ee5349c2fefdbb",
       "questionImage": "",
       "questionText": "The equation $\\frac{4}{x - 2} - \\frac{3}{x + 1} = 1$ has two real solutions. What is the positive difference between them?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\sqrt{13}$",
-        "B": "$2$",
+        "A": "$2\\sqrt{11}$",
+        "B": "$2\\sqrt{13}$",
         "C": "$4\\sqrt{13}$",
-        "D": "$2\\sqrt{13}$",
-        "E": "$2\\sqrt{11}$"
+        "D": "$2$",
+        "E": "$\\sqrt{13}$"
       },
       "answerOptions": [
         "A",
@@ -556,7 +580,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$2\\sqrt{13}$",
       "explanation": "Clearing the fractions gives $x^2 - 2x - 12 = 0$, so $x = 1 \\pm \\sqrt{13}$. Neither root is excluded, and the difference is $2\\sqrt{13}$.",
       "difficulty": "stretch",
@@ -571,7 +595,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q13",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -589,12 +613,14 @@
       "promptTemplateHash": "429432564db78262abea433ad76f2ef61f248aa6e276b83d79d7639ba05c0f43",
       "questionImage": "",
       "questionText": "A sequence begins $5$, $14$, $29$, $50$, $77$, $\\ldots$ and its $n$th term is a quadratic in $n$. What is its $20$th term?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$1202$",
-        "B": "$1200$",
-        "C": "$1220$",
-        "D": "$1178$",
-        "E": "$1205$"
+        "A": "$1220$",
+        "B": "$1178$",
+        "C": "$1205$",
+        "D": "$1200$",
+        "E": "$1202$"
       },
       "answerOptions": [
         "A",
@@ -603,7 +629,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$1202$",
       "explanation": "The second difference is $6$, so the $n^2$ coefficient is $3$. Subtracting $3n^2$ leaves a constant $2$, giving $3n^2 + 2$ and a $20$th term of $1202$.",
       "difficulty": "stretch",
@@ -618,7 +644,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q14",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -636,12 +662,14 @@
       "promptTemplateHash": "6ea310a18891d1a13a9493821bf4c6c0e20cf5e8aae7b3fa4be7ffa1860e4775",
       "questionImage": "",
       "questionText": "How many integer values of $n$ satisfy both of the inequalities $n^2 < 6n + 27$ and $n > -2$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$12$",
-        "B": "$8$",
+        "A": "$8$",
+        "B": "$9$",
         "C": "$10$",
-        "D": "$9$",
-        "E": "$11$"
+        "D": "$11$",
+        "E": "$12$"
       },
       "answerOptions": [
         "A",
@@ -665,7 +693,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q15",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -683,12 +711,14 @@
       "promptTemplateHash": "82e3c8a8010b34736478427c4ab060cc25a206610c6e68a6ae50ae22492e28ac",
       "questionImage": "",
       "questionText": "A train decelerates uniformly from $30\\text{ m/s}$ to $12\\text{ m/s}$ in $24\\text{ s}$, then travels at a steady $12\\text{ m/s}$ for $40\\text{ s}$. What is its average speed over the whole $64\\text{ s}$?",
+      "questionDiagram": "questions/original/atlas-challenge-a-maths1-q15.png",
+      "questionDiagramAlt": "Speed-time graph: speed decreases uniformly from 30 m/s at 0 s to 12 m/s at 24 s, then remains at 12 m/s until 64 s.",
       "optionText": {
-        "A": "$16\\text{ m/s}$",
-        "B": "$15\\text{ m/s}$",
-        "C": "$21\\text{ m/s}$",
+        "A": "$15.375\\text{ m/s}$",
+        "B": "$16\\text{ m/s}$",
+        "C": "$15\\text{ m/s}$",
         "D": "$14.5\\text{ m/s}$",
-        "E": "$15.375\\text{ m/s}$"
+        "E": "$21\\text{ m/s}$"
       },
       "answerOptions": [
         "A",
@@ -697,7 +727,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$15.375\\text{ m/s}$",
       "explanation": "The area under the speed-time graph is $\\frac{1}{2}(30 + 12)(24) + 12(40) = 504 + 480 = 984\\text{ m}$. The average speed is $\\frac{984}{64} = 15.375\\text{ m/s}$.",
       "difficulty": "stretch",
@@ -707,12 +737,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "d7befc902132cea2854e4c91036237af9d12d07fd350b595812fa0f93f49b3e2",
-      "imageHash": "d7befc902132cea2854e4c91036237af9d12d07fd350b595812fa0f93f49b3e2",
+      "imageHash": "e9ce0aef5e970ce879438c021edfbedef3b7a5dc058099b59021e367acbf2f7b",
       "searchText": "A train decelerates uniformly from $30\\text{ m/s}$ to $12\\text{ m/s}$ in $24\\text{ s}$, then travels at a steady $12\\text{ m/s}$ for $40\\text{ s}$. What is its average speed over the whole $64\\text{ s}$? Algebra Speed-time graphs"
     },
     {
       "id": "atlas-challenge-a-maths1-q16",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -730,12 +760,14 @@
       "promptTemplateHash": "19a20307ddb86baa72897218e826154a0fa40a26af7cfdd42b4069589ef7e52d",
       "questionImage": "",
       "questionText": "The function $f$ is defined by $f(x) = \\frac{3x - 1}{x + 2}$ for $x \\ne -2$. What is the value of $f^{-1}(4)$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$-\\frac{9}{7}$",
-        "B": "$-9$",
-        "C": "$9$",
-        "D": "$-\\frac{7}{2}$",
-        "E": "$\\frac{11}{2}$"
+        "A": "$-9$",
+        "B": "$-\\frac{7}{2}$",
+        "C": "$-\\frac{9}{7}$",
+        "D": "$\\frac{11}{2}$",
+        "E": "$9$"
       },
       "answerOptions": [
         "A",
@@ -744,7 +776,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$-9$",
       "explanation": "Solve $f(x) = 4$: $3x - 1 = 4(x + 2)$, so $3x - 1 = 4x + 8$ and $x = -9$. Checking, $f(-9) = \\frac{-28}{-7} = 4$.",
       "difficulty": "stretch",
@@ -759,7 +791,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q17",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -777,12 +809,14 @@
       "promptTemplateHash": "96c1a3e29ef84acb8318a74bb5cb644f161f949adb17338a61b948ab5ee8d8e0",
       "questionImage": "",
       "questionText": "In a regular polygon each interior angle exceeds each exterior angle by $156\\deg$. How many diagonals does the polygon have?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$435$",
-        "B": "$390$",
-        "C": "$420$",
-        "D": "$405$",
-        "E": "$375$"
+        "A": "$405$",
+        "B": "$420$",
+        "C": "$435$",
+        "D": "$375$",
+        "E": "$390$"
       },
       "answerOptions": [
         "A",
@@ -791,7 +825,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$405$",
       "explanation": "The two angles sum to $180\\deg$ and differ by $156\\deg$, so the exterior angle is $12\\deg$ and the polygon has $\\frac{360}{12} = 30$ sides. It therefore has $\\frac{30(30 - 3)}{2} = 405$ diagonals.",
       "difficulty": "stretch",
@@ -806,7 +840,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q18",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -824,12 +858,14 @@
       "promptTemplateHash": "202d557d70657d47706e36c2f4d2b0438a548686d43d43fa89eb7c95a662a833",
       "questionImage": "",
       "questionText": "A right pyramid has a square base of side $10\\text{ cm}$ and a vertical height of $12\\text{ cm}$. What is its total surface area?",
+      "questionDiagram": "questions/original/atlas-challenge-a-maths1-q18.png",
+      "questionDiagramAlt": "Right square-based pyramid with a 10 cm square base and a vertical height of 12 cm marked from the apex to the centre of the base.",
       "optionText": {
-        "A": "$360\\text{ cm}^2$",
-        "B": "$340\\text{ cm}^2$",
+        "A": "$400\\text{ cm}^2$",
+        "B": "$360\\text{ cm}^2$",
         "C": "$620\\text{ cm}^2$",
         "D": "$260\\text{ cm}^2$",
-        "E": "$400\\text{ cm}^2$"
+        "E": "$340\\text{ cm}^2$"
       },
       "answerOptions": [
         "A",
@@ -838,7 +874,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$360\\text{ cm}^2$",
       "explanation": "The slant height of a triangular face is $\\sqrt{12^2 + 5^2} = 13\\text{ cm}$, so each face has area $65\\text{ cm}^2$. Four faces plus the $100\\text{ cm}^2$ base give $360\\text{ cm}^2$.",
       "difficulty": "stretch",
@@ -848,12 +884,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "54dbaa9bc27f8694b7f7065c3dfbdab099e49ab01feecedcd617b10ddba02290",
-      "imageHash": "54dbaa9bc27f8694b7f7065c3dfbdab099e49ab01feecedcd617b10ddba02290",
+      "imageHash": "87602d144496998ecb87fb12f57cd75c41396574eabc6e70d981f2c25bba5b5c",
       "searchText": "A right pyramid has a square base of side $10\\text{ cm}$ and a vertical height of $12\\text{ cm}$. What is its total surface area? Geometry Three-dimensional Pythagoras"
     },
     {
       "id": "atlas-challenge-a-maths1-q19",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -871,12 +907,14 @@
       "promptTemplateHash": "d4b8ce23ca1a65883e2e57d306e9f3a9396d12c994ef5dd4b35620480949f400",
       "questionImage": "",
       "questionText": "$PA$ and $PB$ are tangents to a circle with centre $O$, and angle $AOB = 118\\deg$. The point $C$ lies on the minor arc $AB$. What is angle $ACB$?",
+      "questionDiagram": "questions/original/atlas-challenge-a-maths1-q19.png",
+      "questionDiagramAlt": "Circle with centre O. Tangents PA and PB meet at the external point P, radii OA and OB subtend 118 degrees at O, and C lies on the minor arc AB.",
       "optionText": {
-        "A": "$118\\deg$",
-        "B": "$131\\deg$",
-        "C": "$121\\deg$",
+        "A": "$131\\deg$",
+        "B": "$118\\deg$",
+        "C": "$62\\deg$",
         "D": "$59\\deg$",
-        "E": "$62\\deg$"
+        "E": "$121\\deg$"
       },
       "answerOptions": [
         "A",
@@ -885,7 +923,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$121\\deg$",
       "explanation": "For $C$ on the minor arc, the relevant central angle is the reflex angle $360 - 118 = 242\\deg$. The inscribed angle is half of it, giving $121\\deg$.",
       "difficulty": "stretch",
@@ -895,12 +933,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "e007bac204eed7605bbe9019d66d6c4d17269bfa714a4ebca29a666be8c33a87",
-      "imageHash": "e007bac204eed7605bbe9019d66d6c4d17269bfa714a4ebca29a666be8c33a87",
+      "imageHash": "769acbbca3c885c51c8100386e62d588233aa0034f5f6af6c6b6c1d4adb3939a",
       "searchText": "$PA$ and $PB$ are tangents to a circle with centre $O$, and angle $AOB = 118\\deg$. The point $C$ lies on the minor arc $AB$. What is angle $ACB$? Geometry Circle theorems"
     },
     {
       "id": "atlas-challenge-a-maths1-q20",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -918,10 +956,12 @@
       "promptTemplateHash": "15d526cbfac889aa46770cba9388767adf10711758ff98163b04858c42a72f40",
       "questionImage": "",
       "questionText": "Two similar solid cones have total surface areas in the ratio $9 : 25$. The smaller cone has volume $54\\text{ cm}^3$. What is the volume of the larger cone?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$150\\text{ cm}^3$",
+        "A": "$375\\text{ cm}^3$",
         "B": "$90\\text{ cm}^3$",
-        "C": "$375\\text{ cm}^3$",
+        "C": "$150\\text{ cm}^3$",
         "D": "$200\\text{ cm}^3$",
         "E": "$250\\text{ cm}^3$"
       },
@@ -947,7 +987,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q21",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -965,12 +1005,14 @@
       "promptTemplateHash": "d225e2a819d2a91561759e087f9ad5a06f22da215f425a157d3e09284bee96a0",
       "questionImage": "",
       "questionText": "A sector of a circle has radius $12\\text{ cm}$ and perimeter $34\\text{ cm}$. What is its area?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$34\\text{ cm}^2$",
-        "B": "$60\\text{ cm}^2$",
-        "C": "$48\\text{ cm}^2$",
-        "D": "$72\\text{ cm}^2$",
-        "E": "$120\\text{ cm}^2$"
+        "A": "$72\\text{ cm}^2$",
+        "B": "$120\\text{ cm}^2$",
+        "C": "$60\\text{ cm}^2$",
+        "D": "$48\\text{ cm}^2$",
+        "E": "$34\\text{ cm}^2$"
       },
       "answerOptions": [
         "A",
@@ -979,7 +1021,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$60\\text{ cm}^2$",
       "explanation": "The two radii use $24\\text{ cm}$, so the arc is $10\\text{ cm}$. Using area $= \\frac{1}{2} \\times \\text{radius} \\times \\text{arc}$ gives $\\frac{1}{2} \\times 12 \\times 10 = 60\\text{ cm}^2$.",
       "difficulty": "stretch",
@@ -994,7 +1036,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q22",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1012,12 +1054,14 @@
       "promptTemplateHash": "16ec1d7a1c12eedc5b3fb73b39e5e8b18a8a473ae4663720bc7e9b1effbb1b04",
       "questionImage": "",
       "questionText": "From port $P$ one ship sails $24\\text{ km}$ on a bearing of $060\\deg$ and another sails $18\\text{ km}$ on a bearing of $150\\deg$. How far apart are the two ships?",
+      "questionDiagram": "questions/original/atlas-challenge-a-maths1-q22.png",
+      "questionDiagramAlt": "Bearing diagram from port P: one route is 24 km on bearing 060 degrees and the other is 18 km on bearing 150 degrees.",
       "optionText": {
-        "A": "$6\\text{ km}$",
-        "B": "$21\\text{ km}$",
-        "C": "$36\\text{ km}$",
+        "A": "$36\\text{ km}$",
+        "B": "$6\\text{ km}$",
+        "C": "$42\\text{ km}$",
         "D": "$30\\text{ km}$",
-        "E": "$42\\text{ km}$"
+        "E": "$21\\text{ km}$"
       },
       "answerOptions": [
         "A",
@@ -1036,12 +1080,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "47426d18ae56ee900fbef62fe940356c65e07487f4fe75568fdd33fedac8c04a",
-      "imageHash": "47426d18ae56ee900fbef62fe940356c65e07487f4fe75568fdd33fedac8c04a",
+      "imageHash": "40397cba1962a9c101d3d72263157990703683246782d417288b0abf53be8476",
       "searchText": "From port $P$ one ship sails $24\\text{ km}$ on a bearing of $060\\deg$ and another sails $18\\text{ km}$ on a bearing of $150\\deg$. How far apart are the two ships? Geometry Bearings"
     },
     {
       "id": "atlas-challenge-a-maths1-q23",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1059,12 +1103,14 @@
       "promptTemplateHash": "6f1fb3b389c6ae3714119bbc4248fe191edc7baf946665a113cff100bffbac32",
       "questionImage": "",
       "questionText": "A grouped frequency table has classes $0$–$20$, $20$–$40$ and $40$–$60$ with frequencies $5$, $x$ and $3$. Using class midpoints, the estimated mean is $28$. What is $x$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$12$",
-        "B": "$10$",
+        "A": "$16$",
+        "B": "$8$",
         "C": "$14$",
-        "D": "$16$",
-        "E": "$8$"
+        "D": "$12$",
+        "E": "$10$"
       },
       "answerOptions": [
         "A",
@@ -1073,7 +1119,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "D",
       "verifiedCorrectText": "$12$",
       "explanation": "Using midpoints, $\\frac{5(10) + 30x + 3(50)}{8 + x} = 28$ gives $200 + 30x = 224 + 28x$, so $2x = 24$ and $x = 12$.",
       "difficulty": "stretch",
@@ -1088,7 +1134,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q24",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1106,12 +1152,14 @@
       "promptTemplateHash": "cda7d7c80e70e1eff2b88aa4943d51afefc13b96ed4ac66725b9c56c8331eb37",
       "questionImage": "",
       "questionText": "Eleven values in ascending order are $4$, $6$, $9$, $11$, $13$, $16$, $18$, $20$, $25$, $30$ and $k$, where $k > 30$. Quartiles are taken as the 3rd and 9th values. Using the rule that an outlier lies more than $1.5$ times the interquartile range beyond a quartile, what is the largest value of $k$ that is not an outlier?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$33$",
-        "B": "$65$",
-        "C": "$49$",
-        "D": "$41$",
-        "E": "$57$"
+        "A": "$49$",
+        "B": "$41$",
+        "C": "$57$",
+        "D": "$65$",
+        "E": "$33$"
       },
       "answerOptions": [
         "A",
@@ -1120,7 +1168,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$49$",
       "explanation": "The quartiles are $9$ and $25$, so the interquartile range is $16$ and $1.5 \\times 16 = 24$. The upper limit is $25 + 24 = 49$.",
       "difficulty": "stretch",
@@ -1135,7 +1183,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q25",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1153,12 +1201,14 @@
       "promptTemplateHash": "a85ceb915eff8984fe2b33be56d1e6b05667c82b891e1342776b3151b33bb4a1",
       "questionImage": "",
       "questionText": "In a class of $30$ students, $18$ study Physics, $15$ study Chemistry and $5$ study neither. A student is chosen at random from those who study Chemistry. What is the probability that the student also studies Physics?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\frac{8}{18}$",
-        "B": "$\\frac{4}{15}$",
-        "C": "$\\frac{8}{25}$",
-        "D": "$\\frac{1}{2}$",
-        "E": "$\\frac{8}{15}$"
+        "A": "$\\frac{8}{15}$",
+        "B": "$\\frac{8}{25}$",
+        "C": "$\\frac{4}{15}$",
+        "D": "$\\frac{8}{18}$",
+        "E": "$\\frac{1}{2}$"
       },
       "answerOptions": [
         "A",
@@ -1167,7 +1217,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$\\frac{8}{15}$",
       "explanation": "$25$ students study at least one subject, so $18 + 15 - 25 = 8$ study both. Of the $15$ chemists, $8$ also study Physics, giving $\\frac{8}{15}$.",
       "difficulty": "stretch",
@@ -1182,7 +1232,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q26",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1200,12 +1250,14 @@
       "promptTemplateHash": "9b1ae529b3d16f8e01b4897b0aa444b0852d495d0ee50a5735ae0cd8baf5ce5f",
       "questionImage": "",
       "questionText": "A bag contains $4$ red, $5$ blue and $3$ green counters. Three counters are taken without replacement. What is the probability that all three are different colours?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\frac{1}{4}$",
-        "B": "$\\frac{3}{11}$",
+        "A": "$\\frac{5}{22}$",
+        "B": "$\\frac{2}{11}$",
         "C": "$\\frac{1}{22}$",
-        "D": "$\\frac{2}{11}$",
-        "E": "$\\frac{5}{22}$"
+        "D": "$\\frac{1}{4}$",
+        "E": "$\\frac{3}{11}$"
       },
       "answerOptions": [
         "A",
@@ -1214,7 +1266,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$\\frac{3}{11}$",
       "explanation": "There are $\\binom{12}{3} = 220$ equally likely selections and $4 \\times 5 \\times 3 = 60$ contain one of each colour, so the probability is $\\frac{60}{220} = \\frac{3}{11}$.",
       "difficulty": "stretch",
@@ -1229,7 +1281,7 @@
     },
     {
       "id": "atlas-challenge-a-maths1-q27",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1247,12 +1299,14 @@
       "promptTemplateHash": "c60b7448249eb6d00e7eeb051a40429c9e092086ab3225a39d0ae8497fe06e8f",
       "questionImage": "",
       "questionText": "How many four-digit numbers greater than $4000$ can be formed from the digits $1$, $2$, $3$, $4$, $5$ and $6$, using no digit more than once, if the number must be even?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$90$",
         "B": "$96$",
         "C": "$60$",
-        "D": "$84$",
-        "E": "$72$"
+        "D": "$72$",
+        "E": "$84$"
       },
       "answerOptions": [
         "A",
@@ -1261,7 +1315,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$84$",
       "explanation": "The last digit is $2$, $4$ or $6$ and the first is $4$, $5$ or $6$. If the last digit is $2$ there are $3$ choices of first digit, otherwise $2$; the middle pair can always be filled in $4 \\times 3 = 12$ ways, giving $36 + 24 + 24 = 84$.",
       "difficulty": "stretch",
@@ -1276,7 +1330,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q01",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1294,10 +1348,12 @@
       "promptTemplateHash": "316f388e64bfe84471dbdbcadd28ad668eb532e8a1f1ee31eafde42292d31e4c",
       "questionImage": "",
       "questionText": "A $6\\ohm$ resistor and a $12\\ohm$ resistor are connected in parallel, and this combination is in series with a $4\\ohm$ resistor across a $24\\text{ V}$ supply. What power is dissipated in the $12\\ohm$ resistor?",
+      "questionDiagram": "questions/original/physics-q01-resistor-network.png",
+      "questionDiagramAlt": "A 24 V source and 4 ohm resistor in series with parallel 6 ohm and 12 ohm branches.",
       "optionText": {
-        "A": "$12\\text{ W}$",
-        "B": "$3\\text{ W}$",
-        "C": "$36\\text{ W}$",
+        "A": "$3\\text{ W}$",
+        "B": "$36\\text{ W}$",
+        "C": "$12\\text{ W}$",
         "D": "$48\\text{ W}$",
         "E": "$4\\text{ W}$"
       },
@@ -1308,7 +1364,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$12\\text{ W}$",
       "explanation": "The parallel pair is $4\\ohm$, so the circuit is $8\\ohm$ and the supply current is $3\\text{ A}$. The parallel section has $12\\text{ V}$ across it, so the $12\\ohm$ branch carries $1\\text{ A}$ and dissipates $I^2R = 12\\text{ W}$.",
       "difficulty": "stretch",
@@ -1318,12 +1374,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "0688d4472ee7fb2876fd1f69796bf22ca68c7e068d8376ec474dd4a0e6c252cf",
-      "imageHash": "0688d4472ee7fb2876fd1f69796bf22ca68c7e068d8376ec474dd4a0e6c252cf",
+      "imageHash": "6c1ff1c02df0032115fed08ba3210614542e951d39557889539023252edce50b",
       "searchText": "A $6\\ohm$ resistor and a $12\\ohm$ resistor are connected in parallel, and this combination is in series with a $4\\ohm$ resistor across a $24\\text{ V}$ supply. What power is dissipated in the $12\\ohm$ resistor? Electricity Series and parallel circuits"
     },
     {
       "id": "atlas-challenge-a-physics-q02",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1341,12 +1397,14 @@
       "promptTemplateHash": "307b73e41e3326e74762a74c4ef04495034295178b4f025c8eab553a69c5ff66",
       "questionImage": "",
       "questionText": "A $12\\text{ V}$ battery of internal resistance $0.5\\ohm$ is connected to a single $2.5\\ohm$ resistor. What is the potential difference across the battery terminals?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$9.6\\text{ V}$",
-        "B": "$11.5\\text{ V}$",
+        "A": "$2\\text{ V}$",
+        "B": "$12\\text{ V}$",
         "C": "$10\\text{ V}$",
-        "D": "$12\\text{ V}$",
-        "E": "$2\\text{ V}$"
+        "D": "$9.6\\text{ V}$",
+        "E": "$11.5\\text{ V}$"
       },
       "answerOptions": [
         "A",
@@ -1370,7 +1428,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q03",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1388,12 +1446,14 @@
       "promptTemplateHash": "f291a15c78b68c671b6485b09376aab0b0a1a923bb05d6dacd69321b35351ea9",
       "questionImage": "",
       "questionText": "A $9\\text{ V}$ supply is connected across a $3\\text{ k}\\ohm$ fixed resistor in series with a thermistor whose resistance is $6\\text{ k}\\ohm$ at $20\\deg\\text{C}$. What is the potential difference across the fixed resistor at $20\\deg\\text{C}$, and what happens to it as the temperature rises?",
+      "questionDiagram": "questions/original/physics-q03-thermistor-potential-divider.png",
+      "questionDiagramAlt": "A 9 V potential divider containing a 3 kilo-ohm fixed resistor and an NTC thermistor, with a voltmeter across the fixed resistor.",
       "optionText": {
-        "A": "$3\\text{ V}$, and it decreases",
-        "B": "$6\\text{ V}$, and it increases",
-        "C": "$6\\text{ V}$, and it decreases",
-        "D": "$3\\text{ V}$, and it stays constant",
-        "E": "$3\\text{ V}$, and it increases"
+        "A": "$6\\text{ V}$, and it decreases",
+        "B": "$3\\text{ V}$, and it decreases",
+        "C": "$3\\text{ V}$, and it increases",
+        "D": "$6\\text{ V}$, and it increases",
+        "E": "$3\\text{ V}$, and it stays constant"
       },
       "answerOptions": [
         "A",
@@ -1402,7 +1462,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$3\\text{ V}$, and it increases",
       "explanation": "The fixed resistor takes $\\frac{3}{3 + 6}$ of $9\\text{ V}$, which is $3\\text{ V}$. Heating lowers the thermistor resistance, so the fixed resistor takes a larger share of the supply and its potential difference rises.",
       "difficulty": "stretch",
@@ -1412,12 +1472,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "9a2d4c67bd987dcaefce1afbdaddc8a7b1efb18175432a66e94e383f55346b84",
-      "imageHash": "9a2d4c67bd987dcaefce1afbdaddc8a7b1efb18175432a66e94e383f55346b84",
+      "imageHash": "0a3fdbb32792590488f61173c30f128e68eea56aa7589b3bc3da3d2546e171e7",
       "searchText": "A $9\\text{ V}$ supply is connected across a $3\\text{ k}\\ohm$ fixed resistor in series with a thermistor whose resistance is $6\\text{ k}\\ohm$ at $20\\deg\\text{C}$. What is the potential difference across the fixed resistor at $20\\deg\\text{C}$, and what happens to it as the temperature rises? Electricity Sensing circuits"
     },
     {
       "id": "atlas-challenge-a-physics-q04",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1435,10 +1495,12 @@
       "promptTemplateHash": "75798103c086e30de5fa27633da1ce0c39adff33f2b2295cbcd24533c0c908d8",
       "questionImage": "",
       "questionText": "An electric shower is rated at $8.5\\text{ kW}$ and runs from a $230\\text{ V}$ mains supply. Fuses are available rated at $13\\text{ A}$, $30\\text{ A}$, $45\\text{ A}$ and $60\\text{ A}$. Which is the lowest suitable rating?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$40\\text{ A}$",
-        "B": "$45\\text{ A}$",
-        "C": "$13\\text{ A}$",
+        "A": "$45\\text{ A}$",
+        "B": "$13\\text{ A}$",
+        "C": "$40\\text{ A}$",
         "D": "$30\\text{ A}$",
         "E": "$60\\text{ A}$"
       },
@@ -1449,7 +1511,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$45\\text{ A}$",
       "explanation": "The operating current is $\\frac{8500}{230} = 37\\text{ A}$ to the nearest amp. A $30\\text{ A}$ fuse would blow in normal use, so the lowest suitable rating above $37\\text{ A}$ is $45\\text{ A}$.",
       "difficulty": "stretch",
@@ -1464,7 +1526,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q05",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1482,12 +1544,14 @@
       "promptTemplateHash": "f1714c2303d9db24750a429a19cfc39e9140f063427fe865f2d6f0848bf4e8e3",
       "questionImage": "",
       "questionText": "A $2.5\\text{ kW}$ heater is used for $90$ minutes. Electricity costs $28$ pence per kilowatt-hour. What is the cost of running the heater?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "£1.58",
+        "A": "£1.05",
         "B": "£6.30",
-        "C": "£0.63",
-        "D": "£1.05",
-        "E": "£0.70"
+        "C": "£0.70",
+        "D": "£0.63",
+        "E": "£1.58"
       },
       "answerOptions": [
         "A",
@@ -1496,7 +1560,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "A",
       "verifiedCorrectText": "£1.05",
       "explanation": "The energy used is $2.5\\text{ kW} \\times 1.5\\text{ h} = 3.75\\text{ kWh}$. At $28$ pence per kilowatt-hour the cost is $105$ pence, which is £1.05.",
       "difficulty": "stretch",
@@ -1511,7 +1575,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q06",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1529,12 +1593,14 @@
       "promptTemplateHash": "c471d4397a3fb2d761d19cb40239ce347751dc16b28e8010bdf37d0c2784cabf",
       "questionImage": "",
       "questionText": "An ideal transformer has $1200$ turns on the primary and $100$ turns on the secondary. The primary is connected to a $240\\text{ V}$ a.c. supply and the secondary supplies a $5\\ohm$ resistor. What current flows in the primary coil?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\frac{1}{3}\\text{ A}$",
-        "B": "$4\\text{ A}$",
-        "C": "$3\\text{ A}$",
+        "A": "$4\\text{ A}$",
+        "B": "$12\\text{ A}$",
+        "C": "$\\frac{1}{3}\\text{ A}$",
         "D": "$\\frac{1}{2}\\text{ A}$",
-        "E": "$12\\text{ A}$"
+        "E": "$3\\text{ A}$"
       },
       "answerOptions": [
         "A",
@@ -1543,7 +1609,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$\\frac{1}{3}\\text{ A}$",
       "explanation": "The secondary voltage is $\\frac{240 \\times 100}{1200} = 20\\text{ V}$, so the secondary current is $4\\text{ A}$ and the power is $80\\text{ W}$. An ideal transformer conserves power, so the primary current is $\\frac{80}{240} = \\frac{1}{3}\\text{ A}$.",
       "difficulty": "stretch",
@@ -1558,7 +1624,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q07",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1576,12 +1642,14 @@
       "promptTemplateHash": "b9d82b6711cdab4de5ff88bf441a7611a5e2dbc8b5b37dc986db1b16bedbca31",
       "questionImage": "",
       "questionText": "A straight wire of length $0.25\\text{ m}$ carries a current of $6.0\\text{ A}$ at right angles to a uniform magnetic field of flux density $0.40\\text{ T}$. What force acts on the wire?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$2.4\\text{ N}$",
-        "B": "$1.5\\text{ N}$",
-        "C": "$0.6\\text{ N}$",
-        "D": "$6\\text{ N}$",
-        "E": "$0.06\\text{ N}$"
+        "B": "$0.6\\text{ N}$",
+        "C": "$6\\text{ N}$",
+        "D": "$0.06\\text{ N}$",
+        "E": "$1.5\\text{ N}$"
       },
       "answerOptions": [
         "A",
@@ -1590,7 +1658,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$0.6\\text{ N}$",
       "explanation": "For a wire perpendicular to the field, $F = BIL = 0.40 \\times 6.0 \\times 0.25 = 0.60\\text{ N}$.",
       "difficulty": "stretch",
@@ -1605,7 +1673,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q08",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1623,12 +1691,14 @@
       "promptTemplateHash": "0c77c8f203594d1806115d802ff9dbd2900ecd330fef94893deced1ea825289f",
       "questionImage": "",
       "questionText": "A bar magnet is dropped so that it falls straight through a horizontal copper ring. Compared with the same magnet falling through an identical plastic ring, how does its motion change and why?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "It falls more quickly, because the induced current attracts the magnet",
-        "B": "It falls at the same rate, because copper is not magnetic",
-        "C": "It falls more slowly, because the copper ring becomes permanently magnetised",
-        "D": "It falls at the same rate, because no current is induced in a closed ring",
-        "E": "It falls more slowly, because the induced current opposes the change producing it"
+        "A": "It falls at the same rate, because copper is not magnetic",
+        "B": "It falls more slowly, because the copper ring becomes permanently magnetised",
+        "C": "It falls at the same rate, because no current is induced in a closed ring",
+        "D": "It falls more slowly, because the induced current opposes the change producing it",
+        "E": "It falls more quickly, because the induced current attracts the magnet"
       },
       "answerOptions": [
         "A",
@@ -1637,7 +1707,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "D",
       "verifiedCorrectText": "It falls more slowly, because the induced current opposes the change producing it",
       "explanation": "The changing flux induces a current in the copper ring. By Lenz's law that current opposes the magnet's motion, so the magnet is retarded; a plastic ring carries no induced current.",
       "difficulty": "stretch",
@@ -1652,7 +1722,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q09",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1670,12 +1740,14 @@
       "promptTemplateHash": "6965ba0012ed3a89a64ed151bbb5469e0aca88974b1ab29c12c93dd9ece24e7d",
       "questionImage": "",
       "questionText": "A car of mass $1200\\text{ kg}$ accelerates uniformly from $8.0\\text{ m/s}$ to $20\\text{ m/s}$ in $6.0\\text{ s}$. What resultant force acts on it?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$3600\\text{ N}$",
-        "B": "$2400\\text{ N}$",
-        "C": "$4000\\text{ N}$",
+        "A": "$2400\\text{ N}$",
+        "B": "$3600\\text{ N}$",
+        "C": "$2000\\text{ N}$",
         "D": "$1600\\text{ N}$",
-        "E": "$2000\\text{ N}$"
+        "E": "$4000\\text{ N}$"
       },
       "answerOptions": [
         "A",
@@ -1684,7 +1756,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$2400\\text{ N}$",
       "explanation": "The acceleration is $\\frac{20 - 8}{6} = 2.0\\text{ m/s}^2$, so the resultant force is $1200 \\times 2.0 = 2400\\text{ N}$.",
       "difficulty": "stretch",
@@ -1699,7 +1771,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q10",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1717,12 +1789,14 @@
       "promptTemplateHash": "8add85f7f9055ff2634c25f7ce83659660e7342d33421b058d7045d36e0bacab",
       "questionImage": "",
       "questionText": "A trolley of mass $0.60\\text{ kg}$ moving at $5.0\\text{ m/s}$ collides with a stationary trolley of mass $0.90\\text{ kg}$, and the two move off together. How much kinetic energy is lost in the collision?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$7.5\\text{ J}$",
+        "A": "$3\\text{ J}$",
         "B": "$1.5\\text{ J}$",
         "C": "$10.5\\text{ J}$",
         "D": "$4.5\\text{ J}$",
-        "E": "$3\\text{ J}$"
+        "E": "$7.5\\text{ J}$"
       },
       "answerOptions": [
         "A",
@@ -1746,7 +1820,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q11",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1764,12 +1838,14 @@
       "promptTemplateHash": "3c98df729c01d300b3bf9f1b548964fe48a7a5342f09727cea7f1d46e15775e4",
       "questionImage": "",
       "questionText": "A ball of mass $0.20\\text{ kg}$ is dropped from a height of $5.0\\text{ m}$ and rebounds to a height of $3.2\\text{ m}$. Taking $g = 10\\text{ N/kg}$, how much energy is lost during the bounce?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$3.6\\text{ J}$",
-        "B": "$10\\text{ J}$",
-        "C": "$6.4\\text{ J}$",
-        "D": "$1.8\\text{ J}$",
-        "E": "$0.36\\text{ J}$"
+        "A": "$6.4\\text{ J}$",
+        "B": "$1.8\\text{ J}$",
+        "C": "$0.36\\text{ J}$",
+        "D": "$3.6\\text{ J}$",
+        "E": "$10\\text{ J}$"
       },
       "answerOptions": [
         "A",
@@ -1778,7 +1854,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "D",
       "verifiedCorrectText": "$3.6\\text{ J}$",
       "explanation": "The gravitational potential energy falls by $mg\\Delta h = 0.20 \\times 10 \\times 1.8 = 3.6\\text{ J}$, which is the energy lost in the bounce.",
       "difficulty": "stretch",
@@ -1793,7 +1869,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q12",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1811,10 +1887,12 @@
       "promptTemplateHash": "c74d561e00c66d25cbc3b289fa9fa69dcc93764f5a00a66fdb24078805d371d2",
       "questionImage": "",
       "questionText": "A uniform plank of mass $20\\text{ kg}$ and length $4.0\\text{ m}$ rests on a pivot $1.6\\text{ m}$ from its left-hand end. Taking $g = 10\\text{ N/kg}$, what mass placed at the left-hand end will balance the plank?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$10\\text{ kg}$",
-        "B": "$12.5\\text{ kg}$",
-        "C": "$5\\text{ kg}$",
+        "A": "$12.5\\text{ kg}$",
+        "B": "$5\\text{ kg}$",
+        "C": "$10\\text{ kg}$",
         "D": "$4\\text{ kg}$",
         "E": "$8\\text{ kg}$"
       },
@@ -1825,7 +1903,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$5\\text{ kg}$",
       "explanation": "The plank's $200\\text{ N}$ weight acts at its centre, $0.4\\text{ m}$ to the right of the pivot, giving a moment of $80\\text{ N m}$. A mass at the left end has a $1.6\\text{ m}$ lever arm, so it must weigh $50\\text{ N}$: a mass of $5.0\\text{ kg}$.",
       "difficulty": "stretch",
@@ -1840,7 +1918,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q13",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1858,12 +1936,14 @@
       "promptTemplateHash": "98ca0e40e723d04d9ae619b36625ff08e8539bc42dbb7cd8527426b90a0008de",
       "questionImage": "",
       "questionText": "A cyclist and machine of total mass $80\\text{ kg}$ travel $300\\text{ m}$ up a slope, rising $45\\text{ m}$ vertically, in $60\\text{ s}$ at a steady speed against a constant resistive force of $20\\text{ N}$. Taking $g = 10\\text{ N/kg}$, what is the useful output power?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$600\\text{ W}$",
-        "B": "$100\\text{ W}$",
-        "C": "$800\\text{ W}$",
-        "D": "$500\\text{ W}$",
-        "E": "$700\\text{ W}$"
+        "B": "$500\\text{ W}$",
+        "C": "$100\\text{ W}$",
+        "D": "$700\\text{ W}$",
+        "E": "$800\\text{ W}$"
       },
       "answerOptions": [
         "A",
@@ -1872,7 +1952,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "D",
       "verifiedCorrectText": "$700\\text{ W}$",
       "explanation": "The work done is $mgh + Fd = 80 \\times 10 \\times 45 + 20 \\times 300 = 36\\,000 + 6000 = 42\\,000\\text{ J}$. Dividing by $60\\text{ s}$ gives $700\\text{ W}$.",
       "difficulty": "stretch",
@@ -1887,7 +1967,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q14",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1905,12 +1985,14 @@
       "promptTemplateHash": "1a53ea77e276f6cc17c617127f9f796982940f6ea9a91a4cf46c4f7f43332c72",
       "questionImage": "",
       "questionText": "A car travelling at $20\\text{ m/s}$ brakes to rest with a uniform deceleration of $5.0\\text{ m/s}^2$. The driver's reaction time is $0.70\\text{ s}$. What is the total stopping distance?",
+      "questionDiagram": "questions/original/physics-q14-speed-time-graph.png",
+      "questionDiagramAlt": "Car speed-time graph: a constant 20 m/s through the 0.70 s reaction time, then uniform braking to rest at 4.70 s.",
       "optionText": {
-        "A": "$74\\text{ m}$",
-        "B": "$54\\text{ m}$",
-        "C": "$40\\text{ m}$",
+        "A": "$54\\text{ m}$",
+        "B": "$74\\text{ m}$",
+        "C": "$60\\text{ m}$",
         "D": "$44\\text{ m}$",
-        "E": "$60\\text{ m}$"
+        "E": "$40\\text{ m}$"
       },
       "answerOptions": [
         "A",
@@ -1919,7 +2001,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$54\\text{ m}$",
       "explanation": "The thinking distance is $20 \\times 0.70 = 14\\text{ m}$ and the braking distance is $\\frac{v^2}{2a} = \\frac{400}{10} = 40\\text{ m}$, giving $54\\text{ m}$ in total.",
       "difficulty": "stretch",
@@ -1929,12 +2011,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "cf0e6d5b4227c781b3589021d262ac1ea9e42367a9bc1d6499fe53d21792487e",
-      "imageHash": "cf0e6d5b4227c781b3589021d262ac1ea9e42367a9bc1d6499fe53d21792487e",
+      "imageHash": "e2ab9b776bbe0a7f1a0c0035870564ab406942512c845654ea0ccb988b4a4d75",
       "searchText": "A car travelling at $20\\text{ m/s}$ brakes to rest with a uniform deceleration of $5.0\\text{ m/s}^2$. The driver's reaction time is $0.70\\text{ s}$. What is the total stopping distance? Mechanics Stopping distance"
     },
     {
       "id": "atlas-challenge-a-physics-q15",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1952,11 +2034,13 @@
       "promptTemplateHash": "e7083462d7d607c5f8027267843076d07afc68bc5cf53cc3d62dd4706f90ce82",
       "questionImage": "",
       "questionText": "A skydiver falling through air has reached terminal velocity. Which statement about the skydiver is correct?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "The weight is zero and the drag is greatest",
-        "B": "The drag exceeds the weight, so the skydiver slows down",
-        "C": "The resultant force is constant and downwards",
-        "D": "The resultant force is zero and the acceleration is zero",
+        "A": "The drag exceeds the weight, so the skydiver slows down",
+        "B": "The resultant force is zero and the acceleration is zero",
+        "C": "The weight is zero and the drag is greatest",
+        "D": "The resultant force is constant and downwards",
         "E": "The resultant force is zero and the acceleration is greatest"
       },
       "answerOptions": [
@@ -1966,7 +2050,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "B",
       "verifiedCorrectText": "The resultant force is zero and the acceleration is zero",
       "explanation": "At terminal velocity the drag has grown until it equals the weight. The forces balance, so the resultant force and the acceleration are both zero while the speed stays constant.",
       "difficulty": "stretch",
@@ -1981,7 +2065,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q16",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -1999,12 +2083,14 @@
       "promptTemplateHash": "a051501d6e41408634da8b7ff9c9ba5db999cf1f907c75f9f3a9106cc9c2c634",
       "questionImage": "",
       "questionText": "A $2.0\\text{ kW}$ kettle heats $0.80\\text{ kg}$ of water from $18\\deg\\text{C}$ to $100\\deg\\text{C}$ in $150\\text{ s}$. The specific heat capacity of water is $4200\\text{ J/(kg}\\deg\\text{C)}$. What percentage of the electrical energy supplied is transferred to the water, to the nearest whole number?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$92\\%$",
-        "B": "$85\\%$",
-        "C": "$96\\%$",
-        "D": "$88\\%$",
-        "E": "$78\\%$"
+        "B": "$96\\%$",
+        "C": "$85\\%$",
+        "D": "$78\\%$",
+        "E": "$88\\%$"
       },
       "answerOptions": [
         "A",
@@ -2028,7 +2114,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q17",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2046,12 +2132,14 @@
       "promptTemplateHash": "d5d0037c3261bce7750a290202abb92737b3c4656a513e71452ab6987581e9aa",
       "questionImage": "",
       "questionText": "How much energy is needed to turn $0.25\\text{ kg}$ of ice at $0\\deg\\text{C}$ into water at $20\\deg\\text{C}$? The specific latent heat of fusion of ice is $3.4 \\times 10^{5}\\text{ J/kg}$ and the specific heat capacity of water is $4200\\text{ J/(kg}\\deg\\text{C)}$.",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$1.27 \\times 10^{5}\\text{ J}$",
-        "B": "$9.6 \\times 10^{4}\\text{ J}$",
-        "C": "$1.06 \\times 10^{5}\\text{ J}$",
-        "D": "$8.5 \\times 10^{4}\\text{ J}$",
-        "E": "$2.1 \\times 10^{4}\\text{ J}$"
+        "A": "$1.06 \\times 10^{5}\\text{ J}$",
+        "B": "$8.5 \\times 10^{4}\\text{ J}$",
+        "C": "$2.1 \\times 10^{4}\\text{ J}$",
+        "D": "$9.6 \\times 10^{4}\\text{ J}$",
+        "E": "$1.27 \\times 10^{5}\\text{ J}$"
       },
       "answerOptions": [
         "A",
@@ -2060,7 +2148,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$1.06 \\times 10^{5}\\text{ J}$",
       "explanation": "Melting needs $0.25 \\times 3.4 \\times 10^{5} = 85\\,000\\text{ J}$ and warming needs $0.25 \\times 4200 \\times 20 = 21\\,000\\text{ J}$, giving $106000\\text{ J}$ in total.",
       "difficulty": "stretch",
@@ -2075,7 +2163,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q18",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2093,11 +2181,13 @@
       "promptTemplateHash": "4b7d12f8a89bcf7c6ab808ed4aee06a8b7d5d6e133c5aa112892c3175099da17",
       "questionImage": "",
       "questionText": "A sealed rigid container holds gas at $27\\deg\\text{C}$ and a pressure of $150\\text{ kPa}$. The gas is heated to $127\\deg\\text{C}$. What is the new pressure?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$705\\text{ kPa}$",
-        "B": "$112.5\\text{ kPa}$",
-        "C": "$250\\text{ kPa}$",
-        "D": "$175\\text{ kPa}$",
+        "B": "$175\\text{ kPa}$",
+        "C": "$112.5\\text{ kPa}$",
+        "D": "$250\\text{ kPa}$",
         "E": "$200\\text{ kPa}$"
       },
       "answerOptions": [
@@ -2122,7 +2212,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q19",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2140,12 +2230,14 @@
       "promptTemplateHash": "09bdfb00482a5b4b7af28d6793a641e30cb5981d229490f607bd52402fc0c483",
       "questionImage": "",
       "questionText": "A small amount of water is left in an open dish and slowly evaporates. Why does the remaining water become cooler?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "Evaporating molecules take latent heat from the air rather than from the water",
-        "B": "The fastest molecules escape, so the mean kinetic energy of those left falls",
-        "C": "Evaporation destroys kinetic energy, so the total energy of the water falls",
+        "A": "Evaporation destroys kinetic energy, so the total energy of the water falls",
+        "B": "Evaporating molecules take latent heat from the air rather than from the water",
+        "C": "The air above the water is always colder than the water itself",
         "D": "The slowest molecules escape first, so the water loses its coldest particles",
-        "E": "The air above the water is always colder than the water itself"
+        "E": "The fastest molecules escape, so the mean kinetic energy of those left falls"
       },
       "answerOptions": [
         "A",
@@ -2154,7 +2246,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "E",
       "verifiedCorrectText": "The fastest molecules escape, so the mean kinetic energy of those left falls",
       "explanation": "Only molecules with above-average kinetic energy can escape the surface. Removing them lowers the mean kinetic energy of the remaining molecules, and temperature is a measure of that mean.",
       "difficulty": "stretch",
@@ -2169,7 +2261,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q20",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2187,12 +2279,14 @@
       "promptTemplateHash": "b3f761a2444067743777441aea73efa1eb5dcd9ba436d8738b88d2d8728a7b9d",
       "questionImage": "",
       "questionText": "A diver is $12\\text{ m}$ below the surface of a lake. The density of water is $1000\\text{ kg/m}^3$, $g = 10\\text{ N/kg}$ and atmospheric pressure is $100\\text{ kPa}$. What is the total pressure on the diver?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$100\\text{ kPa}$",
-        "B": "$1200\\text{ kPa}$",
-        "C": "$210\\text{ kPa}$",
+        "B": "$210\\text{ kPa}$",
+        "C": "$120\\text{ kPa}$",
         "D": "$220\\text{ kPa}$",
-        "E": "$120\\text{ kPa}$"
+        "E": "$1200\\text{ kPa}$"
       },
       "answerOptions": [
         "A",
@@ -2216,7 +2310,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q21",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2234,12 +2328,14 @@
       "promptTemplateHash": "ec88d00666cba12c604bd21791307d2a9ca14d691acd327578543ebd73234fc5",
       "questionImage": "",
       "questionText": "An alloy is made by melting together $300\\text{ g}$ of a metal of density $9.0\\text{ g/cm}^3$ and $200\\text{ g}$ of a metal of density $4.0\\text{ g/cm}^3$. Assuming the volumes add, what is the density of the alloy?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$6\\text{ g/cm}^3$",
-        "B": "$6.5\\text{ g/cm}^3$",
-        "C": "$7\\text{ g/cm}^3$",
-        "D": "$5.5\\text{ g/cm}^3$",
-        "E": "$6.8\\text{ g/cm}^3$"
+        "A": "$7\\text{ g/cm}^3$",
+        "B": "$6\\text{ g/cm}^3$",
+        "C": "$5.5\\text{ g/cm}^3$",
+        "D": "$6.8\\text{ g/cm}^3$",
+        "E": "$6.5\\text{ g/cm}^3$"
       },
       "answerOptions": [
         "A",
@@ -2248,7 +2344,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$6\\text{ g/cm}^3$",
       "explanation": "The volumes are $\\frac{300}{9} = 33.3\\text{ cm}^3$ and $\\frac{200}{4} = 50\\text{ cm}^3$, a total of $83.3\\text{ cm}^3$ for $500\\text{ g}$. The density is $\\frac{500}{83.3} = 6.0\\text{ g/cm}^3$, not the mean of $9$ and $4$.",
       "difficulty": "stretch",
@@ -2263,7 +2359,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q22",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2281,12 +2377,14 @@
       "promptTemplateHash": "5f3a82821792a4f437a54739f08e6e1f272ecf5ad8e3a76305d92e7b89277d15",
       "questionImage": "",
       "questionText": "A spring extends by $4.0\\text{ cm}$ when a load of $10\\text{ N}$ hangs from it, and it stays within its limit of proportionality. How much elastic potential energy is stored when the load is $25\\text{ N}$?",
+      "questionDiagram": "questions/original/physics-q22-force-extension-graph.png",
+      "questionDiagramAlt": "Straight force-extension graph through 4.0 cm at 10 N and 10 cm at 25 N, with the triangular stored-energy area below the line shaded.",
       "optionText": {
         "A": "$1\\text{ J}$",
         "B": "$5\\text{ J}$",
-        "C": "$1.25\\text{ J}$",
-        "D": "$2.5\\text{ J}$",
-        "E": "$0.5\\text{ J}$"
+        "C": "$2.5\\text{ J}$",
+        "D": "$0.5\\text{ J}$",
+        "E": "$1.25\\text{ J}$"
       },
       "answerOptions": [
         "A",
@@ -2295,7 +2393,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$1.25\\text{ J}$",
       "explanation": "The spring constant is $\\frac{10}{0.04} = 250\\text{ N/m}$, so a $25\\text{ N}$ load gives an extension of $0.10\\text{ m}$. The stored energy is $\\frac{1}{2}kx^2 = \\frac{1}{2} \\times 250 \\times 0.10^2 = 1.25\\text{ J}$.",
       "difficulty": "stretch",
@@ -2305,12 +2403,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "bf0a6bb5d43e0e7951f509910884ee81b1f33a6ddbc9a07bb2871c64a916df5e",
-      "imageHash": "bf0a6bb5d43e0e7951f509910884ee81b1f33a6ddbc9a07bb2871c64a916df5e",
+      "imageHash": "3b9d6b2918cecd59d1874c9d961b90a30a55751d3a50cb9a2e719943361d8d79",
       "searchText": "A spring extends by $4.0\\text{ cm}$ when a load of $10\\text{ N}$ hangs from it, and it stays within its limit of proportionality. How much elastic potential energy is stored when the load is $25\\text{ N}$? Matter Hooke's law"
     },
     {
       "id": "atlas-challenge-a-physics-q23",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2328,12 +2426,14 @@
       "promptTemplateHash": "598021d4e3b80d2a6b97cc249adf55b1d36819ab074650fde5a19cb23212b0ec",
       "questionImage": "",
       "questionText": "A wave of frequency $400\\text{ Hz}$ passes from one medium into another. Its wavelength changes from $3.0\\text{ m}$ to $1.8\\text{ m}$. What is its speed in the second medium?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$1200\\text{ m/s}$",
-        "B": "$222\\text{ m/s}$",
-        "C": "$480\\text{ m/s}$",
-        "D": "$133\\text{ m/s}$",
-        "E": "$720\\text{ m/s}$"
+        "A": "$222\\text{ m/s}$",
+        "B": "$133\\text{ m/s}$",
+        "C": "$720\\text{ m/s}$",
+        "D": "$1200\\text{ m/s}$",
+        "E": "$480\\text{ m/s}$"
       },
       "answerOptions": [
         "A",
@@ -2342,7 +2442,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$720\\text{ m/s}$",
       "explanation": "Frequency is unchanged when a wave crosses a boundary, so $v = f\\lambda = 400 \\times 1.8 = 720\\text{ m/s}$ in the second medium.",
       "difficulty": "stretch",
@@ -2357,7 +2457,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q24",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2375,11 +2475,13 @@
       "promptTemplateHash": "fb1a9410a4431423ce8404b9a1cedb3386ba5eb1150068e972ecb7654e2b774e",
       "questionImage": "",
       "questionText": "A ship sends a sound pulse vertically downwards and receives the echo $0.40\\text{ s}$ later. Sound travels at $1500\\text{ m/s}$ in water. How deep is the sea bed below the ship?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$375\\text{ m}$",
+        "A": "$600\\text{ m}$",
         "B": "$300\\text{ m}$",
-        "C": "$600\\text{ m}$",
-        "D": "$150\\text{ m}$",
+        "C": "$150\\text{ m}$",
+        "D": "$375\\text{ m}$",
         "E": "$3750\\text{ m}$"
       },
       "answerOptions": [
@@ -2404,7 +2506,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q25",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2422,12 +2524,14 @@
       "promptTemplateHash": "8037d2ede524606319c03819ef0549fa3c29522f61a34af58a2d8768ea0434e4",
       "questionImage": "",
       "questionText": "Three regions of the electromagnetic spectrum are infrared, ultraviolet and visible light. Which list places them in order of increasing frequency, and correctly names the hazard of the highest-frequency one?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "Infrared, visible, ultraviolet; ultraviolet causes only heating",
-        "B": "Visible, infrared, ultraviolet; ultraviolet can damage skin cells",
-        "C": "Infrared, ultraviolet, visible; visible light can damage skin cells",
-        "D": "Infrared, visible, ultraviolet; ultraviolet can damage skin cells",
-        "E": "Ultraviolet, visible, infrared; infrared can damage skin cells"
+        "A": "Infrared, ultraviolet, visible; visible light can damage skin cells",
+        "B": "Infrared, visible, ultraviolet; ultraviolet causes only heating",
+        "C": "Infrared, visible, ultraviolet; ultraviolet can damage skin cells",
+        "D": "Ultraviolet, visible, infrared; infrared can damage skin cells",
+        "E": "Visible, infrared, ultraviolet; ultraviolet can damage skin cells"
       },
       "answerOptions": [
         "A",
@@ -2436,7 +2540,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "C",
       "verifiedCorrectText": "Infrared, visible, ultraviolet; ultraviolet can damage skin cells",
       "explanation": "Frequency increases from infrared through visible light to ultraviolet. Ultraviolet photons carry enough energy to ionise and damage skin cells, which is why it causes sunburn and raises skin cancer risk.",
       "difficulty": "stretch",
@@ -2451,7 +2555,7 @@
     },
     {
       "id": "atlas-challenge-a-physics-q26",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2469,12 +2573,14 @@
       "promptTemplateHash": "2a45131a59761e0523e22a74da6a7ed4a65bdf8807c2ca7dd9cdd0b33cdbe9fc",
       "questionImage": "",
       "questionText": "The activity of a radioactive sample falls from $960\\text{ Bq}$ to $60\\text{ Bq}$ in $18$ days. What is the half-life of the sample?",
+      "questionDiagram": "questions/original/physics-q26-radioactive-decay-graph.png",
+      "questionDiagramAlt": "Activity-time decay graph starting at 960 Bq and passing 480, 240, 120 and 60 Bq at equal time intervals, reaching 60 Bq at 18 days.",
       "optionText": {
-        "A": "$4.5$ days",
-        "B": "$3$ days",
-        "C": "$6$ days",
-        "D": "$9$ days",
-        "E": "$4$ days"
+        "A": "$4$ days",
+        "B": "$9$ days",
+        "C": "$3$ days",
+        "D": "$6$ days",
+        "E": "$4.5$ days"
       },
       "answerOptions": [
         "A",
@@ -2483,7 +2589,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$4.5$ days",
       "explanation": "Going from $960\\text{ Bq}$ to $60\\text{ Bq}$ means dividing by $16$, which is four halvings. Four half-lives occupy $18$ days, so one half-life is $4.5$ days.",
       "difficulty": "stretch",
@@ -2493,12 +2599,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "dabb28b80055fdef78c579fd5ac6e6f9c81a418a1b95b6e916e8b31eb787cc44",
-      "imageHash": "dabb28b80055fdef78c579fd5ac6e6f9c81a418a1b95b6e916e8b31eb787cc44",
+      "imageHash": "ad4cc370e3cfe7ce6b2b7356f285b98272e1ac63c0dd12b58dfad3f5be334104",
       "searchText": "The activity of a radioactive sample falls from $960\\text{ Bq}$ to $60\\text{ Bq}$ in $18$ days. What is the half-life of the sample? Radioactivity Half-life"
     },
     {
       "id": "atlas-challenge-a-physics-q27",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2516,9 +2622,11 @@
       "promptTemplateHash": "fa41c4140b3f992c5655a6441b22589a7d7bfe56e4e34cc8c492ffdd66f5a001",
       "questionImage": "",
       "questionText": "A nucleus of uranium-238, which has atomic number $92$, emits one alpha particle and then two beta-minus particles. What are the mass number and atomic number of the resulting nuclide?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "Mass number $230$, atomic number $92$",
-        "B": "Mass number $238$, atomic number $90$",
+        "A": "Mass number $238$, atomic number $90$",
+        "B": "Mass number $230$, atomic number $92$",
         "C": "Mass number $234$, atomic number $92$",
         "D": "Mass number $234$, atomic number $90$",
         "E": "Mass number $234$, atomic number $91$"
@@ -2545,7 +2653,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q01",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2563,12 +2671,14 @@
       "promptTemplateHash": "aae95e91dadc14b06993a5e03d54692d8ac04143b3fa1d4481062364d6e19ead",
       "questionImage": "",
       "questionText": "The polynomial $p(x) = 2x^3 + ax^2 - 5x + b$ has $(x - 2)$ as a factor and leaves a remainder of $-6$ when divided by $(x + 1)$. What is the value of $b$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$2$",
-        "B": "$-10$",
-        "C": "$-6$",
-        "D": "$10$",
-        "E": "$-4$"
+        "A": "$10$",
+        "B": "$-6$",
+        "C": "$2$",
+        "D": "$-4$",
+        "E": "$-10$"
       },
       "answerOptions": [
         "A",
@@ -2577,7 +2687,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$-10$",
       "explanation": "$p(2) = 0$ gives $4a + b = -6$, and $p(-1) = -6$ gives $a + b = -9$. Subtracting, $3a = 3$, so $a = 1$ and $b = -10$.",
       "difficulty": "stretch",
@@ -2592,7 +2702,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q02",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2610,12 +2720,14 @@
       "promptTemplateHash": "ffb5b4c948b897c4543b753496aee1022c49640acf993676767a3a0bc3102764",
       "questionImage": "",
       "questionText": "The identity $\\frac{5x - 1}{(x - 1)(x + 2)} = \\frac{A}{x - 1} + \\frac{B}{x + 2}$ holds for all valid $x$. What is the value of $AB$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\frac{11}{3}$",
-        "B": "$\\frac{5}{3}$",
-        "C": "$\\frac{44}{3}$",
-        "D": "$\\frac{44}{9}$",
-        "E": "$\\frac{4}{3}$"
+        "A": "$\\frac{4}{3}$",
+        "B": "$\\frac{44}{3}$",
+        "C": "$\\frac{44}{9}$",
+        "D": "$\\frac{5}{3}$",
+        "E": "$\\frac{11}{3}$"
       },
       "answerOptions": [
         "A",
@@ -2624,7 +2736,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$\\frac{44}{9}$",
       "explanation": "Setting $x = 1$ gives $A = \\frac{4}{3}$, and setting $x = -2$ gives $B = \\frac{-11}{-3} = \\frac{11}{3}$. Their product is $\\frac{44}{9}$.",
       "difficulty": "stretch",
@@ -2639,7 +2751,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q03",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2657,12 +2769,14 @@
       "promptTemplateHash": "c99f0bf6b4597dd043c677b287d012e11c894130d38f98ee27a32b11e54dee7b",
       "questionImage": "",
       "questionText": "The equation $kx^2 + (k + 3)x + 4 = 0$ has equal roots. What are the possible values of $k$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$k = 1$ or $k = 9$",
+        "A": "$k = 9$ only",
         "B": "$k = 3$ or $k = 12$",
-        "C": "$k = -1$ or $k = -9$",
-        "D": "$k = 2$ or $k = 8$",
-        "E": "$k = 9$ only"
+        "C": "$k = 1$ or $k = 9$",
+        "D": "$k = -1$ or $k = -9$",
+        "E": "$k = 2$ or $k = 8$"
       },
       "answerOptions": [
         "A",
@@ -2671,7 +2785,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$k = 1$ or $k = 9$",
       "explanation": "Equal roots need $(k + 3)^2 = 16k$, so $k^2 - 10k + 9 = 0$ and $(k - 1)(k - 9) = 0$, giving $k = 1$ or $k = 9$. Both are non-zero, so both are valid.",
       "difficulty": "stretch",
@@ -2686,7 +2800,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q04",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2704,12 +2818,14 @@
       "promptTemplateHash": "f121ab650a8661af6f2e6837cdd4aa08c12f2208d55260d3702f79382d4e26eb",
       "questionImage": "",
       "questionText": "Find the complete set of real values of $x$ that satisfy the inequality $|2x - 5| < x + 1$.",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$-6 < x < \\frac{4}{3}$",
-        "B": "$\\frac{4}{3} < x < 4$",
-        "C": "$\\frac{4}{3} < x < 6$",
-        "D": "$x < 6$",
-        "E": "$x > \\frac{4}{3}$"
+        "A": "$\\frac{4}{3} < x < 6$",
+        "B": "$x > \\frac{4}{3}$",
+        "C": "$x < 6$",
+        "D": "$-6 < x < \\frac{4}{3}$",
+        "E": "$\\frac{4}{3} < x < 4$"
       },
       "answerOptions": [
         "A",
@@ -2718,7 +2834,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$\\frac{4}{3} < x < 6$",
       "explanation": "The right-hand side must be positive. Writing $-(x + 1) < 2x - 5 < x + 1$ gives $x > \\frac{4}{3}$ from the left inequality and $x < 6$ from the right.",
       "difficulty": "stretch",
@@ -2733,7 +2849,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q05",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2751,12 +2867,14 @@
       "promptTemplateHash": "42b87cd1606647ecef8c63c38d738934db34c4a4e34f816f6feaac11cf72d4ef",
       "questionImage": "",
       "questionText": "The sum of the first $n$ terms of an arithmetic series is $S_n = 2n^2 + 3n$. What is the $10$th term of the series?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$43$",
-        "B": "$39$",
-        "C": "$46$",
-        "D": "$23$",
-        "E": "$41$"
+        "B": "$46$",
+        "C": "$39$",
+        "D": "$41$",
+        "E": "$23$"
       },
       "answerOptions": [
         "A",
@@ -2765,7 +2883,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "D",
       "verifiedCorrectText": "$41$",
       "explanation": "The $n$th term is $S_n - S_{n-1}$. Here $S_{10} = 230$ and $S_9 = 189$, so the $10$th term is $41$.",
       "difficulty": "stretch",
@@ -2780,7 +2898,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q06",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2798,12 +2916,14 @@
       "promptTemplateHash": "9bf78b7428d8745d6e9ee68d5346a05347bce694880413d4c472f24452ce4d79",
       "questionImage": "",
       "questionText": "A convergent geometric series has first term $12$ and sum to infinity $20$. What is its fourth term?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\frac{8}{125}$",
-        "B": "$\\frac{96}{125}$",
-        "C": "$\\frac{48}{25}$",
-        "D": "$\\frac{24}{125}$",
-        "E": "$\\frac{96}{25}$"
+        "A": "$\\frac{96}{125}$",
+        "B": "$\\frac{24}{125}$",
+        "C": "$\\frac{96}{25}$",
+        "D": "$\\frac{8}{125}$",
+        "E": "$\\frac{48}{25}$"
       },
       "answerOptions": [
         "A",
@@ -2812,7 +2932,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$\\frac{96}{125}$",
       "explanation": "From $\\frac{a}{1 - r} = 20$ with $a = 12$, we get $1 - r = \\frac{3}{5}$, so $r = \\frac{2}{5}$. The fourth term is $12(\\frac{2}{5})^3 = \\frac{96}{125}$.",
       "difficulty": "stretch",
@@ -2827,7 +2947,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q07",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2845,12 +2965,14 @@
       "promptTemplateHash": "975e21aa2b112a2ec3c644cf6a230ee6143471371c1c25a488d691006530f04d",
       "questionImage": "",
       "questionText": "What is the coefficient of $x^3$ in the binomial expansion of $(2 + 3x)^5$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$810$",
-        "B": "$2160$",
-        "C": "$270$",
-        "D": "$1080$",
-        "E": "$720$"
+        "A": "$270$",
+        "B": "$1080$",
+        "C": "$720$",
+        "D": "$2160$",
+        "E": "$810$"
       },
       "answerOptions": [
         "A",
@@ -2859,7 +2981,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$1080$",
       "explanation": "The $x^3$ term is $\\binom{5}{3} \\times 2^2 \\times (3x)^3 = 10 \\times 4 \\times 27x^3$, so the coefficient is $1080$.",
       "difficulty": "stretch",
@@ -2874,7 +2996,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q08",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2892,12 +3014,14 @@
       "promptTemplateHash": "f3aa35502702d867e65cd50d828c97c9f407f8ace219a153e23cab95fa0af9b2",
       "questionImage": "",
       "questionText": "A circle has equation $x^2 + y^2 - 6x + 8y + 9 = 0$. What is the length of a tangent drawn to the circle from the origin?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$3$",
-        "B": "$4$",
-        "C": "$5$",
-        "D": "$\\sqrt{41}$",
-        "E": "$9$"
+        "B": "$5$",
+        "C": "$9$",
+        "D": "$4$",
+        "E": "$\\sqrt{41}$"
       },
       "answerOptions": [
         "A",
@@ -2921,7 +3045,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q09",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2939,11 +3063,13 @@
       "promptTemplateHash": "dd45ec52eb27c48695453d5fab1e8a5a6a7fb77e53b2bbe4df1a40c3c3abd164",
       "questionImage": "",
       "questionText": "Points $A(-1, 4)$ and $B(5, -2)$ are given. The perpendicular bisector of $AB$ is written as $y = mx + c$. What is the value of $c$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$-3$",
-        "B": "$2$",
-        "C": "$-1$",
-        "D": "$1$",
+        "A": "$-1$",
+        "B": "$-3$",
+        "C": "$1$",
+        "D": "$2$",
         "E": "$3$"
       },
       "answerOptions": [
@@ -2953,7 +3079,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$-1$",
       "explanation": "The midpoint of $AB$ is $(2, 1)$ and $AB$ has gradient $-1$, so the bisector has gradient $1$. Then $1 = 2 + c$ gives $c = -1$.",
       "difficulty": "stretch",
@@ -2968,7 +3094,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q10",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -2986,12 +3112,14 @@
       "promptTemplateHash": "3a74122745afaad985e5714fb859686487d40c4ed80dae170768a6281b995833",
       "questionImage": "",
       "questionText": "The line $y = x + 2$ meets the curve $y = x^2$ at two points. What is the area of the region enclosed between the line and the curve?",
+      "questionDiagram": "questions/original/atlas-challenge-a-maths2-q10.png",
+      "questionDiagramAlt": "Coordinate graph of y equals x squared and y equals x plus 2, with the enclosed region between x equals minus 1 and x equals 2 shaded.",
       "optionText": {
-        "A": "$9$",
-        "B": "$\\frac{27}{2}$",
-        "C": "$4$",
-        "D": "$3$",
-        "E": "$\\frac{9}{2}$"
+        "A": "$\\frac{9}{2}$",
+        "B": "$3$",
+        "C": "$9$",
+        "D": "$\\frac{27}{2}$",
+        "E": "$4$"
       },
       "answerOptions": [
         "A",
@@ -3000,7 +3128,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$\\frac{9}{2}$",
       "explanation": "The curves meet where $x^2 - x - 2 = 0$, so $x = -1$ and $x = 2$. Integrating $(x + 2 - x^2)$ between those limits gives $\\frac{9}{2}$.",
       "difficulty": "stretch",
@@ -3010,12 +3138,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "d342bac5c120b9377fcc356548451bf7c0ecb68fd8a218fa97e1fb0b79e34a7f",
-      "imageHash": "d342bac5c120b9377fcc356548451bf7c0ecb68fd8a218fa97e1fb0b79e34a7f",
+      "imageHash": "b5b1be83d6427d491b4a03b117318e61dbee325a6470aca4f77b2829e5ea5be5",
       "searchText": "The line $y = x + 2$ meets the curve $y = x^2$ at two points. What is the area of the region enclosed between the line and the curve? Coordinate geometry Areas between graphs"
     },
     {
       "id": "atlas-challenge-a-maths2-q11",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3033,12 +3161,14 @@
       "promptTemplateHash": "a0710379c758b18fd8c5352ca0899cc269ac5f5fea3291d03350aead9a55b37d",
       "questionImage": "",
       "questionText": "How many solutions does $3\\sin^2\\theta = 2 + \\cos\\theta$ have in the interval $0 \\le \\theta < 360\\deg$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$0$",
-        "B": "$4$",
+        "A": "$6$",
+        "B": "$0$",
         "C": "$2$",
         "D": "$3$",
-        "E": "$6$"
+        "E": "$4$"
       },
       "answerOptions": [
         "A",
@@ -3047,7 +3177,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$4$",
       "explanation": "Using $\\sin^2\\theta = 1 - \\cos^2\\theta$ gives $3\\cos^2\\theta + \\cos\\theta - 1 = 0$, whose roots are both between $-1$ and $1$. Each valid cosine value gives two angles in the interval, so there are four solutions.",
       "difficulty": "stretch",
@@ -3062,7 +3192,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q12",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3080,12 +3210,14 @@
       "promptTemplateHash": "e6664b20b6b1b5067c65bca225a47dc03214e642b587777af53a045df6e310c5",
       "questionImage": "",
       "questionText": "In triangle $ABC$, $AB = 7\\text{ cm}$, $BC = 8\\text{ cm}$ and angle $ABC = 60\\deg$. What is the exact length of $AC$?",
+      "questionDiagram": "questions/original/atlas-challenge-a-maths2-q12.png",
+      "questionDiagramAlt": "Triangle ABC with AB 7 cm, BC 8 cm and included angle ABC 60 degrees.",
       "optionText": {
         "A": "$\\sqrt{99}\\text{ cm}$",
-        "B": "$11\\text{ cm}$",
-        "C": "$\\sqrt{85}\\text{ cm}$",
+        "B": "$\\sqrt{85}\\text{ cm}$",
+        "C": "$\\sqrt{113}\\text{ cm}$",
         "D": "$\\sqrt{57}\\text{ cm}$",
-        "E": "$\\sqrt{113}\\text{ cm}$"
+        "E": "$11\\text{ cm}$"
       },
       "answerOptions": [
         "A",
@@ -3104,12 +3236,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "f7739d56b8341d2e39466a1954416810a02663d3ad237c1090e0b0dcc794511f",
-      "imageHash": "f7739d56b8341d2e39466a1954416810a02663d3ad237c1090e0b0dcc794511f",
+      "imageHash": "81063e6156728486711ea676ac43e3b3e1867bee2bb2488d1861afc44b9cdee4",
       "searchText": "In triangle $ABC$, $AB = 7\\text{ cm}$, $BC = 8\\text{ cm}$ and angle $ABC = 60\\deg$. What is the exact length of $AC$? Trigonometry Cosine rule"
     },
     {
       "id": "atlas-challenge-a-maths2-q13",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3127,12 +3259,14 @@
       "promptTemplateHash": "38964f3b4e949491d02ac8e8aa9a2342653d6fe621e03c7cffa79ceea484f864",
       "questionImage": "",
       "questionText": "Given that $\\tan\\theta = \\frac{3}{4}$ and $\\theta$ is acute, what is the exact value of $\\sin 2\\theta$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\frac{24}{25}$",
+        "A": "$\\frac{24}{7}$",
         "B": "$\\frac{12}{25}$",
-        "C": "$\\frac{7}{25}$",
-        "D": "$\\frac{24}{7}$",
-        "E": "$\\frac{3}{5}$"
+        "C": "$\\frac{3}{5}$",
+        "D": "$\\frac{24}{25}$",
+        "E": "$\\frac{7}{25}$"
       },
       "answerOptions": [
         "A",
@@ -3141,7 +3275,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "D",
       "verifiedCorrectText": "$\\frac{24}{25}$",
       "explanation": "A $3$–$4$–$5$ triangle gives $\\sin\\theta = \\frac{3}{5}$ and $\\cos\\theta = \\frac{4}{5}$. Then $\\sin 2\\theta = 2\\sin\\theta\\cos\\theta = \\frac{24}{25}$.",
       "difficulty": "stretch",
@@ -3156,7 +3290,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q14",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3174,12 +3308,14 @@
       "promptTemplateHash": "b3b6255294ad6706ed5298be612be8576cf467b9ef2b6eb35dd020f313215e8c",
       "questionImage": "",
       "questionText": "A triangle has sides of $9\\text{ cm}$ and $12\\text{ cm}$ with an included angle of $150\\deg$. What is its area?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$27\\sqrt{3}\\text{ cm}^2$",
+        "A": "$46.8\\text{ cm}^2$",
         "B": "$13.5\\text{ cm}^2$",
-        "C": "$27\\text{ cm}^2$",
-        "D": "$54\\text{ cm}^2$",
-        "E": "$46.8\\text{ cm}^2$"
+        "C": "$54\\text{ cm}^2$",
+        "D": "$27\\sqrt{3}\\text{ cm}^2$",
+        "E": "$27\\text{ cm}^2$"
       },
       "answerOptions": [
         "A",
@@ -3188,7 +3324,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$27\\text{ cm}^2$",
       "explanation": "Area $= \\frac{1}{2}ab\\sin C$ with $\\sin 150\\deg = \\frac{1}{2}$, so the area is $\\frac{1}{2} \\times 9 \\times 12 \\times \\frac{1}{2} = 27\\text{ cm}^2$.",
       "difficulty": "stretch",
@@ -3203,7 +3339,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q15",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3221,12 +3357,14 @@
       "promptTemplateHash": "77a5a8e7107eaa2e2c6d9c2433e909ee9ddde2e1d07c868ffa8b2cb31ef3b327",
       "questionImage": "",
       "questionText": "Solve the equation $\\log_3(x + 6) - \\log_3(x - 2) = 2$, giving the value of $x$ that lies in the domain of both logarithms.",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$x = 4$",
+        "A": "$x = 6$",
         "B": "$x = 2.5$",
-        "C": "$x = 6$",
+        "C": "$x = 3$",
         "D": "$x = \\frac{12}{7}$",
-        "E": "$x = 3$"
+        "E": "$x = 4$"
       },
       "answerOptions": [
         "A",
@@ -3235,7 +3373,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$x = 3$",
       "explanation": "The left side is $\\log_3\\frac{x + 6}{x - 2}$, so $\\frac{x + 6}{x - 2} = 9$. Then $x + 6 = 9x - 18$ and $x = 3$, which satisfies $x > 2$.",
       "difficulty": "stretch",
@@ -3250,7 +3388,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q16",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3268,12 +3406,14 @@
       "promptTemplateHash": "0600863416457cffa249855f60d8aeeef9bb835cd2c3fe0b6317a638b899e044",
       "questionImage": "",
       "questionText": "A radioactive mass decays according to $m = 40e^{-0.05t}$, where $m$ is in grams and $t$ is in years. After how many whole years does the mass first fall below $12\\text{ g}$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$22$",
-        "B": "$25$",
-        "C": "$20$",
+        "A": "$28$",
+        "B": "$20$",
+        "C": "$22$",
         "D": "$26$",
-        "E": "$28$"
+        "E": "$25$"
       },
       "answerOptions": [
         "A",
@@ -3282,7 +3422,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "B",
+      "correctAnswer": "E",
       "verifiedCorrectText": "$25$",
       "explanation": "Solving $40e^{-0.05t} = 12$ gives $t = \\frac{\\ln\\frac{10}{3}}{0.05} = 24.08$ years, so the mass is still above $12\\text{ g}$ at $t = 24$ and below it at $t = 25$.",
       "difficulty": "stretch",
@@ -3297,7 +3437,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q17",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3315,11 +3455,13 @@
       "promptTemplateHash": "b3e6fd1729f9c3dd267bee154b8242806b2c4523825efc663e490871ded25815",
       "questionImage": "",
       "questionText": "Given that $\\log_a 2 = p$ and $\\log_a 3 = q$, express $\\log_a 13.5$ in terms of $p$ and $q$.",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
         "A": "$q - p$",
-        "B": "$2q - p$",
+        "B": "$3q - p$",
         "C": "$p - 3q$",
-        "D": "$3q - p$",
+        "D": "$2q - p$",
         "E": "$3q + p$"
       },
       "answerOptions": [
@@ -3329,7 +3471,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$3q - p$",
       "explanation": "Note that $13.5 = \\frac{27}{2}$, so the logarithm is $\\log_a 27 - \\log_a 2 = 3\\log_a 3 - \\log_a 2 = 3q - p$.",
       "difficulty": "stretch",
@@ -3344,7 +3486,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q18",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3362,12 +3504,14 @@
       "promptTemplateHash": "d01692edda1e1ca7019095648e589cba59da2947a39c58f925133b0a5bbb22ac",
       "questionImage": "",
       "questionText": "For $x > 0$ the curve $y = x + \\frac{4}{x}$ has one stationary point. What is its $x$-coordinate and what is its nature?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$x = 2$, a minimum",
-        "B": "$x = 2$, a maximum",
-        "C": "$x = 4$, a minimum",
-        "D": "$x = \\sqrt{2}$, a minimum",
-        "E": "$x = -2$, a minimum"
+        "A": "$x = 2$, a maximum",
+        "B": "$x = \\sqrt{2}$, a minimum",
+        "C": "$x = 2$, a minimum",
+        "D": "$x = -2$, a minimum",
+        "E": "$x = 4$, a minimum"
       },
       "answerOptions": [
         "A",
@@ -3376,7 +3520,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$x = 2$, a minimum",
       "explanation": "Differentiating gives $1 - \\frac{4}{x^2} = 0$, so $x = 2$ for $x > 0$. The second derivative $\\frac{8}{x^3}$ is positive there, so the point is a minimum.",
       "difficulty": "stretch",
@@ -3391,7 +3535,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q19",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3409,12 +3553,14 @@
       "promptTemplateHash": "090f61d827c35d560ef23bd0c975dc1c116f9967f6098d4690b22bc5a12865a9",
       "questionImage": "",
       "questionText": "The normal to the curve $y = x^3 - 2x$ at the point where $x = 1$ is drawn. What is the $y$-intercept of that normal?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$2$",
+        "A": "$-2$",
         "B": "$-1$",
         "C": "$0$",
-        "D": "$-2$",
-        "E": "$1$"
+        "D": "$1$",
+        "E": "$2$"
       },
       "answerOptions": [
         "A",
@@ -3438,7 +3584,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q20",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3456,12 +3602,14 @@
       "promptTemplateHash": "f5e2f2a2ef5edffa9bba851427cfe511525b47dc42d9efa2aa1c41d7b60dcc8f",
       "questionImage": "",
       "questionText": "Given $y = (2x - 1)^3(x + 4)$, what is the value of $\\frac{dy}{dx}$ when $x = 1$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$30$",
-        "B": "$11$",
+        "A": "$31$",
+        "B": "$30$",
         "C": "$36$",
-        "D": "$26$",
-        "E": "$31$"
+        "D": "$11$",
+        "E": "$26$"
       },
       "answerOptions": [
         "A",
@@ -3470,7 +3618,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$31$",
       "explanation": "By the product rule, $\\frac{dy}{dx} = 6(2x - 1)^2(x + 4) + (2x - 1)^3$. At $x = 1$ this is $6(1)(5) + 1 = 31$.",
       "difficulty": "stretch",
@@ -3485,7 +3633,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q21",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3503,12 +3651,14 @@
       "promptTemplateHash": "038dcf40d4d137285d9a79ea8f04da9061ec44e44d95750886318a54f2de41fa",
       "questionImage": "",
       "questionText": "A closed cylinder has a volume of $128\\pi\\text{ cm}^3$. What radius gives the least total surface area?",
+      "questionDiagram": "questions/original/atlas-challenge-a-maths2-q21.png",
+      "questionDiagramAlt": "Closed cylinder labelled with radius r and height h, and a stated volume of 128 pi cubic centimetres.",
       "optionText": {
         "A": "$16\\text{ cm}$",
         "B": "$4\\text{ cm}$",
-        "C": "$2\\text{ cm}$",
-        "D": "$8\\text{ cm}$",
-        "E": "$4\\sqrt{2}\\text{ cm}$"
+        "C": "$8\\text{ cm}$",
+        "D": "$4\\sqrt{2}\\text{ cm}$",
+        "E": "$2\\text{ cm}$"
       },
       "answerOptions": [
         "A",
@@ -3527,12 +3677,12 @@
       "reviewRequired": false,
       "importConfidence": "high",
       "sourceHash": "887209a67168c04167a486ba7b850e1e32783255fdbb496434440125a36f9c18",
-      "imageHash": "887209a67168c04167a486ba7b850e1e32783255fdbb496434440125a36f9c18",
+      "imageHash": "8ff0288ec1a1006fa748fb55489711d140ad02bf72f8e28fa29b7215764c881b",
       "searchText": "A closed cylinder has a volume of $128\\pi\\text{ cm}^3$. What radius gives the least total surface area? Differentiation Optimisation"
     },
     {
       "id": "atlas-challenge-a-maths2-q22",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3550,12 +3700,14 @@
       "promptTemplateHash": "33e40415efd3b45811298717c0297f5d3183883c47b0beab2875c72ed004de7d",
       "questionImage": "",
       "questionText": "Evaluate the definite integral $\\int_1^4 \\left(3\\sqrt{x} - \\frac{2}{x^2}\\right) dx$, giving your answer as an exact fraction.",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\frac{23}{2}$",
-        "B": "$12$",
-        "C": "$14$",
-        "D": "$\\frac{25}{2}$",
-        "E": "$\\frac{27}{2}$"
+        "A": "$14$",
+        "B": "$\\frac{25}{2}$",
+        "C": "$12$",
+        "D": "$\\frac{27}{2}$",
+        "E": "$\\frac{23}{2}$"
       },
       "answerOptions": [
         "A",
@@ -3564,7 +3716,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$\\frac{25}{2}$",
       "explanation": "An antiderivative is $2x^{3/2} + \\frac{2}{x}$. At $x = 4$ this is $16.5$ and at $x = 1$ it is $4$, so the integral equals $\\frac{25}{2}$.",
       "difficulty": "stretch",
@@ -3579,7 +3731,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q23",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3597,12 +3749,14 @@
       "promptTemplateHash": "0a733e7a22fb0de7352b9ed6a7686760a3c642ce8c111d402a27c11cb7db489e",
       "questionImage": "",
       "questionText": "What is the area of the region enclosed between the curve $y = x(4 - x)$ and the $x$-axis?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$\\frac{32}{3}$",
-        "B": "$\\frac{16}{3}$",
-        "C": "$\\frac{64}{3}$",
-        "D": "$8$",
-        "E": "$16$"
+        "A": "$8$",
+        "B": "$16$",
+        "C": "$\\frac{32}{3}$",
+        "D": "$\\frac{16}{3}$",
+        "E": "$\\frac{64}{3}$"
       },
       "answerOptions": [
         "A",
@@ -3611,7 +3765,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "A",
+      "correctAnswer": "C",
       "verifiedCorrectText": "$\\frac{32}{3}$",
       "explanation": "The curve meets the axis at $x = 0$ and $x = 4$. Integrating $4x - x^2$ between them gives $32 - \\frac{64}{3} = \\frac{32}{3}$.",
       "difficulty": "stretch",
@@ -3626,7 +3780,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q24",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3644,11 +3798,13 @@
       "promptTemplateHash": "8a1b21497664b36ee134658358f5b8f7feffca23f025d6de4712a2df41645fda",
       "questionImage": "",
       "questionText": "A curve has gradient $\\frac{dy}{dx} = 6x - 4$ and passes through the point $(2, 5)$. What is $y$ when $x = 4$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$37$",
-        "B": "$25$",
-        "C": "$33$",
-        "D": "$32$",
+        "A": "$32$",
+        "B": "$33$",
+        "C": "$25$",
+        "D": "$37$",
         "E": "$29$"
       },
       "answerOptions": [
@@ -3658,7 +3814,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "C",
+      "correctAnswer": "B",
       "verifiedCorrectText": "$33$",
       "explanation": "Integrating gives $y = 3x^2 - 4x + c$, and $12 - 8 + c = 5$ fixes $c = 1$. At $x = 4$, $y = 48 - 16 + 1 = 33$.",
       "difficulty": "stretch",
@@ -3673,7 +3829,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q25",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3691,12 +3847,14 @@
       "promptTemplateHash": "af7740184d961f7ebb224162677126e32ee73a6072c1ca094780c5e92e577340",
       "questionImage": "",
       "questionText": "The trapezium rule with four strips of equal width is used to estimate $\\int_0^2 \\sqrt{1 + x^3}\\, dx$. What is the estimate to 3 significant figures, and is it an overestimate or an underestimate?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$3.28$, an underestimate",
-        "B": "$3.13$, an overestimate",
-        "C": "$6.57$, an overestimate",
-        "D": "$2.98$, an underestimate",
-        "E": "$3.28$, an overestimate"
+        "A": "$3.28$, an overestimate",
+        "B": "$3.28$, an underestimate",
+        "C": "$3.13$, an overestimate",
+        "D": "$6.57$, an overestimate",
+        "E": "$2.98$, an underestimate"
       },
       "answerOptions": [
         "A",
@@ -3705,7 +3863,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "E",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$3.28$, an overestimate",
       "explanation": "With $h = 0.5$ the ordinates are $1$, $1.0607$, $1.4142$, $2.0917$ and $3$, giving $0.25(4 + 2 \\times 4.5665) = 3.28$. The curve is convex on this interval, so each chord lies above it and the rule overestimates.",
       "difficulty": "stretch",
@@ -3720,7 +3878,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q26",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3738,11 +3896,13 @@
       "promptTemplateHash": "a6290235a2ad061c7d5454c1a3a6e87539a992ea4fd4f24cadf35e492b020e17",
       "questionImage": "",
       "questionText": "The graph of $y = f(x)$ has a minimum point at $(3, -2)$. What are the coordinates of the minimum point of $y = 2f(x - 1) + 5$?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$(2, 3)$",
+        "A": "$(4, 3)$",
         "B": "$(4, 1)$",
-        "C": "$(2, 1)$",
-        "D": "$(4, 3)$",
+        "C": "$(2, 3)$",
+        "D": "$(2, 1)$",
         "E": "$(4, -4)$"
       },
       "answerOptions": [
@@ -3767,7 +3927,7 @@
     },
     {
       "id": "atlas-challenge-a-maths2-q27",
-      "questionBankVersion": "esat-atlas-original-challenge-a-v4",
+      "questionBankVersion": "esat-atlas-original-challenge-a-v5",
       "year": 2026,
       "sourceExam": "ESAT Atlas Original",
       "sourcePaper": "Challenge Mock A",
@@ -3785,12 +3945,14 @@
       "promptTemplateHash": "b92ba6ba35f7f46eaca4a5baea64c776e672e3f794455efeefb767327a91ee49",
       "questionImage": "",
       "questionText": "The curve $y = \\frac{2x + 3}{x - 1}$ has one vertical and one horizontal asymptote. What are they?",
+      "questionDiagram": "",
+      "questionDiagramAlt": "",
       "optionText": {
-        "A": "$x = 1$ and $y = 3$",
+        "A": "$x = 1$ and $y = 2$",
         "B": "$x = 1$ and $y = -3$",
-        "C": "$x = 2$ and $y = 1$",
-        "D": "$x = 1$ and $y = 2$",
-        "E": "$x = -1$ and $y = 2$"
+        "C": "$x = -1$ and $y = 2$",
+        "D": "$x = 1$ and $y = 3$",
+        "E": "$x = 2$ and $y = 1$"
       },
       "answerOptions": [
         "A",
@@ -3799,7 +3961,7 @@
         "D",
         "E"
       ],
-      "correctAnswer": "D",
+      "correctAnswer": "A",
       "verifiedCorrectText": "$x = 1$ and $y = 2$",
       "explanation": "The denominator vanishes at $x = 1$, giving the vertical asymptote. As $x$ grows the ratio tends to $\\frac{2x}{x} = 2$, giving the horizontal asymptote $y = 2$.",
       "difficulty": "stretch",
@@ -3820,6 +3982,7 @@
     "numberSwapDuplicates": 0,
     "allTopLevelSpecificationTopicsCovered": true,
     "optionsPerQuestion": 5,
+    "questionsWithDiagrams": 12,
     "perModule": {
       "maths1": {
         "questionCount": 27,
@@ -3865,6 +4028,6 @@
         }
       }
     },
-    "verification": "answer-option, uniqueness, structure, difficulty and specification-coverage assertions passed"
+    "verification": "answer-option, uniqueness, structure, difficulty, diagram-pairing and specification-coverage assertions passed"
   }
 }

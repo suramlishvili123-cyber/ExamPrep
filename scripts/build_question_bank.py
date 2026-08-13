@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pdfplumber
 import pypdfium2 as pdfium
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pypdf import PdfReader
 
 
@@ -28,7 +28,7 @@ SOURCE_DIR = APP_DIR.parent
 PUBLIC_DIR = APP_DIR / "public"
 DATA_DIR = PUBLIC_DIR / "data"
 QUESTIONS_DIR = PUBLIC_DIR / "questions"
-QA_DIR = PUBLIC_DIR / "qa"
+QA_DIR = APP_DIR / "qa"
 QUESTION_BANK_VERSION = "nsaa-s1-2017-2023-v2"
 SPECIFICATION_VERSION = "ESAT-2026-v7.1.1"
 RETRIEVAL_DATE = date.today().isoformat()
@@ -262,6 +262,105 @@ def render_crop(
     return hashlib.sha256(destination.read_bytes()).hexdigest(), stitched.size
 
 
+TRAILING_SOLUTION_PAGE_PATTERNS = (
+    re.compile(r"^We are Cambridge Assessment Admissions Testing\b", re.IGNORECASE),
+    re.compile(r"^This document was initially designed for print\b", re.IGNORECASE),
+)
+
+
+def solution_page_ranges(path: Path) -> dict[int, list[int]]:
+    """Return every zero-based source page belonging to each TMUA solution.
+
+    The booklets contain a contents page that repeats every ``Question N`` heading,
+    so the final heading match is the real solution start. Some solutions continue
+    onto one or more pages without repeating that heading. The range therefore ends
+    immediately before the next real question start. Known publisher/accessibility
+    back matter after question 20 is excluded explicitly.
+    """
+    page_text = [(page.extract_text() or "") for page in PdfReader(str(path)).pages]
+    starts: dict[int, int] = {}
+    for number in range(1, 21):
+        matches = [
+            page_index
+            for page_index, text in enumerate(page_text)
+            if re.search(rf"\bQuestion\s+{number}\b", text)
+        ]
+        if not matches:
+            raise RuntimeError(f"{path.name}: no worked-solution section for Q{number}")
+        starts[number] = matches[-1]
+
+    ordered_starts = [starts[number] for number in range(1, 21)]
+    if ordered_starts != sorted(set(ordered_starts)):
+        raise RuntimeError(f"{path.name}: worked-solution headings are not strictly ordered")
+
+    content_end = len(page_text)
+    while content_end > starts[20] + 1:
+        normalized = " ".join(page_text[content_end - 1].split())
+        if not any(pattern.search(normalized) for pattern in TRAILING_SOLUTION_PAGE_PATTERNS):
+            break
+        content_end -= 1
+
+    ranges: dict[int, list[int]] = {}
+    for number in range(1, 21):
+        end = starts[number + 1] if number < 20 else content_end
+        if end <= starts[number]:
+            raise RuntimeError(f"{path.name}: empty or reversed worked-solution range for Q{number}")
+        ranges[number] = list(range(starts[number], end))
+    return ranges
+
+
+def _trim_solution_image(
+    image: Image.Image,
+    padding: int = 28,
+    footer_fraction: float = 0.94,
+) -> Image.Image:
+    """Trim one rendered solution page before it is joined to continuations."""
+    content_area = image.convert("RGB").crop((0, 0, image.width, int(image.height * footer_fraction)))
+    ink = ImageOps.invert(content_area.convert("L")).point(lambda value: 255 if value > 18 else 0)
+    bounds = ink.getbbox()
+    if not bounds:
+        return content_area
+    left = max(0, bounds[0] - padding)
+    top = max(0, bounds[1] - padding)
+    right = min(content_area.width, bounds[2] + padding)
+    bottom = min(content_area.height, bounds[3] + padding)
+    return content_area.crop((left, top, right, bottom))
+
+
+def render_solution_pages(
+    document: pdfium.PdfDocument,
+    pages: list[pdfplumber.page.Page],
+    page_indexes: list[int],
+    destination: Path,
+    dpi: int = 180,
+) -> tuple[str, tuple[int, int]]:
+    """Render and stitch a complete worked solution, including continuation pages."""
+    if not page_indexes:
+        raise RuntimeError(f"Cannot render an empty solution range for {destination.name}")
+    scale = dpi / 72
+    rendered: list[Image.Image] = []
+    for page_index in page_indexes:
+        bitmap = document[page_index].render(scale=scale, rotation=0)
+        image = bitmap.to_pil().convert("RGB")
+        pdf_page = pages[page_index]
+        top_px = int(12 * image.height / pdf_page.height)
+        bottom_px = int((pdf_page.height - 24) * image.height / pdf_page.height)
+        rendered.append(_trim_solution_image(image.crop((0, top_px, image.width, bottom_px))))
+
+    gap = 18
+    width = max(image.width for image in rendered)
+    height = sum(image.height for image in rendered) + gap * (len(rendered) - 1)
+    stitched = Image.new("RGB", (width, height), "white")
+    y = 0
+    for image in rendered:
+        x = (width - image.width) // 2
+        stitched.paste(image, (x, y))
+        y += image.height + gap
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    stitched.save(destination, "WEBP", quality=86, method=6)
+    return sha256(destination), stitched.size
+
+
 def make_contact_sheets(questions: list[dict[str, object]]) -> list[str]:
     font = ImageFont.load_default()
     outputs: list[str] = []
@@ -289,7 +388,7 @@ def make_contact_sheets(questions: list[dict[str, object]]) -> list[str]:
         destination = QA_DIR / f"contact-sheet-{year}-{module}.webp"
         destination.parent.mkdir(parents=True, exist_ok=True)
         sheet.save(destination, "WEBP", quality=82, method=6)
-        outputs.append("/" + destination.relative_to(PUBLIC_DIR).as_posix())
+        outputs.append(destination.relative_to(APP_DIR).as_posix())
     return outputs
 
 
@@ -321,6 +420,7 @@ def build() -> None:
         inventory.append(
             {
                 "sourceFilename": pdf_path.name,
+                "sourceExam": "NSAA" if match else None,
                 "year": year,
                 "paperType": "question paper" if paper_type == "QuestionPaper" else "answer key" if paper_type == "AnswerKey" else paper_type,
                 "section": "Section 1" if match else None,
@@ -407,11 +507,10 @@ def build() -> None:
                 }
                 questions.append(question)
 
-    contact_sheets = make_contact_sheets(questions)
+    make_contact_sheets(questions)
     module_counts = Counter(str(question["targetModule"]) for question in questions if not question["excluded"])
     inventory_payload = {
         "generatedAt": RETRIEVAL_DATE,
-        "sourceDirectory": str(SOURCE_DIR),
         "files": inventory,
         "summary": {
             "fileCount": len(inventory),
@@ -431,7 +530,6 @@ def build() -> None:
             "includedQuestionCount": len(questions),
             "includedByModule": module_counts,
             "excludedByReason": source_exclusions,
-            "contactSheets": contact_sheets,
             "qualityAssurance": {
                 "visualCropReview": "complete",
                 "answerKeyCrossCheck": "required by validation",
@@ -440,8 +538,14 @@ def build() -> None:
             },
         },
     }
-    (DATA_DIR / "source-inventory.json").write_text(json.dumps(inventory_payload, indent=2), encoding="utf-8")
-    (DATA_DIR / "question-bank.json").write_text(json.dumps(bank_payload, indent=2), encoding="utf-8")
+    (DATA_DIR / "source-inventory.json").write_text(
+        json.dumps(inventory_payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (DATA_DIR / "question-bank.json").write_text(
+        json.dumps(bank_payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(bank_payload["summary"], indent=2, default=dict))
 
 

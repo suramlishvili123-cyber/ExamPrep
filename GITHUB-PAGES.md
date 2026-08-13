@@ -5,6 +5,9 @@ workflow does the rest.
 
 ## One-time setup
 
+Complete the legal/privacy/accessibility launch gates in `README.md` before enabling a
+public Pages deployment.
+
 1. Push this repository to GitHub (the `main` branch).
 2. In the repository, open **Settings → Pages**.
 3. Under **Build and deployment**, set the source to **GitHub Actions**.
@@ -15,6 +18,10 @@ workflow does the rest.
    `auth/unauthorized-domain` until this is done.
 6. Deploy `firestore.rules` to the `esat-a6d5d` project if those rules are not already
    active, so each signed-in user can only read and write their own data.
+7. After recording the evidence described in `PRODUCTION-CHECKLIST.md`, create these
+   GitHub Actions repository variables with the exact value `true`:
+   `CONTENT_RIGHTS_CONFIRMED`, `PRIVACY_NOTICE_COMPLETE`, and
+   `AUTHENTICATED_A11Y_REVIEW_COMPLETE`. The deploy job intentionally stops without them.
 
 ## Deploying
 
@@ -23,7 +30,8 @@ Every push to `main` runs the **Deploy ESAT Atlas to GitHub Pages** workflow, wh
 **Actions** tab.
 
 The build output contains `index.html`, a `404.html` fallback, compiled CSS/JavaScript,
-the full validated question bank, the original mocks and every question image. All paths
+a compact runtime projection of the validated question bank, the original mocks and every
+runtime question image. Internal QA/provenance manifests are deliberately excluded. All paths
 are relative, so `https://your-name.github.io/your-repo/` works without extra
 configuration.
 

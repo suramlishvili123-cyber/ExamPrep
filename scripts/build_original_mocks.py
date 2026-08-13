@@ -29,8 +29,26 @@ from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parents[1]
 OUTPUT = APP_DIR / "public" / "data" / "original-mocks.json"
-VERSION = "esat-atlas-original-challenge-a-v4"
+VERSION = "esat-atlas-original-challenge-a-v5"
 LETTERS = "ABCDEFGH"
+
+# A figure may only be attached to a question it actually depicts, and the alt text must
+# state every value the figure carries, because it is the sole source for a learner who
+# cannot see the image. Both are asserted in verify_diagrams() below.
+DIAGRAMS: dict[tuple[str, int], tuple[str, str]] = {
+    ("maths1", 15): ("questions/original/atlas-challenge-a-maths1-q15.png", "Speed-time graph: speed decreases uniformly from 30 m/s at 0 s to 12 m/s at 24 s, then remains at 12 m/s until 64 s."),
+    ("maths1", 18): ("questions/original/atlas-challenge-a-maths1-q18.png", "Right square-based pyramid with a 10 cm square base and a vertical height of 12 cm marked from the apex to the centre of the base."),
+    ("maths1", 19): ("questions/original/atlas-challenge-a-maths1-q19.png", "Circle with centre O. Tangents PA and PB meet at the external point P, radii OA and OB subtend 118 degrees at O, and C lies on the minor arc AB."),
+    ("maths1", 22): ("questions/original/atlas-challenge-a-maths1-q22.png", "Bearing diagram from port P: one route is 24 km on bearing 060 degrees and the other is 18 km on bearing 150 degrees."),
+    ("maths2", 10): ("questions/original/atlas-challenge-a-maths2-q10.png", "Coordinate graph of y equals x squared and y equals x plus 2, with the enclosed region between x equals minus 1 and x equals 2 shaded."),
+    ("maths2", 12): ("questions/original/atlas-challenge-a-maths2-q12.png", "Triangle ABC with AB 7 cm, BC 8 cm and included angle ABC 60 degrees."),
+    ("maths2", 21): ("questions/original/atlas-challenge-a-maths2-q21.png", "Closed cylinder labelled with radius r and height h, and a stated volume of 128 pi cubic centimetres."),
+    ("physics", 1): ("questions/original/physics-q01-resistor-network.png", "A 24 V source and 4 ohm resistor in series with parallel 6 ohm and 12 ohm branches."),
+    ("physics", 3): ("questions/original/physics-q03-thermistor-potential-divider.png", "A 9 V potential divider containing a 3 kilo-ohm fixed resistor and an NTC thermistor, with a voltmeter across the fixed resistor."),
+    ("physics", 14): ("questions/original/physics-q14-speed-time-graph.png", "Car speed-time graph: a constant 20 m/s through the 0.70 s reaction time, then uniform braking to rest at 4.70 s."),
+    ("physics", 22): ("questions/original/physics-q22-force-extension-graph.png", "Straight force-extension graph through 4.0 cm at 10 N and 10 cm at 25 N, with the triangular stored-energy area below the line shaded."),
+    ("physics", 26): ("questions/original/physics-q26-radioactive-decay-graph.png", "Activity-time decay graph starting at 960 Bq and passing 480, 240, 120 and 60 Bq at equal time intervals, reaching 60 Bq at 18 days."),
+}
 
 EXPECTED_TOPICS = {
     "maths1": {
@@ -122,6 +140,17 @@ def strip_math(value: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def diagram_hash(relative_path: str) -> str:
+    """Content hash of a shipped figure, so a redrawn diagram changes the question record."""
+    path = APP_DIR / "public" / relative_path
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"{relative_path} is referenced by DIAGRAMS but is missing. "
+            f"Run scripts/build_original_diagrams.py and scripts/build_original_math_diagrams.py first."
+        )
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def make_question(
     module: str,
     number: int,
@@ -142,12 +171,14 @@ def make_question(
     if len(values) < 5:
         raise ValueError(f"{module} Q{number}: fewer than five unique options")
     values = values[:5]
-    shift = (number * 3 + len(module)) % len(values)
-    values = values[shift:] + values[:shift]
+    # Stable hash ordering prevents an exploitable repeating answer-letter pattern while
+    # keeping the generated bank deterministic across machines and builds.
+    values.sort(key=lambda value: hashlib.sha256(f"{VERSION}|{module}|{number}|{value}".encode("utf-8")).digest())
     correct_index = values.index(correct)
     question_id = f"atlas-challenge-a-{module}-q{number:02d}"
     digest = hashlib.sha256(f"{prompt}|{correct}|{explanation}".encode("utf-8")).hexdigest()
     signature = prompt_signature(prompt)
+    diagram = DIAGRAMS.get((module, number))
     return {
         "id": question_id,
         "questionBankVersion": VERSION,
@@ -168,6 +199,8 @@ def make_question(
         "promptTemplateHash": hashlib.sha256(signature.encode("utf-8")).hexdigest(),
         "questionImage": "",
         "questionText": prompt,
+        "questionDiagram": diagram[0] if diagram else "",
+        "questionDiagramAlt": diagram[1] if diagram else "",
         "optionText": dict(zip(answer_letters := list(LETTERS[: len(values)]), values, strict=True)),
         "answerOptions": answer_letters,
         "correctAnswer": answer_letters[correct_index],
@@ -180,7 +213,7 @@ def make_question(
         "reviewRequired": False,
         "importConfidence": "high",
         "sourceHash": digest,
-        "imageHash": digest,
+        "imageHash": diagram_hash(diagram[0]) if diagram else digest,
         "searchText": f"{prompt} {topic} {subtopic}",
     }
 
@@ -886,6 +919,42 @@ def maths2() -> list[dict[str, object]]:
     return output
 
 
+def verify_diagrams(questions: list[dict[str, object]]) -> int:
+    """
+    Guard the figure set against the two ways it silently rots: a mapping that points at a
+    question number nobody authored, and a rendered PNG left behind by an earlier draft that
+    no question claims. Either one ships a figure next to the wrong stem.
+    """
+    keys = {(str(question["targetModule"]), int(question["originalQuestionNumber"])) for question in questions}
+    unmatched = sorted(key for key in DIAGRAMS if key not in keys)
+    if unmatched:
+        raise AssertionError(f"DIAGRAMS references questions that do not exist: {unmatched}")
+
+    referenced: set[Path] = set()
+    for question in questions:
+        relative = str(question["questionDiagram"])
+        if not relative:
+            if question["questionDiagramAlt"]:
+                raise AssertionError(f"{question['id']}: alt text without a diagram")
+            continue
+        alt = str(question["questionDiagramAlt"])
+        if len(alt) < 40:
+            raise AssertionError(f"{question['id']}: alt text is too short to replace the figure")
+        referenced.add((APP_DIR / "public" / relative).resolve())
+
+    figures_dir = APP_DIR / "public" / "questions" / "original"
+    if figures_dir.is_dir():
+        orphans = sorted(
+            path.name for path in figures_dir.glob("*.png") if path.resolve() not in referenced
+        )
+        if orphans:
+            raise AssertionError(
+                f"Rendered figures that no question references: {orphans}. "
+                f"Delete them or attach them to the question they depict."
+            )
+    return len(referenced)
+
+
 def validate(questions: list[dict[str, object]]) -> dict[str, object]:
     if len(questions) != 81:
         raise AssertionError(f"Expected 81 questions, found {len(questions)}")
@@ -955,6 +1024,8 @@ def validate(questions: list[dict[str, object]]) -> dict[str, object]:
         if question["reviewRequired"] or question["excluded"]:
             raise AssertionError(f"{question['id']}: a checked original question is held or excluded")
 
+    diagram_count = verify_diagrams(questions)
+
     return {
         "questionCount": 81,
         "distinctArchetypes": len(set(global_archetypes)),
@@ -962,8 +1033,9 @@ def validate(questions: list[dict[str, object]]) -> dict[str, object]:
         "numberSwapDuplicates": 0,
         "allTopLevelSpecificationTopicsCovered": True,
         "optionsPerQuestion": 5,
+        "questionsWithDiagrams": diagram_count,
         "perModule": module_summary,
-        "verification": "answer-option, uniqueness, structure, difficulty and specification-coverage assertions passed",
+        "verification": "answer-option, uniqueness, structure, difficulty, diagram-pairing and specification-coverage assertions passed",
     }
 
 

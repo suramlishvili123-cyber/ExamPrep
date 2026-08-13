@@ -1,8 +1,8 @@
 # ESAT Atlas
 
-A Cambridge Engineering ESAT preparation platform: sit real past papers by year, take
-harder-than-exam original mocks, and get a section-level breakdown with an estimated
-1.0–9.0 score for every attempt.
+An independent Cambridge Engineering ESAT preparation platform: sit historic papers by
+year, take harder-than-exam original mocks, and get a section-level breakdown with an
+estimated 1.0–9.0 score only when a result is sufficiently representative.
 
 It is a **single static site** with **Firebase (Google) authentication** and per-user
 Firestore storage. There is no server to run and no other authentication path.
@@ -14,7 +14,9 @@ Firestore storage. There is no server to run and no other authentication path.
   year and sit that paper in its printed question order at ESAT pace.
 - **Original challenge mocks.** 81 authored questions — one 27-question module each for
   Mathematics 1, Physics and Mathematics 2 — deliberately pitched above archive
-  difficulty, with five options per question and code-derived answers.
+  difficulty, with five options per question and code-derived answers. Twelve items carry
+  a generated figure, each shipped with alt text that restates every value the figure
+  shows, so the question is answerable without seeing it.
 - **Strict simulation.** 27-question, 40-minute modules and a sequential three-module
   Engineering mock. Timestamp-derived timing, automatic submission, reload recovery and
   multi-tab warnings.
@@ -22,6 +24,14 @@ Firestore storage. There is no server to run and no other authentication path.
   estimated score, standing, per-section (topic) breakdown, pacing analysis and a full
   question-by-question log.
 - **Mistake diagnosis and spaced retrieval** on a transparent 1–3–7–14–30 day schedule.
+- **Worked learning support on every question.** The 81 authored items retain their
+  checked derivations, all 160 TMUA items show the supplied publisher worked-solution
+  page, and the 357 answer-key-only NSAA/ENGAA items receive a clearly labelled,
+  specification-matched worked example with a best method, fastest valid route and
+  common traps. Source provenance is never blurred.
+- **Quick Tricks learning centre.** Twenty-two topic playbooks and eight universal
+  exam tactics teach calculator-free shortcuts together with their validity checks,
+  cautions and worked examples.
 - **Adaptive daily study plan.** A deterministic, evidence-led plan combines due
   retrieval, missing baselines, first-exposure topic weakness, fresh coverage, exam
   phase and available study time. Every recommendation shows its rationale, launches
@@ -60,9 +70,11 @@ console: enable the Google sign-in provider, add each deployed hostname under
 npm run build
 ```
 
-This produces `dist/` — a standalone `index.html`, compiled CSS/JavaScript, the complete
-question bank, the original mocks and every question image. All paths are relative, so it
-works from a repository sub-path. Source maps are not published.
+This produces `dist/` — a standalone `index.html`, compiled CSS/JavaScript, a compact
+runtime projection of the question bank, the original mocks and every runtime question
+image. QA contact sheets, OCR, crop coordinates and internal provenance manifests remain
+local and are not published. All paths are relative, so it works from a repository
+sub-path. Source maps are not published.
 
 Do not open `dist/index.html` over a `file://` URL: browsers block module and Firebase
 requests there. Serve it over HTTP(S) — `npm run preview` does this locally.
@@ -71,6 +83,22 @@ requests there. Serve it over HTTP(S) — `npm run preview` does this locally.
 
 See `GITHUB-PAGES.md`. The included workflow builds on every push to `main` and publishes
 `dist/`.
+
+## Launch gates
+
+The engineering pipeline being green is necessary but not sufficient for public launch.
+Before publishing, the operator must:
+
+- obtain written permission or qualified legal clearance for redistribution of the
+  historic question and worked-solution crops, and record the applicable attribution;
+- replace the operator placeholder in `PRIVACY.md` with a legal identity and contact;
+- deploy and test the current `firestore.rules`, Firebase authorised domain and Google
+  sign-in provider against the production hostname; and
+- complete a keyboard/screen-reader review. The historic publisher material is image-
+  based and does not yet have a fully reviewed accessible transcript for every item.
+
+See `PRIVACY.md` and `TERMS.md`. ESAT Atlas is not affiliated with or endorsed by UAT-UK,
+Pearson VUE, Cambridge or Imperial.
 
 ## Quality checks
 
@@ -84,16 +112,21 @@ as `validate:bank`, `typecheck`, `lint`, `test:unit` and `test:build`.
 
 `validate:bank` independently checks shipped images and answers against the supplied
 official keys and worked solutions, source/year/module totals, duplicate policy, file
-inventory, IDs and hashes. Contact sheets under `public/qa` support full visual crop
-review. The original mocks run deterministic answer, option, difficulty and
+inventory, IDs and hashes. It also verifies all 160 official worked-solution images and
+their provenance. Contact sheets under `public/qa` support full local visual crop review
+but the production post-build step removes them from `dist/`. The original mocks run
+deterministic answer, option, difficulty and
 specification-coverage assertions during generation, and the published answer key is
-snapshot-tested.
+snapshot-tested. Figure pairing is asserted from both ends: generation rejects a mapping
+that names a question nobody authored, and it rejects a rendered PNG that no question
+references, so a figure can never appear beside the wrong stem.
 
 ## Rebuild generated data
 
 ```bash
 npm run build:bank
 npm run build:mocks
+npm run build:solutions
 ```
 
 Python 3.12+ with `requirements.txt` installed is required for these two commands and for
@@ -109,6 +142,10 @@ The supplied PDFs remain authoritative. OCR-derived text is
 used only for indexing, duplicate detection and conservative topic tagging; learners see
 the rendered source question. The original mocks are labelled as authored practice and
 never as official UAT-UK material.
+
+`build:solutions` is the incremental path for refreshing the official TMUA solution
+assets without re-rendering the complete archive. A full `build:bank` also creates those
+assets and finishes by restoring the module-specific ESAT topic taxonomy.
 
 ## Layout
 

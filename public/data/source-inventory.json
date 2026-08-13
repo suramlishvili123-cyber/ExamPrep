@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-08-10",
-  "sourceDirectory": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS",
+  "generatedAt": "2026-08-13",
   "files": [
     {
       "sourceFilename": "NSAA_2017_S1_AnswerKey.pdf",
+      "sourceExam": "NSAA",
       "year": 2017,
       "paperType": "answer key",
       "section": "Section 1",
@@ -18,6 +18,7 @@
     },
     {
       "sourceFilename": "NSAA_2017_S1_QuestionPaper.pdf",
+      "sourceExam": "NSAA",
       "year": 2017,
       "paperType": "question paper",
       "section": "Section 1",
@@ -36,6 +37,7 @@
     },
     {
       "sourceFilename": "NSAA_2018_S1_AnswerKey.pdf",
+      "sourceExam": "NSAA",
       "year": 2018,
       "paperType": "answer key",
       "section": "Section 1",
@@ -50,6 +52,7 @@
     },
     {
       "sourceFilename": "NSAA_2018_S1_QuestionPaper.pdf",
+      "sourceExam": "NSAA",
       "year": 2018,
       "paperType": "question paper",
       "section": "Section 1",
@@ -68,6 +71,7 @@
     },
     {
       "sourceFilename": "NSAA_2019_S1_AnswerKey.pdf",
+      "sourceExam": "NSAA",
       "year": 2019,
       "paperType": "answer key",
       "section": "Section 1",
@@ -82,6 +86,7 @@
     },
     {
       "sourceFilename": "NSAA_2019_S1_QuestionPaper.pdf",
+      "sourceExam": "NSAA",
       "year": 2019,
       "paperType": "question paper",
       "section": "Section 1",
@@ -100,6 +105,7 @@
     },
     {
       "sourceFilename": "NSAA_2020_S1_AnswerKey.pdf",
+      "sourceExam": "NSAA",
       "year": 2020,
       "paperType": "answer key",
       "section": "Section 1",
@@ -114,6 +120,7 @@
     },
     {
       "sourceFilename": "NSAA_2020_S1_QuestionPaper.pdf",
+      "sourceExam": "NSAA",
       "year": 2020,
       "paperType": "question paper",
       "section": "Section 1",
@@ -131,6 +138,7 @@
     },
     {
       "sourceFilename": "NSAA_2021_S1_AnswerKey.pdf",
+      "sourceExam": "NSAA",
       "year": 2021,
       "paperType": "answer key",
       "section": "Section 1",
@@ -145,6 +153,7 @@
     },
     {
       "sourceFilename": "NSAA_2021_S1_QuestionPaper.pdf",
+      "sourceExam": "NSAA",
       "year": 2021,
       "paperType": "question paper",
       "section": "Section 1",
@@ -162,6 +171,7 @@
     },
     {
       "sourceFilename": "NSAA_2022_S1_AnswerKey.pdf",
+      "sourceExam": "NSAA",
       "year": 2022,
       "paperType": "answer key",
       "section": "Section 1",
@@ -176,6 +186,7 @@
     },
     {
       "sourceFilename": "NSAA_2022_S1_QuestionPaper.pdf",
+      "sourceExam": "NSAA",
       "year": 2022,
       "paperType": "question paper",
       "section": "Section 1",
@@ -193,6 +204,7 @@
     },
     {
       "sourceFilename": "NSAA_2023_S1_AnswerKey.pdf",
+      "sourceExam": "NSAA",
       "year": 2023,
       "paperType": "answer key",
       "section": "Section 1",
@@ -207,6 +219,7 @@
     },
     {
       "sourceFilename": "NSAA_2023_S1_QuestionPaper.pdf",
+      "sourceExam": "NSAA",
       "year": 2023,
       "paperType": "question paper",
       "section": "Section 1",
@@ -224,7 +237,6 @@
     },
     {
       "sourceFilename": "ENGAA_2016_S1_QuestionPaper.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2016_S1_QuestionPaper.pdf",
       "sourceExam": "ENGAA",
       "year": 2016,
       "paperType": "question paper",
@@ -242,7 +254,6 @@
     },
     {
       "sourceFilename": "ENGAA_2016_S1_AnswerKey.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2016_S1_AnswerKey.pdf",
       "sourceExam": "ENGAA",
       "year": 2016,
       "paperType": "answer key",
@@ -258,7 +269,6 @@
     },
     {
       "sourceFilename": "ENGAA_2017_S1_QuestionPaper.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2017_S1_QuestionPaper.pdf",
       "sourceExam": "ENGAA",
       "year": 2017,
       "paperType": "question paper",
@@ -276,7 +286,6 @@
     },
     {
       "sourceFilename": "ENGAA_2017_S1_AnswerKey.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2017_S1_AnswerKey.pdf",
       "sourceExam": "ENGAA",
       "year": 2017,
       "paperType": "answer key",
@@ -292,7 +301,6 @@
     },
     {
       "sourceFilename": "ENGAA_2018_S1_QuestionPaper.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2018_S1_QuestionPaper.pdf",
       "sourceExam": "ENGAA",
       "year": 2018,
       "paperType": "question paper",
@@ -310,7 +318,6 @@
     },
     {
       "sourceFilename": "ENGAA_2018_S1_AnswerKey.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2018_S1_AnswerKey.pdf",
       "sourceExam": "ENGAA",
       "year": 2018,
       "paperType": "answer key",
@@ -326,7 +333,6 @@
     },
     {
       "sourceFilename": "ENGAA_2019_S1_QuestionPaper.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2019_S1_QuestionPaper.pdf",
       "sourceExam": "ENGAA",
       "year": 2019,
       "paperType": "question paper",
@@ -344,7 +350,6 @@
     },
     {
       "sourceFilename": "ENGAA_2019_S1_AnswerKey.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2019_S1_AnswerKey.pdf",
       "sourceExam": "ENGAA",
       "year": 2019,
       "paperType": "answer key",
@@ -360,7 +365,6 @@
     },
     {
       "sourceFilename": "ENGAA_2020_S1_QuestionPaper.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2020_S1_QuestionPaper.pdf",
       "sourceExam": "ENGAA",
       "year": 2020,
       "paperType": "question paper",
@@ -378,7 +382,6 @@
     },
     {
       "sourceFilename": "ENGAA_2020_S1_AnswerKey.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2020_S1_AnswerKey.pdf",
       "sourceExam": "ENGAA",
       "year": 2020,
       "paperType": "answer key",
@@ -394,7 +397,6 @@
     },
     {
       "sourceFilename": "ENGAA_2021_S1_QuestionPaper.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2021_S1_QuestionPaper.pdf",
       "sourceExam": "ENGAA",
       "year": 2021,
       "paperType": "question paper",
@@ -412,7 +414,6 @@
     },
     {
       "sourceFilename": "ENGAA_2021_S1_AnswerKey.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2021_S1_AnswerKey.pdf",
       "sourceExam": "ENGAA",
       "year": 2021,
       "paperType": "answer key",
@@ -428,7 +429,6 @@
     },
     {
       "sourceFilename": "ENGAA_2022_S1_QuestionPaper.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2022_S1_QuestionPaper.pdf",
       "sourceExam": "ENGAA",
       "year": 2022,
       "paperType": "question paper",
@@ -446,7 +446,6 @@
     },
     {
       "sourceFilename": "ENGAA_2022_S1_AnswerKey.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2022_S1_AnswerKey.pdf",
       "sourceExam": "ENGAA",
       "year": 2022,
       "paperType": "answer key",
@@ -462,7 +461,6 @@
     },
     {
       "sourceFilename": "ENGAA_2023_S1_QuestionPaper.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2023_S1_QuestionPaper.pdf",
       "sourceExam": "ENGAA",
       "year": 2023,
       "paperType": "question paper",
@@ -480,7 +478,6 @@
     },
     {
       "sourceFilename": "ENGAA_2023_S1_AnswerKey.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\ENGAA\\ENGAA_2023_S1_AnswerKey.pdf",
       "sourceExam": "ENGAA",
       "year": 2023,
       "paperType": "answer key",
@@ -496,14 +493,13 @@
     },
     {
       "sourceFilename": "TMUA-2016-paper-1.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2016-paper-1.pdf",
       "sourceExam": "TMUA",
       "year": 2016,
       "paperType": "question paper",
       "section": "Paper 1",
       "pageCount": 16,
       "questionRanges": [
-        "1\u201320 (Mathematics 2 practice)"
+        "1–20 (Mathematics 2 practice)"
       ],
       "answerKeyAvailability": true,
       "scoreConversionAvailability": false,
@@ -514,7 +510,6 @@
     },
     {
       "sourceFilename": "TMUA-2016-paper-1-worked-answers.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2016-paper-1-worked-answers.pdf",
       "sourceExam": "TMUA",
       "year": 2016,
       "paperType": "worked solutions",
@@ -530,14 +525,13 @@
     },
     {
       "sourceFilename": "TMUA-2017-paper-1.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2017-paper-1.pdf",
       "sourceExam": "TMUA",
       "year": 2017,
       "paperType": "question paper",
       "section": "Paper 1",
       "pageCount": 24,
       "questionRanges": [
-        "1\u201320 (Mathematics 2 practice)"
+        "1–20 (Mathematics 2 practice)"
       ],
       "answerKeyAvailability": true,
       "scoreConversionAvailability": false,
@@ -548,7 +542,6 @@
     },
     {
       "sourceFilename": "TMUA-2017-paper-1-worked-answers.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2017-paper-1-worked-answers.pdf",
       "sourceExam": "TMUA",
       "year": 2017,
       "paperType": "worked solutions",
@@ -564,14 +557,13 @@
     },
     {
       "sourceFilename": "TMUA-2018-paper-1.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2018-paper-1.pdf",
       "sourceExam": "TMUA",
       "year": 2018,
       "paperType": "question paper",
       "section": "Paper 1",
       "pageCount": 24,
       "questionRanges": [
-        "1\u201320 (Mathematics 2 practice)"
+        "1–20 (Mathematics 2 practice)"
       ],
       "answerKeyAvailability": true,
       "scoreConversionAvailability": false,
@@ -582,7 +574,6 @@
     },
     {
       "sourceFilename": "TMUA-2018-paper-1-worked-answers.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2018-paper-1-worked-answers.pdf",
       "sourceExam": "TMUA",
       "year": 2018,
       "paperType": "worked solutions",
@@ -598,14 +589,13 @@
     },
     {
       "sourceFilename": "TMUA-2019-paper-1.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2019-paper-1.pdf",
       "sourceExam": "TMUA",
       "year": 2019,
       "paperType": "question paper",
       "section": "Paper 1",
       "pageCount": 24,
       "questionRanges": [
-        "1\u201320 (Mathematics 2 practice)"
+        "1–20 (Mathematics 2 practice)"
       ],
       "answerKeyAvailability": true,
       "scoreConversionAvailability": false,
@@ -616,7 +606,6 @@
     },
     {
       "sourceFilename": "TMUA-2019-paper-1-worked-answers.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2019-paper-1-worked-answers.pdf",
       "sourceExam": "TMUA",
       "year": 2019,
       "paperType": "worked solutions",
@@ -632,14 +621,13 @@
     },
     {
       "sourceFilename": "TMUA-2020-paper-1.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2020-paper-1.pdf",
       "sourceExam": "TMUA",
       "year": 2020,
       "paperType": "question paper",
       "section": "Paper 1",
       "pageCount": 24,
       "questionRanges": [
-        "1\u201320 (Mathematics 2 practice)"
+        "1–20 (Mathematics 2 practice)"
       ],
       "answerKeyAvailability": true,
       "scoreConversionAvailability": false,
@@ -650,7 +638,6 @@
     },
     {
       "sourceFilename": "TMUA-2020-paper-1-worked-answers.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2020-paper-1-worked-answers.pdf",
       "sourceExam": "TMUA",
       "year": 2020,
       "paperType": "worked solutions",
@@ -666,14 +653,13 @@
     },
     {
       "sourceFilename": "TMUA-2021-paper-1.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2021-paper-1.pdf",
       "sourceExam": "TMUA",
       "year": 2021,
       "paperType": "question paper",
       "section": "Paper 1",
       "pageCount": 24,
       "questionRanges": [
-        "1\u201320 (Mathematics 2 practice)"
+        "1–20 (Mathematics 2 practice)"
       ],
       "answerKeyAvailability": true,
       "scoreConversionAvailability": false,
@@ -684,7 +670,6 @@
     },
     {
       "sourceFilename": "TMUA-2021-paper-1-worked-answers.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2021-paper-1-worked-answers.pdf",
       "sourceExam": "TMUA",
       "year": 2021,
       "paperType": "worked solutions",
@@ -700,14 +685,13 @@
     },
     {
       "sourceFilename": "TMUA-2022-paper-1.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2022-paper-1.pdf",
       "sourceExam": "TMUA",
       "year": 2022,
       "paperType": "question paper",
       "section": "Paper 1",
       "pageCount": 24,
       "questionRanges": [
-        "1\u201320 (Mathematics 2 practice)"
+        "1–20 (Mathematics 2 practice)"
       ],
       "answerKeyAvailability": true,
       "scoreConversionAvailability": false,
@@ -718,7 +702,6 @@
     },
     {
       "sourceFilename": "TMUA-2022-paper-1-worked-answers.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2022-paper-1-worked-answers.pdf",
       "sourceExam": "TMUA",
       "year": 2022,
       "paperType": "worked solutions",
@@ -734,14 +717,13 @@
     },
     {
       "sourceFilename": "TMUA-2023-paper-1.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2023-paper-1.pdf",
       "sourceExam": "TMUA",
       "year": 2023,
       "paperType": "question paper",
       "section": "Paper 1",
       "pageCount": 24,
       "questionRanges": [
-        "1\u201320 (Mathematics 2 practice)"
+        "1–20 (Mathematics 2 practice)"
       ],
       "answerKeyAvailability": true,
       "scoreConversionAvailability": false,
@@ -752,7 +734,6 @@
     },
     {
       "sourceFilename": "TMUA-2023-paper-1-worked-answers.pdf",
-      "sourcePath": "C:\\Users\\giorg\\OneDrive\\Documenten\\NSAA PAPERS\\TMUA1\\TMUA-2023-paper-1-worked-answers.pdf",
       "sourceExam": "TMUA",
       "year": 2023,
       "paperType": "worked solutions",

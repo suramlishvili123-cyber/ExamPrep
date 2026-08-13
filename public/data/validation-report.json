@@ -38,6 +38,13 @@
     "cropsVisuallyReviewed": 660,
     "inScopeCropsShipped": 517,
     "independentOfficialAnswerChecks": 517,
+    "questionImageHashChecks": 517,
+    "sourceFileHashChecks": 46,
+    "sourceHashCorrespondenceChecks": 677,
+    "localQaContactSheetChecks": 33,
+    "officialWorkedSolutionAssets": 160,
+    "officialWorkedSolutionHashChecks": 160,
+    "workedSolutionContinuationAssets": 10,
     "moduleAndYearCountChecks": "passed"
   },
   "historicalConversionValidation": {

@@ -20,12 +20,14 @@ import {
   Gauge,
   Home,
   LibraryBig,
+  Lightbulb,
   LogOut,
   Menu,
   Moon,
   Pause,
   Play,
   RotateCcw,
+  Search,
   Settings as SettingsIcon,
   ShieldCheck,
   Sparkles,
@@ -36,6 +38,7 @@ import {
   TriangleAlert,
   UserRound,
   X,
+  Zap,
 } from "lucide-react";
 import type { User } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -51,6 +54,7 @@ import {
   eligibleQuestions,
   esatPacedDurationMs,
   finalizeAttempt,
+  isAttemptExpired,
   formatDuration,
   formatLongDuration,
   listPaperSets,
@@ -60,6 +64,8 @@ import {
   paperQuestions,
   remainingMs,
   settleCurrentVisit,
+  storageKeyForUser,
+  touchSyncSection,
   type Attempt,
   type AttemptMode,
   type BankPayload,
@@ -79,8 +85,10 @@ import {
   cambridgeContextFor,
   combinedScoreEstimate,
   pacingSummary,
+  scoreReportForAttempt,
   scoreEstimate,
   sectionBreakdown,
+  type AttemptScoreReport,
   type ScoreEstimate,
   type SectionRow,
 } from "./lib/scoring";
@@ -89,28 +97,40 @@ import {
   type AdaptiveStudyPlan,
   type StudyPlanSession,
 } from "./lib/study-plan";
+import {
+  EXAM_TACTICS,
+  TECHNIQUE_GUIDES,
+  techniqueForQuestion,
+  type TechniqueGuide,
+} from "./lib/learning";
 import { MathText } from "./math-text";
 import {
+  deleteAccountAndData,
+  deleteActiveAttemptCloud,
   deleteAttemptCloud,
+  deleteUserStateCloud,
   firebaseConfigured,
+  loadActiveAttemptCloud,
   loadUserStateCloud,
   observeUser,
+  saveActiveAttemptCloud,
   saveAttemptCloud,
-  saveSettingsCloud,
+  saveUserProfileCloud,
   saveUserStateCloud,
   signInWithGoogle,
   signOutUser,
 } from "./lib/firebase";
 
-type ViewId = "dashboard" | "plan" | "practice" | "originals" | "analytics" | "mistakes" | "papers" | "settings";
+type ViewId = "dashboard" | "plan" | "practice" | "tricks" | "originals" | "analytics" | "mistakes" | "papers" | "settings";
 type QuestionFilter = "all" | "unseen" | "incorrect" | "due";
-type HistoryFilter = "all" | "paper" | "original" | "strict" | "practice";
-type AttemptKind = "paper" | "original" | "strict" | "practice";
+type HistoryFilter = "all" | "paper" | "original" | "strict" | "practice" | "retrieval";
+type AttemptKind = "paper" | "original" | "strict" | "practice" | "retrieval";
 
 const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
   { id: "dashboard", label: "Overview", icon: Home },
   { id: "plan", label: "Study plan", icon: CalendarCheck2 },
   { id: "practice", label: "Practice", icon: BookOpen },
+  { id: "tricks", label: "Quick tricks", icon: Zap },
   { id: "originals", label: "Original mocks", icon: Sparkles },
   { id: "papers", label: "Paper history", icon: LibraryBig },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
@@ -185,14 +205,21 @@ function mergeCloudState(local: StoredState, remoteValue: Partial<StoredState>):
     const remoteProgressTime = remote.progress[questionId]?.lastAttemptedAt ?? 0;
     if (!mistakes[questionId] || localProgressTime >= remoteProgressTime) mistakes[questionId] = localMistake;
   }
+  const section = <T,>(name: "settings" | "targets" | "notes", localValue: T, remoteValueForSection: T): T =>
+    local.syncMetadata[name] > remote.syncMetadata[name] ? localValue : remoteValueForSection;
   return mergeState({
     ...local,
     attempts: mergeAttempts(remote.attempts, local.attempts),
     progress,
     mistakes,
-    targets: { ...local.targets, ...(remoteValue.targets ?? {}) },
-    settings: { ...local.settings, ...(remoteValue.settings ?? {}) },
-    notes: { ...local.notes, ...(remoteValue.notes ?? {}) },
+    targets: section("targets", local.targets, remote.targets),
+    settings: section("settings", local.settings, remote.settings),
+    notes: section("notes", local.notes, remote.notes),
+    syncMetadata: {
+      settings: Math.max(local.syncMetadata.settings, remote.syncMetadata.settings),
+      targets: Math.max(local.syncMetadata.targets, remote.syncMetadata.targets),
+      notes: Math.max(local.syncMetadata.notes, remote.syncMetadata.notes),
+    },
   });
 }
 
@@ -223,6 +250,7 @@ function sourceLabelForAttempt(question: Question | undefined, attempt: Attempt)
 }
 
 function attemptKind(attempt: Attempt): AttemptKind {
+  if (attempt.mode === "retry") return "retrieval";
   if (attempt.mode === "historic") return "paper";
   if (attempt.mode === "original") return "original";
   if (attempt.strictTimed) return "strict";
@@ -234,6 +262,7 @@ const KIND_LABELS: Record<AttemptKind, string> = {
   original: "Original mock",
   strict: "Strict module",
   practice: "Practice",
+  retrieval: "Retrieval",
 };
 
 function attemptTitle(attempt: Attempt): string {
@@ -312,12 +341,48 @@ function ScoreEstimateBlock({ estimate, compact = false }: { estimate: ScoreEsti
           </div>
           <p className={`score-estimate-cambridge tone-${cambridge.tone}`}>{cambridge.message}</p>
           <p className="score-estimate-note">
-            Your standing is read from the official {SCORE_MODEL.distributionSitting} ESAT score distribution published by UAT-UK, not from a model.
-            The raw-to-scaled step is an estimate, because live forms are Rasch-equated per sitting.
+            If this proxy scaled score matched a live result, the official {SCORE_MODEL.distributionSitting} distribution would place it around this standing.
+            The raw-to-scaled step is modelled because UAT-UK does not publish a conversion table and live forms are Rasch-equated per sitting.
           </p>
         </>
       ) : null}
     </div>
+  );
+}
+
+function ScoreEvidenceNotice({ report }: { report: AttemptScoreReport }) {
+  const detail = report.reason === "retrieval"
+    ? "This session measures recall on material you have already seen. It updates mastery and scheduling, but cannot estimate exam standing."
+    : report.reason === "original"
+      ? "The challenge mock is intentionally harder and is not calibrated to a live ESAT form, so its exact raw mark is the honest result."
+      : report.reason === "too-short"
+        ? "A cohort comparison needs at least 18 fresh questions under strict timing. One or a few correct answers are not enough to infer a 1.0–9.0 score."
+        : report.reason === "repeated"
+          ? "Some questions were previously seen. Use this result to measure learning; only a fully fresh set can contribute a cohort estimate."
+          : "This activity is useful practice, but its conditions are not representative enough for a cohort estimate.";
+  return (
+    <div className="score-evidence-notice" role="note">
+      <ShieldCheck size={19} />
+      <div><strong>{report.label}</strong><span>{detail}</span></div>
+    </div>
+  );
+}
+
+/**
+ * An authored figure supplements the stem instead of replacing it, so unlike questionImage
+ * it renders alongside the question text. The alt text carries every value the figure
+ * shows, because for a learner who cannot see it that text is the only way to answer.
+ */
+function QuestionFigure({ question }: { question: Question | undefined }) {
+  if (!question?.questionDiagram) return null;
+  return (
+    <figure className="question-figure">
+      <img
+        src={publicAsset(question.questionDiagram)}
+        alt={question.questionDiagramAlt || `Figure for question ${question.originalQuestionNumber}`}
+        loading="lazy"
+      />
+    </figure>
   );
 }
 
@@ -359,7 +424,7 @@ function LoginScreen({ busy, error, onSignIn }: { busy: boolean; error: string |
           <p>Sit real past papers by year, train with the validated archive, take high-difficulty original mocks, and turn every result into a clear revision plan.</p>
           <div className="auth-benefits">
             <div><LibraryBig size={18} /><span><strong>Past papers by year</strong><small>Sit any archived paper end to end, at exam pace.</small></span></div>
-            <div><BarChart3 size={18} /><span><strong>Section-level analysis</strong><small>Estimated score, standing and topic breakdown for every attempt.</small></span></div>
+            <div><BarChart3 size={18} /><span><strong>Honest analysis</strong><small>Exact raw results for every attempt; estimates only for representative fresh sets.</small></span></div>
             <div><ShieldCheck size={18} /><span><strong>Private cloud progress</strong><small>Firebase keeps each account&apos;s revision data separate.</small></span></div>
           </div>
         </div>
@@ -423,6 +488,9 @@ export default function EsatApp() {
   const storageWarnedRef = useRef(false);
   const deepLinkReadRef = useRef(false);
   const tabIdRef = useRef("");
+  const authGenerationRef = useRef(0);
+  const destructiveCloudActionRef = useRef(false);
+  const expiryCheckedRef = useRef(false);
   const active = state.activeAttempt;
   const activeAttemptId = active?.attemptId;
   const activeQuestionIds = active?.questionIds;
@@ -432,16 +500,12 @@ export default function EsatApp() {
   const resultAttemptId = result?.attemptId;
 
   useEffect(() => {
+    // The pre-account-storage schema could contain another person's revision data on a
+    // shared browser. It is deliberately discarded rather than guessed/migrated.
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      // Hydration intentionally restores the persisted attempt after the first
-      // client render; server rendering cannot access this device-local state.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState(mergeState(stored ? (JSON.parse(stored) as Partial<StoredState>) : null));
+      localStorage.removeItem(STORAGE_KEY);
     } catch {
-      setToast("Local progress could not be read; a clean local state was opened.");
-    } finally {
-      setHydrated(true);
+      // Storage can be unavailable in hardened/private browser contexts.
     }
     fetch(publicAsset("data/question-bank.json"))
       .then((response) => {
@@ -461,9 +525,15 @@ export default function EsatApp() {
 
   useEffect(() => observeUser(
     (nextUser) => {
-      if (!nextUser) cloudSettingsReadyUserRef.current = null;
+      authGenerationRef.current += 1;
+      syncedUserRef.current = null;
+      cloudSettingsReadyUserRef.current = null;
+      expiryCheckedRef.current = false;
+      setHydrated(false);
+      setState(defaultState());
       setUser(nextUser);
       setAuthReady(true);
+      if (!nextUser) setHydrated(true);
     },
     (error) => {
       setAuthError(authMessage(error));
@@ -477,24 +547,52 @@ export default function EsatApp() {
   }, [state]);
 
   useEffect(() => {
-    if (!hydrated || !user || syncedUserRef.current === user.uid) return;
+    if (!authReady || !user || syncedUserRef.current === user.uid) return;
+    const generation = authGenerationRef.current;
+    let localState = defaultState();
+    let localReadFailed = false;
+    try {
+      const stored = localStorage.getItem(storageKeyForUser(user.uid));
+      localState = mergeState(stored ? (JSON.parse(stored) as Partial<StoredState>) : null);
+    } catch {
+      localReadFailed = true;
+    }
+    stateRef.current = localState;
+    setState(localState);
     syncedUserRef.current = user.uid;
     setAuthBusy(true);
-    loadUserStateCloud(user.uid)
-      .then(async (remoteState) => {
-        const merged = mergeCloudState(stateRef.current, remoteState);
+    Promise.all([loadUserStateCloud(user.uid), loadActiveAttemptCloud(user.uid)])
+      .then(async ([remoteState, remoteActiveAttempt]) => {
+        if (generation !== authGenerationRef.current) return;
+        const localActiveAttempt = localState.activeAttempt;
+        const activeAttempt = !localActiveAttempt
+          ? remoteActiveAttempt
+          : !remoteActiveAttempt
+            ? localActiveAttempt
+            : localActiveAttempt.startedAt >= remoteActiveAttempt.startedAt
+              ? localActiveAttempt
+              : remoteActiveAttempt;
+        const merged = { ...mergeCloudState(localState, remoteState), activeAttempt };
         stateRef.current = merged;
         setState(merged);
+        setHydrated(true);
         await saveUserStateCloud(user.uid, merged);
+        if (activeAttempt) await saveActiveAttemptCloud(user.uid, activeAttempt);
+        if (generation !== authGenerationRef.current) return;
         cloudSettingsReadyUserRef.current = user.uid;
-        setToast("Signed in. Your private Firebase progress is up to date.");
+        setToast(localReadFailed
+          ? "Signed in. This account's local copy was unreadable, so its private cloud copy was used."
+          : "Signed in. Your private Firebase progress is up to date.");
       })
       .catch((error: unknown) => {
         syncedUserRef.current = null;
+        setHydrated(true);
         setToast(error instanceof Error ? `Signed in, but cloud progress could not load: ${error.message}` : "Signed in, but cloud progress could not load.");
       })
-      .finally(() => setAuthBusy(false));
-  }, [hydrated, user]);
+      .finally(() => {
+        if (generation === authGenerationRef.current) setAuthBusy(false);
+      });
+  }, [authReady, user]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = state.settings.theme;
@@ -503,10 +601,10 @@ export default function EsatApp() {
   // Persisting the whole record is cheap but not free, so writes are coalesced and
   // flushed if the page is hidden or closed before the timer fires.
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !user || destructiveCloudActionRef.current) return;
     const write = () => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateRef.current));
+        localStorage.setItem(storageKeyForUser(user.uid), JSON.stringify(stateRef.current));
       } catch {
         if (!storageWarnedRef.current) {
           storageWarnedRef.current = true;
@@ -523,17 +621,23 @@ export default function EsatApp() {
       window.removeEventListener("pagehide", write);
       document.removeEventListener("visibilitychange", flush);
     };
-  }, [state, hydrated]);
+  }, [state, hydrated, user]);
 
   useEffect(() => {
     if (!hydrated || !user || authBusy || cloudSettingsReadyUserRef.current !== user.uid) return;
+    if (destructiveCloudActionRef.current) return;
     const timeout = window.setTimeout(() => {
-      saveSettingsCloud(user.uid, state.settings).catch(() =>
-        setToast("Settings saved locally; cloud sync will retry after your next session."),
+      saveUserProfileCloud(user.uid, {
+        settings: state.settings,
+        targets: state.targets,
+        notes: state.notes,
+        syncMetadata: state.syncMetadata,
+      }).catch(() =>
+        setToast("Profile changes are safe locally; cloud sync will retry after your next session."),
       );
-    }, 600);
+    }, 800);
     return () => window.clearTimeout(timeout);
-  }, [authBusy, hydrated, state.settings, user]);
+  }, [authBusy, hydrated, state.notes, state.settings, state.syncMetadata, state.targets, user]);
 
   useEffect(() => {
     if (!toast) return;
@@ -583,7 +687,7 @@ export default function EsatApp() {
     if (!user || !activeAttemptId) return;
     const interval = window.setInterval(() => {
       const attempt = activeAttemptRef.current;
-      if (attempt) saveAttemptCloud(user.uid, attempt).catch(() => undefined);
+      if (attempt && !destructiveCloudActionRef.current) saveActiveAttemptCloud(user.uid, attempt).catch(() => undefined);
     }, 15_000);
     return () => window.clearInterval(interval);
   }, [user, activeAttemptId]);
@@ -635,7 +739,11 @@ export default function EsatApp() {
       setReviewOpen(false);
       timedOutRef.current = false;
       if (user) {
-        Promise.all([saveAttemptCloud(user.uid, finalized), saveUserStateCloud(user.uid, next)]).catch(() =>
+        Promise.all([
+          saveAttemptCloud(user.uid, finalized),
+          saveUserStateCloud(user.uid, next),
+          deleteActiveAttemptCloud(user.uid, finalized.attemptId),
+        ]).catch(() =>
           setToast("Saved locally; cloud sync will be retried later."),
         );
       }
@@ -646,12 +754,11 @@ export default function EsatApp() {
   // An attempt restored from a previous session may already have run out of time. This
   // runs once, before the live countdown below is allowed to submit anything, so a stale
   // empty session is discarded rather than recorded as a zero.
-  const expiryCheckedRef = useRef(false);
   useEffect(() => {
-    if (!hydrated || !bank || expiryCheckedRef.current) return;
+    if (!hydrated || !bank || !mockBank || expiryCheckedRef.current) return;
     expiryCheckedRef.current = true;
     const attempt = stateRef.current.activeAttempt;
-    if (!attempt || attempt.endsAt === null || attempt.endsAt > Date.now()) return;
+    if (!attempt || !isAttemptExpired(attempt)) return;
     const answered = Object.values(attempt.responses).some((response) => response.selectedAnswer);
     if (answered) {
       finishAttempt(true);
@@ -660,7 +767,7 @@ export default function EsatApp() {
       setState((current) => ({ ...current, activeAttempt: null }));
       setToast("An expired empty session was discarded rather than recorded as a zero.");
     }
-  }, [hydrated, bank, finishAttempt]);
+  }, [hydrated, bank, mockBank, finishAttempt]);
 
   useEffect(() => {
     if (!active || active.pausedAt || active.completionStatus !== "active" || !expiryCheckedRef.current) return;
@@ -748,6 +855,7 @@ export default function EsatApp() {
 
   const toggleFlag = useCallback(() => {
     updateActive((attempt) => {
+      if (attempt.pausedAt) return attempt;
       const id = attempt.questionIds[attempt.currentIndex];
       if (!attempt.responses[id]) return attempt;
       return { ...attempt, responses: { ...attempt.responses, [id]: { ...attempt.responses[id], flagged: !attempt.responses[id].flagged } } };
@@ -755,27 +863,29 @@ export default function EsatApp() {
   }, [updateActive]);
 
   useEffect(() => {
-    if (!active || !state.settings.keyboardShortcuts) return;
+    if (!active || active.pausedAt || reviewOpen || !state.settings.keyboardShortcuts) return;
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+      if (target && (["INPUT", "SELECT", "TEXTAREA", "BUTTON", "SUMMARY"].includes(target.tagName) || target.isContentEditable)) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const currentQuestion = questionMap[active.questionIds[active.currentIndex]];
       if (!currentQuestion) return;
       const key = event.key.toUpperCase();
       const numberIndex = Number(event.key) - 1;
+      let handled = true;
       if (Number.isInteger(numberIndex) && numberIndex >= 0 && numberIndex < currentQuestion.answerOptions.length) selectOption(currentQuestion.answerOptions[numberIndex]);
       else if (currentQuestion.answerOptions.includes(key)) selectOption(key);
       else if (event.key === "ArrowLeft") navigateQuestion(active.currentIndex - 1);
       else if (event.key === "ArrowRight") navigateQuestion(active.currentIndex + 1);
       else if (event.key === "Backspace" || event.key === "Delete") clearOption();
-      else if (event.key === "Escape") setReviewOpen(false);
       else if (key === "F") toggleFlag();
       else if (key === "R") setReviewOpen(true);
+      else handled = false;
+      if (handled) event.preventDefault();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [active, clearOption, navigateQuestion, questionMap, selectOption, state.settings.keyboardShortcuts, toggleFlag]);
+  }, [active, clearOption, navigateQuestion, questionMap, reviewOpen, selectOption, state.settings.keyboardShortcuts, toggleFlag]);
 
   function beginQuestionList(
     pool: Question[],
@@ -834,6 +944,11 @@ export default function EsatApp() {
     const nextState = { ...currentState, activeAttempt: attempt };
     stateRef.current = nextState;
     setState(nextState);
+    if (user) {
+      saveActiveAttemptCloud(user.uid, attempt).catch(() =>
+        setToast("The session is safe on this device; its cloud autosave will retry shortly."),
+      );
+    }
   }
 
   function beginSession(args: {
@@ -948,7 +1063,7 @@ export default function EsatApp() {
     setView("dashboard");
     timedOutRef.current = false;
     if (user) {
-      deleteAttemptCloud(user.uid, discarded.attemptId).catch(() =>
+      deleteActiveAttemptCloud(user.uid, discarded.attemptId).catch(() =>
         setToast("The session was discarded locally, but its cloud autosave could not be removed."),
       );
     }
@@ -1246,6 +1361,7 @@ export default function EsatApp() {
                   onFullMock={beginFullMock}
                 />
               ) : null}
+              {view === "tricks" ? <QuickTricksView /> : null}
               {view === "originals" ? (
                 <OriginalMocksView
                   payload={mockBank}
@@ -1305,9 +1421,9 @@ export default function EsatApp() {
                   onExportJson={() => download("esat-atlas-export.json", JSON.stringify(state, null, 2), "application/json")}
                   onExportCsv={() => {
                     const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-                    const rows = ["attemptId,kind,module,mode,sourceSet,sourceExams,sourceYears,startedAt,endedAt,rawScore,questionCount,accuracyPercent,estimatedScore,freshQuestionCount,durationMs,planSessionId,planSessionKind,planSessionTitle,planSessionEstimatedMinutes"];
+                    const rows = ["attemptId,kind,module,mode,sourceSet,sourceExams,sourceYears,startedAt,endedAt,rawScore,questionCount,accuracyPercent,estimatedScore,estimateEligibility,freshQuestionCount,durationMs,planSessionId,planSessionKind,planSessionTitle,planSessionEstimatedMinutes"];
                     for (const attempt of state.attempts) {
-                      const estimate = attempt.rawScore === null ? null : scoreEstimate(attempt.rawScore, attempt.questionIds.length, attempt.module);
+                      const report = scoreReportForAttempt(attempt);
                       rows.push([
                         attempt.attemptId,
                         KIND_LABELS[attemptKind(attempt)],
@@ -1320,8 +1436,9 @@ export default function EsatApp() {
                         attempt.endedAt ? new Date(attempt.endedAt).toISOString() : "",
                         attempt.rawScore ?? "",
                         attempt.questionIds.length,
-                        estimate ? Math.round(estimate.accuracy * 100) : "",
-                        estimate ? estimate.scaledScore.toFixed(1) : "",
+                        attempt.rawScore === null ? "" : Math.round(report.accuracy * 100),
+                        report.estimate ? report.estimate.scaledScore.toFixed(1) : "",
+                        report.label,
                         attempt.freshQuestionCount,
                         attempt.durationMs ?? "",
                         attempt.planSessionId ?? "",
@@ -1392,7 +1509,7 @@ function Dashboard({
   // Readiness evidence means fresh, strictly-timed content. A timed retry of past
   // mistakes is strictly timed but contains no first-exposure questions, so it is
   // deliberately excluded here to keep the "retakes excluded" promise honest.
-  const strictAttempts = state.attempts.filter((attempt) => attempt.strictTimed && attempt.rawScore !== null && attempt.freshQuestionCount > 0);
+  const strictAttempts = state.attempts.filter((attempt) => scoreReportForAttempt(attempt).eligible);
   const overall = combinedScoreEstimate(
     MODULE_ORDER
       .map((module) => stats[module])
@@ -1409,7 +1526,7 @@ function Dashboard({
         <div>
           <Pill tone="blue"><Sparkles size={13} /> Evidence-led preparation</Pill>
           <h1>Your readiness, measured honestly.</h1>
-          <p>Fresh performance predicts. Retakes teach. ESAT Atlas keeps them separate and shows an estimated score alongside every exact raw mark.</p>
+          <p>Fresh performance predicts. Retakes teach. Exact raw marks are always shown; score estimates appear only when the evidence is representative.</p>
         </div>
         <button className="button button-primary" onClick={onViewPlan}><CalendarCheck2 size={17} /> Today’s study plan</button>
       </section>
@@ -1495,7 +1612,7 @@ function Dashboard({
           <div className="panel-heading"><div><span className="eyebrow">Recent results</span><h2>Open any attempt for the full breakdown</h2></div></div>
           <div className="recent-list">
             {recentCompleted.map((attempt) => {
-              const estimate = scoreEstimate(attempt.rawScore ?? 0, attempt.questionIds.length, attempt.module);
+              const report = scoreReportForAttempt(attempt);
               const topics = sectionBreakdown(Object.values(attempt.responses), questionMap);
               return (
                 <button key={attempt.attemptId} className="recent-item" onClick={() => onOpenAttempt(attempt.attemptId)}>
@@ -1506,7 +1623,9 @@ function Dashboard({
                   </span>
                   <span className="recent-item-score">
                     <strong>{attempt.rawScore}/{attempt.questionIds.length}</strong>
-                    {state.settings.showScoreEstimate ? <small>≈ {estimate.scaledScore.toFixed(1)}</small> : <small>{Math.round(estimate.accuracy * 100)}%</small>}
+                    {state.settings.showScoreEstimate && report.estimate
+                      ? <small>≈ {report.estimate.scaledScore.toFixed(1)}</small>
+                      : <small>{Math.round(report.accuracy * 100)}%</small>}
                   </span>
                   <ChevronRight size={16} />
                 </button>
@@ -1518,7 +1637,7 @@ function Dashboard({
 
       <section className="source-ribbon">
         <div><ShieldCheck size={20} /><span><strong>{bank.questions.length} verified in-scope questions</strong>{approvedCounts.maths1} Mathematics 1 · {approvedCounts.physics} Physics · {approvedCounts.maths2} Mathematics 2</span></div>
-        <div><strong>Raw marks are exact</strong><span>The 1.0–9.0 figure is an ESAT Atlas estimate from published anchors, not a UAT-UK conversion.</span></div>
+        <div><strong>Raw marks are exact</strong><span>The optional 1.0–9.0 proxy is restricted to representative fresh strict sets and is not a UAT-UK conversion.</span></div>
       </section>
     </>
   );
@@ -1727,6 +1846,132 @@ function AdaptiveStudyPlanView({ plan, settings, onStart, onPractice, onSettings
   );
 }
 
+function GuideWorkedExample({ guide }: { guide: TechniqueGuide }) {
+  return (
+    <div className="guide-example">
+      <span>Worked example</span>
+      <p><MathText>{guide.example.prompt}</MathText></p>
+      <ol>{guide.example.steps.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ol>
+      <strong>Answer: <MathText>{guide.example.answer}</MathText></strong>
+    </div>
+  );
+}
+
+function QuickTricksView() {
+  const [module, setModule] = useState<"all" | ModuleId>("all");
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
+  const guides = TECHNIQUE_GUIDES.filter((guide) => {
+    if (module !== "all" && guide.module !== module) return false;
+    if (!normalizedQuery) return true;
+    return [guide.title, guide.topic, guide.principle, ...guide.keywords]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery);
+  });
+  const tactics = EXAM_TACTICS.filter((tactic) => (
+    !normalizedQuery
+    || [tactic.title, tactic.summary, tactic.useWhen, ...tactic.method].join(" ").toLowerCase().includes(normalizedQuery)
+  ));
+
+  return (
+    <>
+      <section className="page-heading tricks-heading">
+        <div>
+          <Pill tone="blue"><Zap size={13} /> ESAT speed lab</Pill>
+          <h1>Quick tricks that save real working time.</h1>
+          <p>Learn reliable shortcuts, the conditions that make them valid, and the traps that make careless shortcuts fail. Every technique includes a worked example and a safer full method.</p>
+        </div>
+        <div className="tricks-count"><strong>{TECHNIQUE_GUIDES.length}</strong><span>topic playbooks</span></div>
+      </section>
+
+      <section className="tricks-playbook" aria-labelledby="decision-loop-title">
+        <div className="tricks-playbook-icon"><Zap size={24} /></div>
+        <div>
+          <span className="eyebrow">The repeatable decision loop</span>
+          <h2 id="decision-loop-title">Target → structure → shortcut → check</h2>
+          <p>Read what is required, name the governing idea, use the shortest valid route, then spend a few seconds checking sign, units, scale and restrictions. The official pace averages about <strong>89 seconds per question</strong>, so recognition matters as much as calculation.</p>
+        </div>
+        <Pill tone="neutral">Practice framework · not official advice</Pill>
+      </section>
+
+      <section className="tricks-controls" aria-label="Filter quick tricks">
+        <div className="segmented">
+          <button type="button" className={module === "all" ? "selected" : ""} onClick={() => setModule("all")}>All modules</button>
+          {MODULE_ORDER.map((item) => (
+            <button type="button" className={module === item ? "selected" : ""} key={item} onClick={() => setModule(item)}>
+              {MODULE_LABELS[item].replace("Mathematics ", "Maths ")}
+            </button>
+          ))}
+        </div>
+        <label className="tricks-search">
+          <Search size={17} />
+          <span className="sr-only">Search quick tricks</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search topics or techniques" />
+          {query ? <button type="button" onClick={() => setQuery("")} aria-label="Clear search"><X size={15} /></button> : null}
+        </label>
+      </section>
+
+      {module === "all" && tactics.length ? (
+        <section className="tricks-section" aria-labelledby="universal-tricks-title">
+          <div className="panel-heading">
+            <div><span className="eyebrow">Use across all three modules</span><h2 id="universal-tricks-title">Universal exam moves</h2></div>
+            <Pill tone="good"><ShieldCheck size={13} /> Includes limits and cautions</Pill>
+          </div>
+          <div className="tactic-grid">
+            {tactics.map((tactic, index) => (
+              <details className="tactic-card" key={tactic.id}>
+                <summary><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{tactic.title}</strong><small>{tactic.summary}</small></div><ChevronRight size={17} /></summary>
+                <div className="tactic-body">
+                  <p><strong>Use when:</strong> {tactic.useWhen}</p>
+                  <ol>{tactic.method.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ol>
+                  <p className="tactic-caution"><TriangleAlert size={15} /><span>{tactic.caution}</span></p>
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="tricks-section" aria-labelledby="topic-playbooks-title">
+        <div className="panel-heading">
+          <div><span className="eyebrow">Best method and fastest route</span><h2 id="topic-playbooks-title">Topic playbooks</h2></div>
+          <span className="tricks-results">{guides.length} shown</span>
+        </div>
+        {guides.length ? (
+          <div className="technique-grid">
+            {guides.map((guide) => (
+              <details className={`technique-card module-${guide.module}`} key={guide.id}>
+                <summary>
+                  <div className="technique-card-top"><span className={`module-dot ${guide.module}`} /><small>{MODULE_LABELS[guide.module]} · {guide.topic}</small></div>
+                  <h3>{guide.title}</h3>
+                  <p>{guide.principle}</p>
+                  <span className="technique-open">Open playbook <ChevronRight size={16} /></span>
+                </summary>
+                <div className="technique-body">
+                  <div className="technique-methods">
+                    <div><span><ShieldCheck size={15} /> Best method</span><ol>{guide.bestMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ol></div>
+                    <div><span><Zap size={15} /> Fastest valid route</span><ul>{guide.fastMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ul></div>
+                  </div>
+                  <GuideWorkedExample guide={guide} />
+                  <div className="guide-traps"><strong>Common traps</strong>{guide.traps.map((trap) => <span key={trap}>{trap}</span>)}</div>
+                </div>
+              </details>
+            ))}
+          </div>
+        ) : (
+          <EmptyState icon={Search} title="No matching technique" body="Try a broader search or select another module." />
+        )}
+      </section>
+
+      <section className="integrity-banner tricks-integrity">
+        <ShieldCheck size={18} />
+        <div><strong>Shortcuts are taught with their validity checks.</strong><span>The live ESAT is calculator-free and has no negative marking. These methods are original ESAT Atlas teaching material reviewed against the published content specification; they are not official UAT-UK advice.</span></div>
+      </section>
+    </>
+  );
+}
+
 function PracticeView({
   state, now, approvedCounts, paperSets, module, setModule, count, setCount, filter, setFilter, timing, setTiming,
   topic, setTopic, topics, paperModule, setPaperModule, paperExam, setPaperExam, paperYear, setPaperYear, onStartPaper, onStart, onExam, onFullMock,
@@ -1766,7 +2011,7 @@ function PracticeView({
     ? state.attempts.filter((attempt) => attemptPaperKey(attempt) === selected.key && attempt.rawScore !== null)
     : [];
   const best = previous.reduce<Attempt | null>((top, attempt) => (!top || (attempt.rawScore ?? 0) > (top.rawScore ?? 0) ? attempt : top), null);
-  const bestEstimate = best ? scoreEstimate(best.rawScore ?? 0, best.questionIds.length, best.module) : null;
+  const bestReport = best ? scoreReportForAttempt(best) : null;
 
   return (
     <>
@@ -1776,10 +2021,10 @@ function PracticeView({
 
       <section className="panel paper-picker">
         <div className="panel-heading">
-          <div><span className="eyebrow">Past papers</span><h2>Choose a paper and sit it end to end</h2></div>
+          <div><span className="eyebrow">Past-paper archive</span><h2>Choose a validated source set</h2></div>
           <Pill tone="blue"><Timer size={13} /> Questions in original order</Pill>
         </div>
-        <p className="panel-copy">Nothing is shuffled and nothing is sampled: you get that paper&apos;s questions, in the printed order, at the ESAT pace of 40 minutes per 27 questions.</p>
+        <p className="panel-copy">Nothing is shuffled: each validated source set stays in printed order at the ESAT pace of 40 minutes per 27 questions. Shorter legacy subsets are clearly treated as practice evidence, not complete ESAT modules.</p>
         <div className="picker-grid">
           <fieldset>
             <legend>Module</legend>
@@ -1820,7 +2065,7 @@ function PracticeView({
               <span>{MODULE_LABELS[selected.module]} · {selected.questionCount} questions · {formatDuration(selected.durationMs)} strict</span>
               <small>
                 {previous.length
-                  ? `${previous.length} recorded attempt${previous.length === 1 ? "" : "s"} · best ${best?.rawScore}/${best?.questionIds.length}${bestEstimate && state.settings.showScoreEstimate ? ` (≈ ${bestEstimate.scaledScore.toFixed(1)})` : ""}`
+                  ? `${previous.length} recorded attempt${previous.length === 1 ? "" : "s"} · best ${best?.rawScore}/${best?.questionIds.length}${bestReport?.estimate && state.settings.showScoreEstimate ? ` (≈ ${bestReport.estimate.scaledScore.toFixed(1)})` : ""}`
                   : "Not attempted yet — this will be first-exposure evidence."}
               </small>
             </div>
@@ -1882,7 +2127,7 @@ function OriginalMocksView({ payload, attempts, showScoreEstimate, onStart, onFu
         <div>
           <Pill tone="blue"><Sparkles size={13} /> Original challenge material</Pill>
           <h1>A harder buffer, in the real module rhythm.</h1>
-          <p>Three original 27-question modules follow the 2026 specification and 40-minute structure. They are deliberately harder than the published archive, because recent candidate reports describe the live ESAT as harder than legacy NSAA papers. They are never presented as official UAT-UK questions.</p>
+          <p>Three original 27-question modules follow the 2026 specification and 40-minute structure. They provide a deliberate stretch buffer and are never presented as official UAT-UK questions or used to infer cohort standing.</p>
         </div>
         <button className="button button-primary" onClick={onFull}><Play size={17} /> Start full 120-minute mock</button>
       </section>
@@ -1890,7 +2135,7 @@ function OriginalMocksView({ payload, attempts, showScoreEstimate, onStart, onFu
         <ShieldCheck size={18} />
         <div>
           <strong>81 distinct designs, checked answers, zero number-swapped copies</strong>
-          <span>{payload.summary.distinctArchetypes} different reasoning archetypes cover every top-level specification area and passed structural, option and answer-key checks. Because these items sit above live difficulty, treat any estimated score here as a floor rather than a forecast.</span>
+          <span>{payload.summary.distinctArchetypes} different reasoning archetypes cover every top-level specification area and passed structural, option and answer-key checks. Results report exact raw marks and topic evidence, without an uncalibrated percentile claim.</span>
         </div>
       </div>
       <section className="original-grid">
@@ -1898,7 +2143,6 @@ function OriginalMocksView({ payload, attempts, showScoreEstimate, onStart, onFu
           const moduleAttempts = completed.filter((attempt) => attempt.module === module);
           const latest = moduleAttempts[0];
           const best = moduleAttempts.reduce<Attempt | null>((top, attempt) => (!top || (attempt.rawScore ?? 0) > (top.rawScore ?? 0) ? attempt : top), null);
-          const estimate = best ? scoreEstimate(best.rawScore ?? 0, best.questionIds.length, best.module) : null;
           return (
             <article className={`original-card ${module}`} key={module}>
               <div className="original-card-head"><span className={`module-dot ${module}`} /><Pill tone="neutral">Challenge Mock A</Pill></div>
@@ -1907,7 +2151,7 @@ function OriginalMocksView({ payload, attempts, showScoreEstimate, onStart, onFu
               <div className="original-score">
                 <span>Latest / best</span>
                 <strong>{latest ? `${latest.rawScore}/27` : "Not attempted"}{best && latest && best.attemptId !== latest.attemptId ? ` · best ${best.rawScore}/27` : ""}</strong>
-                {estimate && showScoreEstimate ? <small>≈ {estimate.scaledScore.toFixed(1)} estimated</small> : null}
+                {best && showScoreEstimate ? <small>Challenge evidence · no cohort estimate</small> : null}
               </div>
               <div className="original-actions">
                 <button className="button button-secondary" onClick={() => onStart(module)}>Start strict module <ChevronRight size={16} /></button>
@@ -2106,7 +2350,7 @@ function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote, scope,
               <article className="mistake-card" key={item.questionId}>
                 {question.questionImage
                   ? <img src={publicAsset(question.questionImage)} alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`} loading="lazy" />
-                  : <div className="mistake-text-preview"><MathText>{question.questionText}</MathText></div>}
+                  : <div className="mistake-text-preview"><div><MathText>{question.questionText}</MathText><QuestionFigure question={question} /></div></div>}
                 <div className="mistake-copy">
                   <div><Pill tone={due ? "bad" : "neutral"}>{due ? "Due now" : `Due ${formatDate(item.dueDate)}`}</Pill><Pill tone="blue">{MODULE_LABELS[question.targetModule]}</Pill></div>
                   <h3>{question.esatTopic} · {sourceLabel(question)}</h3>
@@ -2148,6 +2392,7 @@ function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstima
     { id: "original", label: `Original mocks (${completed.filter((attempt) => attemptKind(attempt) === "original").length})` },
     { id: "strict", label: `Strict modules (${completed.filter((attempt) => attemptKind(attempt) === "strict").length})` },
     { id: "practice", label: `Practice (${completed.filter((attempt) => attemptKind(attempt) === "practice").length})` },
+    { id: "retrieval", label: `Retrieval (${completed.filter((attempt) => attemptKind(attempt) === "retrieval").length})` },
   ];
 
   return (
@@ -2171,19 +2416,19 @@ function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstima
           {visible.length ? (
             <section className="panel history-list">
               <div className="history-row header-row">
-                <span>Set</span><span>Module</span><span>Completed</span><span>Raw</span><span>Accuracy</span><span>{showScoreEstimate ? "Estimated" : "Time"}</span><span>Standing</span><span />
+                <span>Set</span><span>Module</span><span>Completed</span><span>Raw</span><span>Accuracy</span><span>{showScoreEstimate ? "Estimate" : "Time"}</span><span>Evidence</span><span />
               </div>
               {visible.map((attempt) => {
-                const estimate = scoreEstimate(attempt.rawScore ?? 0, attempt.questionIds.length, attempt.module);
+                const report = scoreReportForAttempt(attempt);
                 return (
                   <div className="history-row" key={attempt.attemptId}>
                     <span className="history-set"><strong>{attemptTitle(attempt)}</strong><small>{KIND_LABELS[attemptKind(attempt)]}{attempt.completionStatus === "timed-out" ? " · timed out" : ""}</small></span>
                     <span><span className={`module-dot ${attempt.module}`} />{MODULE_LABELS[attempt.module]}</span>
                     <span>{formatDate(attempt.endedAt)}</span>
                     <strong>{attempt.rawScore}/{attempt.questionIds.length}</strong>
-                    <span>{Math.round(estimate.accuracy * 100)}%</span>
-                    <span>{showScoreEstimate ? estimate.scaledScore.toFixed(1) : formatLongDuration(attempt.durationMs ?? 0)}</span>
-                    <Pill tone={estimate.tone}>{showScoreEstimate ? estimate.standing : estimate.band}</Pill>
+                    <span>{Math.round(report.accuracy * 100)}%</span>
+                    <span>{showScoreEstimate ? (report.estimate?.scaledScore.toFixed(1) ?? "—") : formatLongDuration(attempt.durationMs ?? 0)}</span>
+                    <Pill tone={report.estimate?.tone ?? "neutral"}>{showScoreEstimate ? (report.estimate?.standing ?? "Raw only") : report.label}</Pill>
                     <button onClick={() => onOpenAttempt(attempt.attemptId)}>Breakdown <ChevronRight size={15} /></button>
                   </div>
                 );
@@ -2194,14 +2439,14 @@ function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstima
           )}
         </>
       ) : (
-        <EmptyState icon={LibraryBig} title="No completed sessions yet" body="Sit a past paper from the library below and your score, section breakdown and estimated standing will appear here." />
+        <EmptyState icon={LibraryBig} title="No completed sessions yet" body="Complete a source set to see its exact mark and breakdown. Representative fresh strict sets also receive a clearly labelled proxy estimate." />
       )}
 
       <div className="integrity-banner">
         <TriangleAlert size={18} />
         <div>
-          <strong>Raw marks are exact; the 1.0–9.0 figure is an ESAT Atlas estimate.</strong>
-          <span>UAT-UK equates each live form with a Rasch model and does not publish the conversion tables. The estimate is anchored only on the published facts that a typical score is about 4.5 and roughly 10% of candidates exceed 7.0.</span>
+          <strong>Raw marks are exact; small sets, retries and repeated material are never converted.</strong>
+          <span>UAT-UK equates live forms and does not publish raw conversion tables. The optional proxy is therefore restricted to at least 18 fully fresh questions under strict timing.</span>
         </div>
       </div>
 
@@ -2211,7 +2456,7 @@ function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstima
         {paperSets.map((set) => {
           const attempts = paperAttempts.filter((attempt) => attemptPaperKey(attempt) === set.key);
           const best = bestByPaper.get(set.key);
-          const estimate = best ? scoreEstimate(best.rawScore ?? 0, best.questionIds.length, best.module) : null;
+          const report = best ? scoreReportForAttempt(best) : null;
           return (
             <div className="paper-library-row" key={set.key}>
               <strong>{set.sourceExam}</strong>
@@ -2219,7 +2464,7 @@ function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstima
               <span>{MODULE_LABELS[set.module]}</span>
               <span>{set.questionCount}<small>{formatDuration(set.durationMs)} strict</small></span>
               <strong>{attempts.length}</strong>
-              <strong>{best ? `${best.rawScore}/${best.questionIds.length}` : "—"}{estimate && showScoreEstimate ? <small>≈ {estimate.scaledScore.toFixed(1)}</small> : null}</strong>
+              <strong>{best ? `${best.rawScore}/${best.questionIds.length}` : "—"}{report?.estimate && showScoreEstimate ? <small>≈ {report.estimate.scaledScore.toFixed(1)}</small> : null}</strong>
               <button onClick={() => onStart(set)}>{attempts.length ? "Re-sit" : "Open timed set"} <ChevronRight size={15} /></button>
             </div>
           );
@@ -2239,6 +2484,101 @@ function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstima
   );
 }
 
+function QuestionLearningSupport({ question }: { question: Question }) {
+  const guide = techniqueForQuestion(question);
+  if (!guide) {
+    return <p className="panel-footnote">The verified answer is {question.correctAnswer}. A technique guide for this topic is being reviewed.</p>;
+  }
+
+  async function handleResetProgress(): Promise<void> {
+    if (!user || !window.confirm("Permanently erase all attempts, active sessions, notes, targets and progress from this account and this browser? This cannot be undone.")) return;
+    destructiveCloudActionRef.current = true;
+    setAuthBusy(true);
+    try {
+      await deleteUserStateCloud(user.uid);
+      const cleared = defaultState();
+      localStorage.removeItem(storageKeyForUser(user.uid));
+      stateRef.current = cleared;
+      activeAttemptRef.current = null;
+      setState(cleared);
+      setResult(null);
+      setReviewOpen(false);
+      cloudSettingsReadyUserRef.current = user.uid;
+      setToast("Your revision data was permanently reset in Firebase and on this device.");
+    } catch (error) {
+      setToast(error instanceof Error ? `Your data could not be reset: ${error.message}` : "Your data could not be reset. Please try again.");
+    } finally {
+      destructiveCloudActionRef.current = false;
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleDeleteAccount(): Promise<void> {
+    if (!user || !window.confirm("Permanently delete this ESAT Atlas account and all of its cloud and device data? Google will ask you to confirm the account. This cannot be undone.")) return;
+    const storageKey = storageKeyForUser(user.uid);
+    destructiveCloudActionRef.current = true;
+    setAuthBusy(true);
+    try {
+      await deleteAccountAndData(user);
+      localStorage.removeItem(storageKey);
+      stateRef.current = defaultState();
+      activeAttemptRef.current = null;
+      setState(defaultState());
+      setResult(null);
+      setReviewOpen(false);
+      setToast("Your ESAT Atlas account and stored revision data were permanently deleted.");
+    } catch (error) {
+      setToast(error instanceof Error ? `Account deletion did not complete: ${error.message}` : "Account deletion did not complete. Please try again.");
+    } finally {
+      destructiveCloudActionRef.current = false;
+      setAuthBusy(false);
+    }
+  }
+  const hasExactAuthoredSolution = Boolean(question.authored && question.explanation);
+  const hasOfficialSolution = Boolean(question.workedSolutionImage);
+
+  return (
+    <div className="question-learning">
+      <div className="question-learning-head">
+        <div><Lightbulb size={18} /><span><strong>Solution and fastest route</strong><small>{guide.topic} · {guide.title}</small></span></div>
+        <Pill tone={hasOfficialSolution ? "good" : hasExactAuthoredSolution ? "blue" : "neutral"}>
+          {hasOfficialSolution ? "Official worked solution" : hasExactAuthoredSolution ? "Checked authored solution" : "Verified key + matched example"}
+        </Pill>
+      </div>
+
+      {hasOfficialSolution ? (
+        <div className="exact-solution">
+          <div className="solution-label"><ShieldCheck size={15} /><span><strong>{question.workedSolutionSource}</strong><small>Rendered from the supplied publisher PDF; answer cross-checked independently.</small></span></div>
+          <img src={publicAsset(question.workedSolutionImage ?? "")} alt={`${question.workedSolutionSource}, question ${question.originalQuestionNumber}`} loading="lazy" />
+        </div>
+      ) : hasExactAuthoredSolution ? (
+        <div className="exact-solution authored-exact">
+          <div className="solution-label"><ShieldCheck size={15} /><span><strong>Worked solution for this question</strong><small>The option text and derivation are pinned by the reviewed answer-key tests.</small></span></div>
+          <p><MathText>{question.explanation}</MathText></p>
+        </div>
+      ) : (
+        <div className="answer-key-note">
+          <ShieldCheck size={16} />
+          <span><strong>Verified answer: option {question.correctAnswer}</strong>The source publishes an answer key rather than a worked derivation. The example below teaches the same specification skill without pretending to be an official solution to this item.</span>
+        </div>
+      )}
+
+      <div className="review-method-grid">
+        <div>
+          <span className="review-method-title"><ShieldCheck size={15} /> Best method</span>
+          <ol>{guide.bestMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ol>
+        </div>
+        <div>
+          <span className="review-method-title"><Zap size={15} /> Fastest valid route</span>
+          <ul>{guide.fastMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ul>
+        </div>
+      </div>
+      <GuideWorkedExample guide={guide} />
+      <p className="review-trap"><TriangleAlert size={14} /><span><strong>Watch for:</strong> {guide.traps.join(" · ")}</span></p>
+    </div>
+  );
+}
+
 function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, onBack, onDelete, onResit }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
@@ -2250,7 +2590,8 @@ function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, 
 }) {
   const [logFilter, setLogFilter] = useState<"all" | "missed" | "flagged">("all");
   const responses = attempt.questionIds.map((id) => attempt.responses[id]).filter(Boolean);
-  const estimate = scoreEstimate(attempt.rawScore ?? 0, attempt.questionIds.length, attempt.module);
+  const report = scoreReportForAttempt(attempt);
+  const estimate = report.estimate;
   const topics = sectionBreakdown(responses, questionMap);
   const pacing = pacingSummary(responses, attempt.questionIds.length, attempt.durationMs ?? 0);
   const times = responses.map((response) => response.timeSpentMs).sort((left, right) => left - right);
@@ -2267,7 +2608,7 @@ function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, 
   const previous = sameSet.find((item) => (item.endedAt ?? 0) < (attempt.endedAt ?? 0)) ?? null;
   // Papers differ in length, so the comparison is in percentage points, not raw marks.
   const delta = previous && previous.rawScore !== null
-    ? Math.round((estimate.accuracy - previous.rawScore / previous.questionIds.length) * 100)
+    ? Math.round((report.accuracy - previous.rawScore / previous.questionIds.length) * 100)
     : null;
 
   return (
@@ -2289,9 +2630,9 @@ function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, 
         <div className="detail-raw">
           <strong>{attempt.rawScore}</strong>
           <span>/ {attempt.questionIds.length} raw</span>
-          <small>{Math.round(estimate.accuracy * 100)}% accuracy{delta !== null ? ` · ${delta >= 0 ? "+" : ""}${delta} pts vs previous attempt` : ""}</small>
+          <small>{Math.round(report.accuracy * 100)}% accuracy{delta !== null ? ` · ${delta >= 0 ? "+" : ""}${delta} pts vs previous attempt` : ""}</small>
         </div>
-        {showScoreEstimate ? <ScoreEstimateBlock estimate={estimate} /> : null}
+        {showScoreEstimate && estimate ? <ScoreEstimateBlock estimate={estimate} /> : showScoreEstimate ? <ScoreEvidenceNotice report={report} /> : null}
       </section>
 
       <section className="result-metrics">
@@ -2331,7 +2672,9 @@ function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, 
                 <span>{formatDate(item.endedAt)}</span>
                 <i><b style={{ width: `${((item.rawScore ?? 0) / item.questionIds.length) * 100}%` }} /></i>
                 <strong>{item.rawScore}/{item.questionIds.length}</strong>
-                {showScoreEstimate ? <small>≈ {scoreEstimate(item.rawScore ?? 0, item.questionIds.length, item.module).scaledScore.toFixed(1)}</small> : null}
+                {showScoreEstimate && scoreReportForAttempt(item).estimate
+                  ? <small>≈ {scoreReportForAttempt(item).estimate?.scaledScore.toFixed(1)}</small>
+                  : showScoreEstimate ? <small>raw only</small> : null}
               </div>
             ))}
           </div>
@@ -2369,7 +2712,7 @@ function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, 
                 {question?.questionImage
                   ? <img src={publicAsset(question.questionImage)} alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`} loading="lazy" />
                   : question
-                    ? <div className="authored-review"><p><MathText>{question.questionText}</MathText></p></div>
+                    ? <div className="authored-review"><p><MathText>{question.questionText}</MathText></p><QuestionFigure question={question} /></div>
                     : <p className="panel-footnote">This question is no longer in the bank.</p>}
                 {question ? (
                   <div className="log-review-side">
@@ -2384,9 +2727,7 @@ function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, 
                         </span>
                       ))}
                     </div>
-                    {question.explanation
-                      ? <div className="log-explanation"><strong>Worked solution</strong><p><MathText>{question.explanation}</MathText></p></div>
-                      : <p className="panel-footnote">No worked solution is published for this archive question. The official answer is {question.correctAnswer}.</p>}
+                    <QuestionLearningSupport question={question} />
                   </div>
                 ) : null}
               </div>
@@ -2611,7 +2952,7 @@ function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSe
             <div className={`question-image-frame ${question.authored ? "authored-frame" : ""}`}>
               {question.questionImage
                 ? <img src={publicAsset(question.questionImage)} alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`} />
-                : <div className="authored-question"><span>Question {attempt.currentIndex + 1}</span><p><MathText>{question.questionText}</MathText></p><small>Original ESAT Atlas challenge item</small></div>}
+                : <div className="authored-question"><span>Question {attempt.currentIndex + 1}</span><p><MathText>{question.questionText}</MathText></p><QuestionFigure question={question} /><small>Original ESAT Atlas challenge item</small></div>}
             </div>
           </section>
           <aside className="answer-panel">
@@ -2669,7 +3010,8 @@ function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, pr
   const median = times.length ? times[Math.floor(times.length / 2)] : 0;
   const incorrect = responses.filter((response) => response.correct === false && !response.unanswered);
   const missed = [...incorrect, ...responses.filter((response) => response.unanswered)];
-  const estimate = scoreEstimate(attempt.rawScore ?? 0, attempt.questionIds.length, attempt.module);
+  const report = scoreReportForAttempt(attempt);
+  const estimate = report.estimate;
   const topics = sectionBreakdown(responses, questionMap);
   const pacing = pacingSummary(responses, attempt.questionIds.length, attempt.durationMs ?? 0);
   const delta = previous && previous.rawScore !== null
@@ -2686,15 +3028,19 @@ function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, pr
         <div>
           <Pill tone={attempt.completionStatus === "timed-out" ? "warn" : "good"}>{attempt.completionStatus === "timed-out" ? "Time expired · automatically submitted" : "Module submitted"}</Pill>
           <h1>{MODULE_LABELS[attempt.module]}</h1>
-          <p>{attempt.planSessionTitle ? `${attempt.planSessionTitle} · adaptive plan` : attemptTitle(attempt)} · {attempt.strictTimed ? "strict evidence" : "practice evidence"} · {attempt.freshQuestionCount} fresh</p>
+          <p>{attempt.planSessionTitle ? `${attempt.planSessionTitle} · adaptive plan` : attemptTitle(attempt)} · {report.label.toLowerCase()} · {attempt.freshQuestionCount} fresh</p>
         </div>
         <div className="raw-score">
           <strong>{attempt.rawScore}</strong>
           <span>/ {attempt.questionIds.length} raw</span>
-          <small>{Math.round(estimate.accuracy * 100)}% accuracy{delta !== null ? ` · ${delta >= 0 ? "+" : ""}${delta} pts vs last` : ""}</small>
+          <small>{Math.round(report.accuracy * 100)}% accuracy{delta !== null ? ` · ${delta >= 0 ? "+" : ""}${delta} pts vs last` : ""}</small>
         </div>
       </section>
-      {showScoreEstimate ? <section className="panel result-estimate"><ScoreEstimateBlock estimate={estimate} /></section> : null}
+      {showScoreEstimate ? (
+        <section className="panel result-estimate">
+          {estimate ? <ScoreEstimateBlock estimate={estimate} /> : <ScoreEvidenceNotice report={report} />}
+        </section>
+      ) : null}
       <section className="result-metrics">
         <div><span>Correct</span><strong>{correct}</strong></div>
         <div><span>Incorrect</span><strong>{incorrect.length}</strong></div>
@@ -2744,11 +3090,12 @@ function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, pr
                 <div className="error-review-body">
                   {question?.questionImage
                     ? <img src={publicAsset(question.questionImage)} alt={`Review question ${question.id}`} loading="lazy" />
-                    : <div className="authored-review"><p><MathText>{question?.questionText}</MathText></p><strong>Worked solution</strong><span><MathText>{question?.explanation}</MathText></span></div>}
+                    : <div className="authored-review"><p><MathText>{question?.questionText}</MathText></p><QuestionFigure question={question} /></div>}
                   <div>
                     <p>Select every cause that genuinely applied.</p>
                     <div className="tag-picker">{ERROR_TAGS.map((tag) => <button className={response.errorClassifications.includes(tag) ? "selected" : ""} key={tag} onClick={() => onTag(response.questionId, tag)}>{tag}</button>)}</div>
                   </div>
+                  {question ? <div className="error-learning"><QuestionLearningSupport question={question} /></div> : null}
                 </div>
               </details>
             );

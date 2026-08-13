@@ -9,7 +9,25 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
 
-      match /{subcollection}/{document=**} {
+      match /attempts/{attemptId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
+      }
+      match /activeAttempts/{documentId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == userId && documentId == "current";
+      }
+      match /settings/{documentId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == userId && documentId == "main";
+      }
+      match /targets/{documentId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == userId && documentId == "main";
+      }
+      match /notes/{documentId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == userId && documentId == "main";
+      }
+      match /questionProgress/{questionId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
+      }
+      match /mistakeQueue/{questionId} {
         allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
       }
     }

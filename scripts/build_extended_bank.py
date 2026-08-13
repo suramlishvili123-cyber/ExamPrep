@@ -39,7 +39,9 @@ from build_question_bank import (
     locate_question_starts,
     question_segments,
     render_crop,
+    render_solution_pages,
     sha256,
+    solution_page_ranges,
 )
 
 
@@ -137,17 +139,6 @@ def detect_tmua_options(text: str, correct_answer: str) -> list[str]:
     return list("ABCDEFGH"[: min(8, max(4, highest))])
 
 
-def solution_pages(path: Path) -> dict[int, str]:
-    page_text = [(page.extract_text() or "") for page in PdfReader(str(path)).pages]
-    sections: dict[int, str] = {}
-    for number in range(1, 21):
-        matches = [text for text in page_text if re.search(rf"\bQuestion\s+{number}\b", text)]
-        if not matches:
-            raise RuntimeError(f"{path.name}: no worked-solution section for Q{number}")
-        sections[number] = matches[-1]
-    return sections
-
-
 def make_extended_contact_sheets(questions: list[dict[str, object]]) -> list[str]:
     font = ImageFont.load_default()
     outputs: list[str] = []
@@ -177,7 +168,7 @@ def make_extended_contact_sheets(questions: list[dict[str, object]]) -> list[str
         destination = QA_DIR / f"contact-sheet-{source}-{year}-maths2.webp"
         destination.parent.mkdir(parents=True, exist_ok=True)
         sheet.save(destination, "WEBP", quality=82, method=6)
-        outputs.append("/" + destination.relative_to(PUBLIC_DIR).as_posix())
+        outputs.append(destination.relative_to(APP_DIR).as_posix())
     return outputs
 
 
@@ -185,7 +176,6 @@ def add_inventory_file(files: list[dict[str, object]], path: Path, source_exam: 
     files.append(
         {
             "sourceFilename": path.name,
-            "sourcePath": str(path),
             "sourceExam": source_exam,
             "year": year,
             "paperType": paper_type,
@@ -227,6 +217,7 @@ def build() -> None:
     for year in range(2016, 2024):
         question_path = ENGAA_DIR / f"ENGAA_{year}_S1_QuestionPaper.pdf"
         answer_path = ENGAA_DIR / f"ENGAA_{year}_S1_AnswerKey.pdf"
+        question_source_hash = sha256(question_path)
         maximum = 54 if year <= 2018 else 40
         first = 29 if year <= 2018 else 21
         answers = extract_answers(answer_path, maximum)
@@ -304,7 +295,7 @@ def build() -> None:
                         "exclusionReason": None,
                         "reviewRequired": False,
                         "importConfidence": "high",
-                        "sourceHash": sha256(question_path),
+                        "sourceHash": question_source_hash,
                         "imageHash": image_hash,
                         "searchText": search_text[:1800],
                         "cropSegments": [
@@ -320,24 +311,41 @@ def build() -> None:
             raise RuntimeError(f"TMUA {year}: expected 20 answers, found {len(answers)}")
         question_path = TMUA_DIR / f"TMUA-{year}-paper-1.pdf"
         solution_path = TMUA_DIR / f"TMUA-{year}-paper-1-worked-answers.pdf"
+        question_source_hash = sha256(question_path)
+        solution_source_hash = sha256(solution_path)
         for path, paper_type in ((question_path, "question paper"), (solution_path, "worked solutions")):
             if sha256(path) not in source_hashes:
                 add_inventory_file(inventory_files, path, "TMUA", paper_type, year)
                 source_hashes.add(sha256(path))
-        solutions = solution_pages(solution_path)
-        with pdfplumber.open(str(question_path)) as plumber_doc:
+        solutions = solution_page_ranges(solution_path)
+        with pdfplumber.open(str(question_path)) as plumber_doc, pdfplumber.open(str(solution_path)) as solution_plumber_doc:
             pages = list(plumber_doc.pages)
+            solution_pdf_pages = list(solution_plumber_doc.pages)
             starts = tmua_starts(pages, year)
             render_doc = pdfium.PdfDocument(str(question_path))
+            solution_render_doc = pdfium.PdfDocument(str(solution_path))
             for number in range(1, 21):
                 segments = tmua_segments(pages, starts[number], starts.get(number + 1), year)
                 raw_text = extract_segment_text(pages, segments)
                 search_text = " ".join(raw_text.split())
-                topic_text = f"{search_text} {solutions[number]}"
+                solution_page_indexes = solutions[number]
+                solution_text = "\n".join(
+                    solution_pdf_pages[page_index].extract_text() or ""
+                    for page_index in solution_page_indexes
+                )
+                topic_text = f"{search_text} {solution_text}"
                 topic, subtopic = classify_topic("maths2", topic_text)
                 question_id = f"tmua-{year}-p1-q{number:02d}"
                 destination = QUESTIONS_DIR / "tmua" / str(year) / f"q{number:02d}.webp"
                 image_hash, dimensions = render_crop(render_doc, pages, segments, destination)
+                solution_destination = QUESTIONS_DIR / "solutions" / "tmua" / str(year) / f"q{number:02d}.webp"
+                solution_hash, solution_dimensions = render_solution_pages(
+                    solution_render_doc,
+                    solution_pdf_pages,
+                    solution_page_indexes,
+                    solution_destination,
+                    dpi=180,
+                )
                 correct = answers[number - 1]
                 extended_questions.append(
                     {
@@ -363,8 +371,17 @@ def build() -> None:
                         "exclusionReason": None,
                         "reviewRequired": False,
                         "importConfidence": "high",
-                        "sourceHash": sha256(question_path),
-                        "answerSourceHash": sha256(solution_path),
+                        "sourceHash": question_source_hash,
+                        "answerSourceHash": solution_source_hash,
+                        "workedSolutionImage": "/" + solution_destination.relative_to(PUBLIC_DIR).as_posix(),
+                        "workedSolutionSource": f"Official TMUA {year} Paper 1 worked solutions",
+                        "workedSolutionSourcePages": [page_index + 1 for page_index in solution_page_indexes],
+                        "workedSolutionPageCount": len(solution_page_indexes),
+                        "workedSolutionImageHash": solution_hash,
+                        "workedSolutionImageDimensions": {
+                            "width": solution_dimensions[0],
+                            "height": solution_dimensions[1],
+                        },
                         "imageHash": image_hash,
                         "searchText": search_text[:1800],
                         "cropSegments": [
@@ -381,7 +398,7 @@ def build() -> None:
     if len([question for question in extended_questions if question["sourceExam"] == "TMUA"]) != 160:
         raise RuntimeError("Expected 160 TMUA Paper 1 questions")
 
-    contact_sheets = make_extended_contact_sheets(extended_questions)
+    make_extended_contact_sheets(extended_questions)
     questions = [*base_questions, *extended_questions]
     module_counts = Counter(str(question["targetModule"]) for question in questions)
     source_counts = Counter(str(question["sourceExam"]) for question in questions)
@@ -397,7 +414,6 @@ def build() -> None:
             "includedBySource": source_counts,
             "excludedByReason": source_exclusions,
             "duplicateExclusions": duplicate_exclusions,
-            "contactSheets": [*base_payload["summary"]["contactSheets"], *contact_sheets],
             "qualityAssurance": {
                 "visualCropReview": "complete",
                 "engaaPartAImported": False,
@@ -416,9 +432,18 @@ def build() -> None:
         "scoreConversionFiles": 0,
         "exactDuplicateFiles": 0,
     }
-    (DATA_DIR / "source-inventory.json").write_text(json.dumps(inventory_payload, indent=2), encoding="utf-8")
-    (DATA_DIR / "question-bank.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    (DATA_DIR / "duplicate-exclusions.json").write_text(json.dumps(duplicate_exclusions, indent=2), encoding="utf-8")
+    (DATA_DIR / "source-inventory.json").write_text(
+        json.dumps(inventory_payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (DATA_DIR / "question-bank.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (DATA_DIR / "duplicate-exclusions.json").write_text(
+        json.dumps(duplicate_exclusions, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(payload["summary"], indent=2, default=dict))
 
 

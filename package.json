@@ -9,39 +9,47 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/prepare_dist.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "build:bank": "node scripts/run_python.mjs scripts/build_question_bank.py && node scripts/run_python.mjs scripts/build_extended_bank.py",
+    "build:bank": "node scripts/run_python.mjs scripts/build_question_bank.py && node scripts/run_python.mjs scripts/build_extended_bank.py && node scripts/run_python.mjs scripts/reclassify_topics.py",
+    "build:solutions": "node scripts/run_python.mjs scripts/build_worked_solutions.py",
     "build:mocks": "node scripts/run_python.mjs scripts/build_original_mocks.py",
     "validate:bank": "node scripts/run_python.mjs scripts/validate_question_bank.py",
-    "test:unit": "node --import tsx --test tests/core.test.ts tests/scoring.test.ts tests/math-markup.test.ts tests/math-render.test.ts tests/original-mocks.test.ts tests/study-plan.test.ts",
+    "test:unit": "node --import tsx --test tests/core.test.ts tests/scoring.test.ts tests/math-markup.test.ts tests/math-render.test.ts tests/original-mocks.test.ts tests/study-plan.test.ts tests/learning-guides.test.ts",
     "test:build": "node --test tests/static-build.test.mjs",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "release:gate": "node scripts/check_release_gate.mjs",
     "test": "npm run validate:bank && npm run typecheck && npm run lint && npm run test:unit && npm run build && npm run test:build"
   },
   "dependencies": {
-    "firebase": "^12.7.0",
+    "firebase": "^12.17.1",
     "lucide-react": "^0.468.0",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
-    "@tailwindcss/postcss": "4.2.1",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "22.19.19",
-    "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
     "eslint": "9.39.4",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "16.4.0",
-    "tailwindcss": "4.2.1",
-    "tsx": "4.20.6",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.12",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.59.3",
-    "vite": "8.0.13"
+    "typescript-eslint": "^8.67.0",
+    "vite": "^8.2.1"
+  },
+  "overrides": {
+    "@babel/core": "7.29.7",
+    "brace-expansion@1": "1.1.18",
+    "js-yaml@4": "4.3.1"
   }
 }
