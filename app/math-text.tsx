@@ -91,6 +91,14 @@ function speakNodes(nodes: MathNode[]): string {
   }).join(" "));
 }
 
+function Bracket({ side }: { side: "left" | "right" }) {
+  return (
+    <svg className="math-paren" viewBox="0 0 6 24" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <path d={side === "left" ? "M4.8 1 C2 6.5, 2 17.5, 4.8 23" : "M1.2 1 C4 6.5, 4 17.5, 1.2 23"} />
+    </svg>
+  );
+}
+
 function renderNodes(nodes: MathNode[], keyPrefix: string): ReactNode {
   return nodes.map((node, index) => {
     const key = `${keyPrefix}-${index}`;
@@ -122,14 +130,16 @@ function renderNodes(nodes: MathNode[], keyPrefix: string): ReactNode {
           </span>
         );
       case "binom":
+        // The brackets are drawn for the same reason the radical is: a typed "(" is
+        // sized by its font, so it never grows to reach around a stacked pair.
         return (
           <span className="math-binom" key={key}>
-            <span className="math-paren" aria-hidden="true">(</span>
+            <Bracket side="left" />
             <span className="math-binom-stack">
               <span>{renderNodes(node.upper, `${key}-u`)}</span>
               <span>{renderNodes(node.lower, `${key}-l`)}</span>
             </span>
-            <span className="math-paren" aria-hidden="true">)</span>
+            <Bracket side="right" />
           </span>
         );
     }

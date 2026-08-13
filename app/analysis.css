@@ -182,29 +182,44 @@
 
 /* ---- Typeset mathematics ----
    Authored markup is parsed in lib/math-markup.ts and rendered by math-text.tsx.
-   The radical is an SVG rather than a glyph, because a typed surd sign never meets the
-   bar over the radicand cleanly at arbitrary sizes. */
+   Radicals and brackets are drawn as SVG rather than typed as glyphs, because a glyph
+   never meets the bar over its radicand — or reaches around a stacked pair — cleanly at
+   arbitrary sizes.
 
-.math { font-family: "Cambria Math", "Latin Modern Math", "STIX Two Math", Cambria, Georgia, serif; font-size: 1.1em; white-space: nowrap; }
+   A stacked fraction is an inline grid of two equal-height rows, so the rule between
+   them always falls on the grid's exact centre line; `vertical-align: middle` then puts
+   that rule on the surrounding text's maths axis, which is where a printed fraction
+   sits. A fixed em offset cannot do this. It is calibrated against one shape of
+   numerator, and every other shape lands somewhere else — which is how fractions came
+   to hang a full line below their own baseline and print over the next line of prose.
+
+   Numerator and denominator are set smaller, as text-style fractions are in print. That
+   keeps an inline fraction close to the height of its line, and it makes a fraction
+   nested inside another shrink again without any extra rule. */
+
+.math { font-family: "Cambria Math", "Latin Modern Math", "STIX Two Math", Cambria, Georgia, serif; font-size: 1.1em; }
 .math-var { font-style: italic; font-family: inherit; }
-.math sup, .math sub { font-size: .7em; line-height: 0; }
-.math sup { vertical-align: .62em; }
-.math sub { vertical-align: -.25em; }
+.math sup, .math sub { font-size: .72em; line-height: 0; }
+.math sup { vertical-align: .58em; }
+.math sub { vertical-align: -.22em; }
+
+/* Expressions wrap with the prose around them: a nowrap formula overflows every narrow
+   card in the app. TeX breaks a long formula after a binary operator, and the parser
+   emits its single space in exactly those places, so the available break opportunities
+   already fall where they should. Constructs that must never be split say so here. */
+.math-frac, .math-sqrt, .math-binom { white-space: nowrap; }
 
 .math-sqrt { display: inline-flex; align-items: stretch; vertical-align: -.12em; margin: 0 .06em; line-height: 1.15; }
-.math-radical { width: .58em; height: 1.24em; align-self: stretch; fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linecap: square; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
-.math-radicand { display: inline-block; padding: .08em .22em 0 .1em; border-top: 1px solid currentColor; line-height: 1.15; }
+.math-radical { width: .58em; min-height: 1.2em; align-self: stretch; fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linecap: square; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
+.math-radicand { display: inline-block; padding: .1em .22em 0 .1em; border-top: 1px solid currentColor; line-height: 1.15; }
 
-.math-frac { display: inline-flex; flex-direction: column; align-items: center; vertical-align: -.52em; margin: 0 .18em; line-height: 1.12; }
-.math-frac .math-num { padding: 0 .26em .04em; }
-.math-frac .math-den { padding: .04em .26em 0; border-top: 1px solid currentColor; }
+.math-frac { display: inline-grid; grid-template-rows: 1fr 1fr; vertical-align: middle; margin: 0 .16em; font-size: .82em; line-height: 1.08; text-align: center; }
+.math-frac > .math-num { align-self: end; padding: 0 .2em .12em; }
+.math-frac > .math-den { align-self: start; padding: .12em .2em 0; border-top: max(1px, .05em) solid currentColor; }
 
-.math-binom { display: inline-flex; align-items: center; vertical-align: -.5em; margin: 0 .1em; }
-.math-binom-stack { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1; padding: 0 .12em; }
-.math-paren { font-size: 2em; line-height: .82; font-weight: 300; }
-
-/* Authored questions are text, so they wrap at a readable measure. */
-.authored-question p .math, .log-review .math, .authored-review .math { white-space: normal; }
+.math-binom { display: inline-flex; align-items: stretch; vertical-align: middle; margin: 0 .1em; }
+.math-binom-stack { display: inline-grid; grid-template-rows: 1fr 1fr; align-items: center; padding: 0 .1em; font-size: .82em; line-height: 1.14; text-align: center; }
+.math-paren { width: .28em; min-height: 1.5em; align-self: stretch; fill: none; stroke: currentColor; stroke-width: 1.15; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 
 /* ---- Reviewing a past attempt question by question ---- */
 

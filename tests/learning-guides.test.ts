@@ -74,12 +74,16 @@ test("technique playbooks are substantial, unique and renderable", () => {
     assert.ok(guide.fastMethod.length >= 2, `${guide.id}: fastest route incomplete`);
     assert.ok(guide.traps.length >= 2, `${guide.id}: traps incomplete`);
     assert.ok(guide.keywords.length >= 4, `${guide.id}: search metadata incomplete`);
+    // A shortcut published without the case it breaks in is the one thing this surface
+    // promises never to do, so an empty or token validity note fails the build.
+    assert.ok(guide.validity.length >= 90, `${guide.id}: fast route published without a usable validity condition`);
     for (const [index, value] of [
       guide.example.prompt,
       ...guide.example.steps,
       guide.example.answer,
       ...guide.bestMethod,
       ...guide.fastMethod,
+      guide.validity,
     ].entries()) {
       assertMathMarkup(value, `${guide.id}[${index}]`);
     }

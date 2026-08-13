@@ -103,6 +103,7 @@ import {
   type TechniqueGuide,
 } from "./lib/learning";
 import { MathText } from "./math-text";
+import { mathToPlainText } from "./lib/math-markup";
 import {
   deleteActiveAttemptCloud,
   deleteAttemptCloud,
@@ -1358,7 +1359,18 @@ export default function EsatApp() {
                   onFullMock={beginFullMock}
                 />
               ) : null}
-              {view === "tricks" ? <QuickTricksView /> : null}
+              {view === "tricks" ? (
+                <QuickTricksView
+                  attempts={state.attempts}
+                  questionMap={questionMap}
+                  onPractiseTopic={(module, topic) => {
+                    setBuilderModule(module);
+                    setBuilderTopic(topic);
+                    setBuilderFilter("all");
+                    setView("practice");
+                  }}
+                />
+              ) : null}
               {view === "originals" ? (
                 <OriginalMocksView
                   payload={mockBank}
@@ -1854,22 +1866,143 @@ function GuideWorkedExample({ guide }: { guide: TechniqueGuide }) {
   );
 }
 
-function QuickTricksView() {
+/** Highlights the searched-for text inside a plain prose field. */
+function Highlighted({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+  const parts: React.ReactNode[] = [];
+  const haystack = text.toLowerCase();
+  let cursor = 0;
+  for (let at = haystack.indexOf(query); at !== -1; at = haystack.indexOf(query, cursor)) {
+    if (at > cursor) parts.push(text.slice(cursor, at));
+    parts.push(<mark key={at}>{text.slice(at, at + query.length)}</mark>);
+    cursor = at + query.length;
+  }
+  if (!parts.length) return <>{text}</>;
+  parts.push(text.slice(cursor));
+  return <>{parts}</>;
+}
+
+type TrickSort = "recommended" | "module" | "alphabetical";
+
+/**
+ * Everything a candidate might search for in one guide, already rendered out of maths
+ * markup. Searching the source would match `frac` and `text` and would never match what
+ * the guide visibly says, so "km/h" or "1/2" would find nothing.
+ */
+const GUIDE_SEARCH_TEXT = new Map(TECHNIQUE_GUIDES.map((guide) => [
+  guide.id,
+  mathToPlainText([
+    guide.title, guide.topic, MODULE_LABELS[guide.module], guide.principle, guide.validity,
+    ...guide.bestMethod, ...guide.fastMethod, ...guide.traps, ...guide.keywords,
+    guide.example.prompt, ...guide.example.steps, guide.example.answer,
+  ].join(" ")).toLowerCase(),
+]));
+
+const TACTIC_SEARCH_TEXT = new Map(EXAM_TACTICS.map((tactic) => [
+  tactic.id,
+  mathToPlainText([tactic.title, tactic.summary, tactic.useWhen, tactic.caution, ...tactic.method].join(" ")).toLowerCase(),
+]));
+
+/** What this candidate's own attempts say about the topic a guide covers. */
+interface GuideEvidence {
+  attempted: number;
+  accuracy: number;
+  tone: "good" | "warn" | "bad";
+  label: string;
+}
+
+function guideEvidence(rows: SectionRow[]): Map<string, GuideEvidence> {
+  const evidence = new Map<string, GuideEvidence>();
+  for (const row of rows) {
+    if (!row.total) continue;
+    const tone = row.accuracy >= .8 ? "good" : row.accuracy >= .6 ? "warn" : "bad";
+    evidence.set(row.key, {
+      attempted: row.total,
+      accuracy: row.accuracy,
+      tone,
+      label: `${Math.round(row.accuracy * 100)}% over ${row.total} question${row.total === 1 ? "" : "s"}`,
+    });
+  }
+  return evidence;
+}
+
+function QuickTricksView({
+  attempts, questionMap, onPractiseTopic,
+}: {
+  attempts: Attempt[];
+  questionMap: Record<string, Question>;
+  onPractiseTopic: (module: ModuleId, topic: string) => void;
+}) {
   const [module, setModule] = useState<"all" | ModuleId>("all");
+  const [sort, setSort] = useState<TrickSort>("recommended");
   const [query, setQuery] = useState("");
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(new Set());
+
+  // First exposure only, matching the rule the rest of the app uses for weakness: a
+  // retried question that is now correct must not hide the gap that produced it.
+  const evidence = useMemo(() => {
+    const seen = new Set<string>();
+    const responses: ResponseRecord[] = [];
+    for (const attempt of [...attempts].sort((left, right) => left.startedAt - right.startedAt)) {
+      for (const response of Object.values(attempt.responses)) {
+        if (seen.has(response.questionId)) continue;
+        seen.add(response.questionId);
+        responses.push(response);
+      }
+    }
+    return guideEvidence(sectionBreakdown(responses, questionMap, (question) => `${question.targetModule}|${question.esatTopic}`));
+  }, [attempts, questionMap]);
+
   const normalizedQuery = query.trim().toLowerCase();
-  const guides = TECHNIQUE_GUIDES.filter((guide) => {
-    if (module !== "all" && guide.module !== module) return false;
-    if (!normalizedQuery) return true;
-    return [guide.title, guide.topic, guide.principle, ...guide.keywords]
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery);
+  const matchesQuery = (id: string, source: Map<string, string>) => (
+    !normalizedQuery || (source.get(id) ?? "").includes(normalizedQuery)
+  );
+
+  const moduleCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0 };
+    for (const guide of TECHNIQUE_GUIDES) {
+      if (!matchesQuery(guide.id, GUIDE_SEARCH_TEXT)) continue;
+      counts.all += 1;
+      counts[guide.module] = (counts[guide.module] ?? 0) + 1;
+    }
+    return counts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedQuery]);
+
+  const guides = useMemo(() => {
+    const filtered = TECHNIQUE_GUIDES.filter((guide) => (
+      (module === "all" || guide.module === module) && matchesQuery(guide.id, GUIDE_SEARCH_TEXT)
+    ));
+    const moduleRank = (guide: TechniqueGuide) => MODULE_ORDER.indexOf(guide.module);
+    if (sort === "alphabetical") return [...filtered].sort((left, right) => left.title.localeCompare(right.title));
+    if (sort === "module") return [...filtered].sort((left, right) => moduleRank(left) - moduleRank(right) || left.topic.localeCompare(right.topic));
+    // Weakest evidence first; untested topics sit after everything already measured,
+    // because a guide with no attempts behind it is not evidence of a weakness.
+    return [...filtered].sort((left, right) => {
+      const leftEvidence = evidence.get(`${left.module}|${left.topic}`);
+      const rightEvidence = evidence.get(`${right.module}|${right.topic}`);
+      if (leftEvidence && rightEvidence) return leftEvidence.accuracy - rightEvidence.accuracy || rightEvidence.attempted - leftEvidence.attempted;
+      if (leftEvidence) return -1;
+      if (rightEvidence) return 1;
+      return moduleRank(left) - moduleRank(right) || left.topic.localeCompare(right.topic);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [module, sort, normalizedQuery, evidence]);
+
+  const tactics = EXAM_TACTICS.filter((tactic) => matchesQuery(tactic.id, TACTIC_SEARCH_TEXT));
+  const nothingMatches = !guides.length && !tactics.length;
+  const allIds = [...tactics.map((tactic) => tactic.id), ...guides.map((guide) => guide.id)];
+  const allOpen = allIds.length > 0 && allIds.every((id) => openIds.has(id));
+  const toggle = (id: string, open: boolean) => setOpenIds((current) => {
+    const next = new Set(current);
+    if (open) next.add(id); else next.delete(id);
+    return next;
   });
-  const tactics = EXAM_TACTICS.filter((tactic) => (
-    !normalizedQuery
-    || [tactic.title, tactic.summary, tactic.useWhen, ...tactic.method].join(" ").toLowerCase().includes(normalizedQuery)
-  ));
+
+  const weakest = sort === "recommended"
+    ? guides.find((guide) => evidence.get(`${guide.module}|${guide.topic}`))
+    : undefined;
+  const measured = TECHNIQUE_GUIDES.filter((guide) => evidence.has(`${guide.module}|${guide.topic}`)).length;
 
   return (
     <>
@@ -1877,9 +2010,12 @@ function QuickTricksView() {
         <div>
           <Pill tone="blue"><Zap size={13} /> ESAT speed lab</Pill>
           <h1>Quick tricks that save real working time.</h1>
-          <p>Learn reliable shortcuts, the conditions that make them valid, and the traps that make careless shortcuts fail. Every technique includes a worked example and a safer full method.</p>
+          <p>Learn reliable shortcuts, the conditions that make them valid, and the traps that make careless shortcuts fail. Every technique carries a worked example, a safer full method, and the case in which the shortcut stops being safe.</p>
         </div>
-        <div className="tricks-count"><strong>{TECHNIQUE_GUIDES.length}</strong><span>topic playbooks</span></div>
+        <div className="tricks-count">
+          <strong>{TECHNIQUE_GUIDES.length}</strong><span>topic playbooks</span>
+          <em>{measured ? `${measured} matched to your results` : "No results recorded yet"}</em>
+        </div>
       </section>
 
       <section className="tricks-playbook" aria-labelledby="decision-loop-title">
@@ -1892,24 +2028,75 @@ function QuickTricksView() {
         <Pill tone="neutral">Practice framework · not official advice</Pill>
       </section>
 
+      {weakest ? (
+        <section className="tricks-priority">
+          <Target size={19} />
+          <div>
+            <span className="eyebrow">Start here</span>
+            <p>
+              Your lowest first-attempt accuracy is <strong>{MODULE_LABELS[weakest.module]} · {weakest.topic}</strong>
+              {" "}at {evidence.get(`${weakest.module}|${weakest.topic}`)?.label}. Its playbook is first in the list below.
+            </p>
+          </div>
+          <button type="button" className="button button-secondary compact" onClick={() => onPractiseTopic(weakest.module, weakest.topic)}>
+            Practise this topic <ChevronRight size={15} />
+          </button>
+        </section>
+      ) : null}
+
       <section className="tricks-controls" aria-label="Filter quick tricks">
         <div className="segmented">
-          <button type="button" className={module === "all" ? "selected" : ""} onClick={() => setModule("all")}>All modules</button>
+          <button type="button" className={module === "all" ? "selected" : ""} onClick={() => setModule("all")}>
+            All modules <em>{moduleCounts.all ?? 0}</em>
+          </button>
           {MODULE_ORDER.map((item) => (
             <button type="button" className={module === item ? "selected" : ""} key={item} onClick={() => setModule(item)}>
-              {MODULE_LABELS[item].replace("Mathematics ", "Maths ")}
+              {MODULE_LABELS[item].replace("Mathematics ", "Maths ")} <em>{moduleCounts[item] ?? 0}</em>
             </button>
           ))}
         </div>
-        <label className="tricks-search">
-          <Search size={17} />
-          <span className="sr-only">Search quick tricks</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search topics or techniques" />
-          {query ? <button type="button" onClick={() => setQuery("")} aria-label="Clear search"><X size={15} /></button> : null}
-        </label>
+        <div className="tricks-tools">
+          <label className="tricks-search">
+            <Search size={17} />
+            <span className="sr-only">Search quick tricks</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }}
+              placeholder="Search methods, examples and traps"
+            />
+            {query ? <button type="button" onClick={() => setQuery("")} aria-label="Clear search"><X size={15} /></button> : null}
+          </label>
+          <label className="tricks-sort">
+            <span className="sr-only">Order playbooks</span>
+            <select value={sort} onChange={(event) => setSort(event.target.value as TrickSort)}>
+              <option value="recommended">Weakest topics first</option>
+              <option value="module">Module order</option>
+              <option value="alphabetical">A to Z</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="button button-secondary compact"
+            onClick={() => setOpenIds(allOpen ? new Set() : new Set(allIds))}
+            disabled={!allIds.length}
+          >
+            {allOpen ? "Collapse all" : "Expand all"}
+          </button>
+        </div>
       </section>
 
-      {module === "all" && tactics.length ? (
+      {nothingMatches ? (
+        <EmptyState
+          icon={Search}
+          title="Nothing matches that search"
+          body="No playbook, method step, worked example or trap contains those words. Try a shorter phrase, or clear the search to browse all techniques."
+          action={<button type="button" className="button button-secondary compact" onClick={() => { setQuery(""); setModule("all"); }}>Clear search and filters</button>}
+        />
+      ) : null}
+
+      {tactics.length ? (
         <section className="tricks-section" aria-labelledby="universal-tricks-title">
           <div className="panel-heading">
             <div><span className="eyebrow">Use across all three modules</span><h2 id="universal-tricks-title">Universal exam moves</h2></div>
@@ -1917,8 +2104,15 @@ function QuickTricksView() {
           </div>
           <div className="tactic-grid">
             {tactics.map((tactic, index) => (
-              <details className="tactic-card" key={tactic.id}>
-                <summary><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{tactic.title}</strong><small>{tactic.summary}</small></div><ChevronRight size={17} /></summary>
+              <details className="tactic-card" key={tactic.id} open={openIds.has(tactic.id)} onToggle={(event) => toggle(tactic.id, event.currentTarget.open)}>
+                <summary>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <div>
+                    <strong><Highlighted text={tactic.title} query={normalizedQuery} /></strong>
+                    <small><Highlighted text={tactic.summary} query={normalizedQuery} /></small>
+                  </div>
+                  <ChevronRight size={17} />
+                </summary>
                 <div className="tactic-body">
                   <p><strong>Use when:</strong> {tactic.useWhen}</p>
                   <ol>{tactic.method.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ol>
@@ -1930,36 +2124,65 @@ function QuickTricksView() {
         </section>
       ) : null}
 
-      <section className="tricks-section" aria-labelledby="topic-playbooks-title">
-        <div className="panel-heading">
-          <div><span className="eyebrow">Best method and fastest route</span><h2 id="topic-playbooks-title">Topic playbooks</h2></div>
-          <span className="tricks-results">{guides.length} shown</span>
-        </div>
-        {guides.length ? (
-          <div className="technique-grid">
-            {guides.map((guide) => (
-              <details className={`technique-card module-${guide.module}`} key={guide.id}>
-                <summary>
-                  <div className="technique-card-top"><span className={`module-dot ${guide.module}`} /><small>{MODULE_LABELS[guide.module]} · {guide.topic}</small></div>
-                  <h3>{guide.title}</h3>
-                  <p>{guide.principle}</p>
-                  <span className="technique-open">Open playbook <ChevronRight size={16} /></span>
-                </summary>
-                <div className="technique-body">
-                  <div className="technique-methods">
-                    <div><span><ShieldCheck size={15} /> Best method</span><ol>{guide.bestMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ol></div>
-                    <div><span><Zap size={15} /> Fastest valid route</span><ul>{guide.fastMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ul></div>
-                  </div>
-                  <GuideWorkedExample guide={guide} />
-                  <div className="guide-traps"><strong>Common traps</strong>{guide.traps.map((trap) => <span key={trap}>{trap}</span>)}</div>
-                </div>
-              </details>
-            ))}
+      {guides.length ? (
+        <section className="tricks-section" aria-labelledby="topic-playbooks-title">
+          <div className="panel-heading">
+            <div><span className="eyebrow">Best method, fastest route and its limits</span><h2 id="topic-playbooks-title">Topic playbooks</h2></div>
+            <span className="tricks-results">{guides.length} of {TECHNIQUE_GUIDES.length} shown</span>
           </div>
-        ) : (
-          <EmptyState icon={Search} title="No matching technique" body="Try a broader search or select another module." />
-        )}
-      </section>
+          <div className="technique-grid">
+            {guides.map((guide) => {
+              const record = evidence.get(`${guide.module}|${guide.topic}`);
+              return (
+                <details
+                  className={`technique-card module-${guide.module}`}
+                  key={guide.id}
+                  open={openIds.has(guide.id)}
+                  onToggle={(event) => toggle(guide.id, event.currentTarget.open)}
+                >
+                  <summary>
+                    <div className="technique-card-top">
+                      <span className={`module-dot ${guide.module}`} />
+                      <small>{MODULE_LABELS[guide.module]} · <Highlighted text={guide.topic} query={normalizedQuery} /></small>
+                      {record
+                        ? (
+                          <span className={`technique-evidence tone-${record.tone}`} title="Your first-attempt accuracy on this topic">
+                            {Math.round(record.accuracy * 100)}%<i>/{record.attempted}</i>
+                            <span className="sr-only"> first-attempt accuracy across {record.attempted} question{record.attempted === 1 ? "" : "s"}</span>
+                          </span>
+                        )
+                        : <span className="technique-evidence tone-none">Untested</span>}
+                    </div>
+                    <h3><Highlighted text={guide.title} query={normalizedQuery} /></h3>
+                    <p><Highlighted text={guide.principle} query={normalizedQuery} /></p>
+                    <span className="technique-open">Open playbook <ChevronRight size={16} /></span>
+                  </summary>
+                  <div className="technique-body">
+                    <div className="technique-methods">
+                      <div><span><ShieldCheck size={15} /> Best method</span><ol>{guide.bestMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ol></div>
+                      <div><span><Zap size={15} /> Fastest valid route</span><ul>{guide.fastMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ul></div>
+                    </div>
+                    <div className="guide-validity">
+                      <strong><ShieldCheck size={15} /> When the fast route is valid</strong>
+                      <p><MathText>{guide.validity}</MathText></p>
+                    </div>
+                    <GuideWorkedExample guide={guide} />
+                    <div className="guide-traps"><strong>Common traps</strong>{guide.traps.map((trap) => <span key={trap}>{trap}</span>)}</div>
+                    <div className="guide-actions">
+                      {record
+                        ? <small>Your first attempts on {guide.topic}: {record.label}.</small>
+                        : <small>No {guide.topic} question attempted yet.</small>}
+                      <button type="button" className="button button-secondary compact" onClick={() => onPractiseTopic(guide.module, guide.topic)}>
+                        Practise {guide.topic} <ChevronRight size={15} />
+                      </button>
+                    </div>
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <section className="integrity-banner tricks-integrity">
         <ShieldCheck size={18} />

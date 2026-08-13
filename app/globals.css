@@ -518,16 +518,35 @@ figure.question-figure img { display: block; width: 100%; min-width: 560px; heig
 /* ---- Quick Tricks learning centre ---- */
 .tricks-heading { align-items: center; }
 .tricks-count { min-width: 138px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); box-shadow: var(--shadow-sm); text-align: center; }
-.tricks-count strong, .tricks-count span { display: block; }
+.tricks-count strong, .tricks-count span, .tricks-count em { display: block; }
 .tricks-count strong { color: var(--green); font-size: 34px; letter-spacing: -.05em; }
 .tricks-count span { margin-top: 3px; color: var(--muted); font-size: 12px; font-weight: 750; }
+.tricks-count em { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; font-style: normal; line-height: 1.4; }
 .tricks-playbook { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 18px; margin-bottom: 18px; padding: 22px 24px; border: 1px solid color-mix(in srgb, var(--green) 25%, var(--line)); border-radius: 17px; background: linear-gradient(135deg, color-mix(in srgb, var(--green-soft) 72%, var(--surface)), var(--surface)); }
 .tricks-playbook-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; background: var(--action-bg); color: var(--action-fg); box-shadow: 0 9px 24px color-mix(in srgb, var(--action-bg) 24%, transparent); }
 .tricks-playbook h2 { margin: 5px 0 7px; font-size: 22px; letter-spacing: -.035em; }
 .tricks-playbook p { max-width: 850px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
-.tricks-controls { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 32px; }
-.tricks-controls .segmented { min-width: min(560px, 100%); }
-.tricks-search { min-width: min(350px, 100%); height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--muted); }
+/* The one topic the candidate's own first attempts rank lowest, lifted out of the list
+   so the section opens on a decision rather than on twenty-two equal-looking cards. */
+.tricks-priority { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 15px; margin-bottom: 18px; padding: 15px 18px; border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--line)); border-radius: 14px; background: color-mix(in srgb, var(--amber-soft) 45%, var(--surface)); }
+.tricks-priority > svg { color: var(--amber); }
+.tricks-priority p { margin: 4px 0 0; color: var(--ink); font-size: 13px; line-height: 1.55; }
+.tricks-priority .button { flex: 0 0 auto; }
+
+/* The filter row carries four module chips, a search field, a sort control and an
+   expand toggle. Every part is allowed to shrink and the row is allowed to wrap, so the
+   bar reflows at any width instead of pushing the page into a horizontal scroll. */
+.tricks-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 32px; }
+.tricks-controls .segmented { flex: 1 1 440px; min-width: 0; }
+.tricks-controls .segmented button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.tricks-controls .segmented button em { padding: 1px 6px; border-radius: 999px; background: var(--surface-3); color: var(--ink); font: 800 11px var(--font-geist-mono); font-style: normal; }
+/* Darkening the chip keeps the count legible on the selected fill; lightening it toward
+   the label colour drops the pair below the 4.5:1 threshold. */
+.tricks-controls .segmented button.selected em { background: color-mix(in srgb, #000 22%, transparent); color: var(--action-fg); }
+.tricks-tools { flex: 1 1 400px; min-width: 0; display: flex; align-items: center; gap: 9px; }
+.tricks-sort select { height: 42px; max-width: 100%; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 750; cursor: pointer; }
+.tricks-sort select:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.tricks-search { flex: 1 1 180px; min-width: 0; height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--muted); }
 .tricks-search:focus-within { border-color: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 12%, transparent); }
 .tricks-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 13px; }
 .tricks-search button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 7px; background: var(--surface-3); color: var(--muted); cursor: pointer; }
@@ -554,7 +573,16 @@ figure.question-figure img { display: block; width: 100%; min-width: 560px; heig
 .technique-card.module-maths2 { border-top-color: var(--purple); }
 .technique-card > summary { min-height: 190px; display: flex; flex-direction: column; padding: 20px; cursor: pointer; list-style: none; }
 .technique-card-top { display: flex; align-items: center; gap: 7px; color: var(--muted); }
-.technique-card-top small { font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
+.technique-card-top small { min-width: 0; flex: 1; font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
+/* First-attempt accuracy on the topic this playbook covers. Retries are excluded, for
+   the same reason they are excluded from the readiness signal: relearning a question is
+   not evidence that the gap it exposed has closed. */
+.technique-evidence { flex: 0 0 auto; display: inline-flex; align-items: baseline; gap: 1px; padding: 3px 8px; border-radius: 999px; font: 800 11px var(--font-geist-mono); }
+.technique-evidence i { font-style: normal; font-weight: 650; opacity: .72; }
+.technique-evidence.tone-good { background: var(--green-soft); color: var(--green); }
+.technique-evidence.tone-warn { background: var(--amber-soft); color: var(--amber); }
+.technique-evidence.tone-bad { background: var(--red-soft); color: var(--red); }
+.technique-evidence.tone-none { background: var(--surface-3); color: var(--muted); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
 .technique-card h3 { margin: 18px 0 7px; font-size: 19px; letter-spacing: -.035em; }
 .technique-card > summary > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.58; }
 .technique-open { display: flex; align-items: center; gap: 5px; margin-top: auto; padding-top: 14px; color: var(--green); font-size: 12px; font-weight: 800; }
@@ -570,9 +598,20 @@ figure.question-figure img { display: block; width: 100%; min-width: 560px; heig
 .guide-example p { margin: 8px 0; color: var(--ink); font-size: 13px; line-height: 1.6; }
 .guide-example ol { margin: 7px 0 9px; padding-left: 21px; color: var(--muted); font-size: 12px; line-height: 1.65; }
 .guide-example > strong { display: flex; align-items: baseline; gap: 4px; font-size: 13px; }
+/* The condition that makes the fast route safe sits between the two methods and the
+   worked example, because that is the order in which it has to be read. */
+.guide-validity { padding: 12px 13px; border: 1px solid color-mix(in srgb, var(--green) 22%, var(--line)); border-radius: 11px; background: color-mix(in srgb, var(--green-soft) 42%, var(--surface)); }
+.guide-validity strong { display: flex; align-items: center; gap: 6px; color: var(--green-2); font-size: 12px; font-weight: 850; }
+.guide-validity p { margin: 7px 0 0; color: var(--ink); font-size: 12px; line-height: 1.65; }
 .guide-traps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .guide-traps strong { margin-right: 3px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .guide-traps span { padding: 5px 8px; border-radius: 999px; background: var(--amber-soft); color: var(--amber); font-size: 11px; }
+.guide-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 13px; border-top: 1px solid var(--line); }
+.guide-actions small { min-width: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.guide-actions .button { flex: 0 0 auto; }
+/* Search hits are marked in prose only. Marking inside typeset maths would break the
+   fraction and radical structures apart. */
+.tricks-section mark, .tricks-heading mark { padding: 0 1px; border-radius: 3px; background: color-mix(in srgb, var(--amber-soft) 85%, transparent); color: inherit; font-weight: 800; }
 .tricks-integrity { margin-top: 8px; }
 
 /* Post-attempt learning support. Exact and representative material is visibly distinct. */
@@ -606,7 +645,7 @@ figure.question-figure img { display: block; width: 100%; min-width: 560px; heig
 
 @media (max-width: 980px) {
   .tricks-controls { align-items: stretch; flex-direction: column; }
-  .tricks-search { min-width: 0; }
+  .tricks-search { min-width: 0; flex: 1; }
   .technique-methods, .review-method-grid { grid-template-columns: 1fr; }
 }
 
@@ -614,8 +653,15 @@ figure.question-figure img { display: block; width: 100%; min-width: 560px; heig
   .tricks-count { width: 100%; }
   .tricks-playbook { grid-template-columns: auto minmax(0, 1fr); padding: 18px; }
   .tricks-playbook > .pill { grid-column: 1 / -1; }
+  .tricks-priority { grid-template-columns: auto minmax(0, 1fr); }
+  .tricks-priority .button { grid-column: 1 / -1; width: 100%; }
   .tricks-controls .segmented { min-width: 0; display: grid; grid-template-columns: 1fr 1fr; border: 0; gap: 6px; }
   .tricks-controls .segmented button { min-height: 38px; border: 1px solid var(--line); border-radius: 8px; }
+  .tricks-tools { flex-wrap: wrap; }
+  .tricks-tools .tricks-search { flex: 1 1 100%; }
+  .tricks-sort, .tricks-sort select, .tricks-tools > .button { flex: 1; }
+  .guide-actions { align-items: stretch; flex-direction: column; }
+  .guide-actions .button { width: 100%; }
   .tactic-grid, .technique-grid { grid-template-columns: 1fr; }
   .tactic-card > summary { min-height: 0; }
   .tactic-body { padding-left: 17px; }
