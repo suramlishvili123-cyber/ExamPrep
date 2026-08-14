@@ -373,13 +373,22 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     .map(normalizeAttempt)
     .sort((left, right) => (right.endedAt ?? right.startedAt) - (left.endedAt ?? left.startedAt));
 
+  const progress = asRecord(value.progress) as StoredState["progress"];
+  // Under the earlier schedule a question stayed queued after it was mastered, cycling
+  // through longer intervals. One correct answer now clears it, so those records are
+  // retired on load rather than lingering as work the candidate has already done.
+  const mistakes = Object.fromEntries(
+    Object.entries(asRecord(value.mistakes) as StoredState["mistakes"])
+      .filter(([questionId]) => !progress[questionId]?.mastered),
+  );
+
   return {
     ...base,
     ...value,
     attempts,
     activeAttempt: isAttemptShaped(value.activeAttempt) ? normalizeAttempt(value.activeAttempt as Attempt) : null,
-    progress: asRecord(value.progress) as StoredState["progress"],
-    mistakes: asRecord(value.mistakes) as StoredState["mistakes"],
+    progress,
+    mistakes,
     notes,
     targets,
     settings,
@@ -691,7 +700,11 @@ export function finalizeAttempt(
   };
 }
 
-const RETRY_INTERVALS = [1, 3, 7, 14, 30];
+/**
+ * A missed question comes back after a night's sleep rather than immediately, so the
+ * redo tests recall rather than working memory.
+ */
+export const RETRY_DELAY_DAYS = 1;
 
 export function applyCompletedAttempt(state: StoredState, attempt: Attempt): StoredState {
   const progress = { ...state.progress };
@@ -734,27 +747,20 @@ export function applyCompletedAttempt(state: StoredState, attempt: Attempt): Sto
     if (response.correct) item.totalCorrect += 1;
     else item.totalIncorrect += 1;
 
-    const previousMistake = mistakes[questionId];
+    // One successful redo clears a mistake. Getting it wrong again re-queues it, so an
+    // unresolved gap is never dropped — "once" means one correct answer, not one attempt.
     if (!response.correct) {
       mistakes[questionId] = {
         questionId,
-        dueDate: completedAt + RETRY_INTERVALS[0] * 86_400_000,
-        intervalDays: RETRY_INTERVALS[0],
+        dueDate: completedAt + RETRY_DELAY_DAYS * 86_400_000,
+        intervalDays: RETRY_DELAY_DAYS,
         correctStreak: 0,
         lastResult: false,
       };
       item.mastered = false;
-    } else if (previousMistake) {
-      const streak = previousMistake.correctStreak + 1;
-      const interval = RETRY_INTERVALS[Math.min(streak, RETRY_INTERVALS.length - 1)];
-      mistakes[questionId] = {
-        questionId,
-        dueDate: completedAt + interval * 86_400_000,
-        intervalDays: interval,
-        correctStreak: streak,
-        lastResult: true,
-      };
-      item.mastered = streak >= 3;
+    } else if (mistakes[questionId]) {
+      delete mistakes[questionId];
+      item.mastered = true;
     }
     progress[questionId] = item;
   }

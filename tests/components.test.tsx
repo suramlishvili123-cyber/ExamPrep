@@ -468,67 +468,67 @@ function mistakesProps(state: StoredState, now: number) {
   };
 }
 
-test("a correctly answered question moves out of the due list into the scheduled one", () => {
+test("the queue separates what is ready to redo from what returns tomorrow", () => {
   const now = 1_760_000_000_000;
   const state = mistakeState({
-    // q1 was just answered correctly, so it is scheduled three days out; q2 is still due.
     mistakes: {
-      q1: { questionId: "q1", dueDate: now + 3 * 86_400_000, intervalDays: 3, correctStreak: 1, lastResult: true },
+      q1: { questionId: "q1", dueDate: now + 86_400_000, intervalDays: 1, correctStreak: 0, lastResult: false },
       q2: { questionId: "q2", dueDate: now - 86_400_000, intervalDays: 1, correctStreak: 0, lastResult: false },
     },
   });
   render(<MistakesView {...mistakesProps(state, now)} />);
 
   const group = (title: string) => screen.getByRole("heading", { name: new RegExp(`^${title}`) }).closest("section") as HTMLElement;
-  const idsIn = (title: string) => [...group(title).querySelectorAll("h3")].map((h) => h.textContent);
-
-  assert.equal(idsIn("Due now").length, 1);
-  assert.equal(idsIn("Scheduled").length, 1);
-  assert.ok(within(group("Scheduled")).getByText(/1\/3 delayed correct responses/));
-  // The scheduled card states when it comes back rather than looking due.
-  assert.ok(within(group("Scheduled")).getByText(/next interval 3 days/));
-  assert.equal(within(group("Due now")).queryByText(/Mastered/), null);
+  assert.equal(group("Due now").querySelectorAll(".mistake-card").length, 1);
+  assert.equal(group("Returns tomorrow").querySelectorAll(".mistake-card").length, 1);
+  assert.equal(group("Due now").querySelector(".mistake-card .pill")?.textContent, "Ready to redo");
+  // The rule appears on the card and in the page intro; check the card's own copy.
+  assert.match(group("Due now").querySelector(".mistake-copy p")?.textContent ?? "", /clears for good/);
+  // A question waiting overnight says when it returns; a ready one does not.
+  assert.match(group("Returns tomorrow").querySelector(".mistake-copy p")?.textContent ?? "", /It returns on/);
+  assert.doesNotMatch(group("Due now").querySelector(".mistake-copy p")?.textContent ?? "", /It returns on/);
+  // Nothing is ever described as mastered-but-still-queued any more.
+  assert.equal(screen.queryByRole("heading", { name: /^Mastered/ }), null);
 });
 
-test("a mastered question is shown as mastered rather than as outstanding work", () => {
+test("a cleared question leaves the queue and is counted as cleared", () => {
   const now = 1_760_000_000_000;
+  // q1 was answered correctly, so applyCompletedAttempt removed it from mistakes and
+  // marked its progress mastered. Only the still-unresolved q2 remains queued.
   const state = mistakeState({
     mistakes: {
-      q1: { questionId: "q1", dueDate: now + 14 * 86_400_000, intervalDays: 14, correctStreak: 3, lastResult: true },
+      q2: { questionId: "q2", dueDate: now - 86_400_000, intervalDays: 1, correctStreak: 0, lastResult: false },
     },
     progress: {
       q1: {
         neverSeen: false, firstSeenAt: now, firstAttemptCorrect: false, firstAttemptTime: 1000,
-        firstAttemptMode: "practice", totalAttempts: 4, totalCorrect: 3, totalIncorrect: 1,
-        mostRecentResult: true, mastered: true, exposureCount: 4, lastAttemptedAt: now,
+        firstAttemptMode: "practice", totalAttempts: 2, totalCorrect: 1, totalIncorrect: 1,
+        mostRecentResult: true, mastered: true, exposureCount: 2, lastAttemptedAt: now,
       },
     },
   });
   render(<MistakesView {...mistakesProps(state, now)} />);
 
-  // The headline must not count a mastered item as still to resolve. "Mastered" appears
-  // as a metric label, a group heading and a card pill, so each is read from its own
-  // container rather than by a text lookup that could land on any of the three.
   const strip = document.querySelector(".metric-strip") as HTMLElement;
   const tile = (label: string) => [...strip.querySelectorAll("span")]
     .find((span) => span.textContent?.startsWith(label))?.querySelector("strong")?.textContent;
-  assert.equal(tile("Still to resolve"), "0 questions");
-  assert.equal(tile("Mastered"), "1");
-  assert.equal(tile("Due now"), "0");
+  assert.equal(tile("Still to resolve"), "1 question");
+  assert.equal(tile("Ready to redo"), "1");
+  assert.equal(tile("Cleared"), "1");
 
-  const mastered = screen.getByRole("heading", { name: /^Mastered/ }).closest("section") as HTMLElement;
-  assert.equal(mastered.querySelectorAll(".mistake-card").length, 1);
-  assert.equal(mastered.querySelector(".mistake-card .pill")?.textContent, "Mastered");
-  // Neither of the unresolved groups should render at all when nothing is outstanding.
-  assert.equal(screen.queryByRole("heading", { name: /^Scheduled/ }), null);
+  // The cleared question must not appear anywhere in the list.
+  assert.equal(document.querySelectorAll(".mistake-card").length, 1);
 });
 
-test("the queue explains that a correct answer reschedules rather than deletes", () => {
+test("the queue states the one-correct-answer rule", () => {
   const now = 1_760_000_000_000;
   render(<MistakesView {...mistakesProps(mistakeState(), now)} />);
-  // The old copy promised items "leave the queue", which never happened.
-  assert.equal(document.body.textContent?.includes("leaves the queue"), false);
-  assert.ok(screen.getByText(/moves the question out of today’s work/));
+  const text = document.body.textContent ?? "";
+  // The earlier copy promised three delayed successes and that items "leave the queue".
+  assert.equal(text.includes("leaves the queue"), false);
+  assert.equal(text.includes("delayed correct responses"), false);
+  assert.ok(screen.getByText(/comes back once, the next day/));
+  assert.ok(screen.getByText(/clears for good/));
 });
 
 /* ----------------------------------------------------------- ScoreEvidenceNotice -- */

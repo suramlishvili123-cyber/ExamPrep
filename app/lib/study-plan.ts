@@ -18,6 +18,7 @@ import {
 import { SCORE_CURVE } from "./scoring";
 
 export type StudyPlanPhase = "foundation" | "consolidation" | "simulation" | "taper" | "date-needed";
+/** `maintenance` is retained only so attempts recorded under the older schedule still type. */
 export type StudyPlanSessionKind = "retrieval" | "maintenance" | "baseline" | "focus" | "coverage" | "simulation";
 export type StudyPlanStatus = "active" | "ready" | "complete" | "unavailable";
 
@@ -106,7 +107,6 @@ interface DueQuestion {
   dueDate: number;
   correctStreak: number;
   lastResult: boolean;
-  mastered: boolean;
   lastAttemptedAt: number | null;
 }
 
@@ -481,7 +481,6 @@ function dueQuestions(
       dueDate,
       correctStreak: Math.max(0, finiteNumber(mistake.correctStreak, 0)),
       lastResult: Boolean(mistake.lastResult),
-      mastered: Boolean(progress?.mastered),
       lastAttemptedAt: progress?.lastAttemptedAt ?? null,
     });
   }
@@ -536,8 +535,8 @@ export function buildAdaptiveStudyPlan({
   const weeklyTargetMet = completedStudyMs >= weeklyTargetMinutes * 60_000;
   const archive = uniqueEligible(archiveQuestions);
   const due = dueQuestions(archiveQuestions, supplementalQuestions, state, safeNow);
-  const unresolvedDue = due.available.filter((item) => !item.mastered);
-  const maintenanceDue = due.available.filter((item) => item.mastered);
+  // One correct answer clears a mistake, so everything still queued is unresolved.
+  const unresolvedDue = due.available;
   const completedToday = completedPlanWorkToday(state, safeNow);
   const completedStudyBeforeTodayPlanMs = Math.max(0, completedStudyMs - completedToday.durationMs);
   const completedPlanMinutesToday = Math.max(0, Math.round(completedToday.durationMs / 60_000));
@@ -591,9 +590,7 @@ export function buildAdaptiveStudyPlan({
       totalQuestions: 0,
       totalEstimatedMinutes: 0,
       headline: "This week’s target is complete",
-      summary: maintenanceDue.length
-        ? "Your planned study target is complete. Mastered maintenance items can wait for the next study window."
-        : "You have met your weekly study target and have no unresolved retrieval work due.",
+      summary: "You have met your weekly study target and have no unresolved retrieval work due.",
       rationale: [
         `${completedMinutesThisWeek} of ${weeklyTargetMinutes} planned minutes are recorded this week.`,
         "The planner will reopen automatically when unresolved retrieval becomes due or a new week begins.",
@@ -921,39 +918,6 @@ export function buildAdaptiveStudyPlan({
         evidenceConfidence: evidenceConfidence(evidence[candidate.module].strictFreshCount),
       });
       chosenFocusModules.add(candidate.module);
-    }
-  }
-
-  if (allowNonUrgentWork && minutesRemaining() >= 2 && maintenanceDue.length) {
-    const maintenanceCapacity = Math.min(MAX_SESSION_QUESTIONS, questionCapacityForMinutes(minutesRemaining()));
-    const selectedMaintenance = maintenanceDue.filter((item) => !usedIds.has(item.question.id)).slice(0, maintenanceCapacity);
-    const groups = new Map<string, DueQuestion[]>();
-    for (const item of selectedMaintenance) {
-      const key = `${item.question.targetModule}|${item.question.questionBankVersion}`;
-      const group = groups.get(key) ?? [];
-      group.push(item);
-      groups.set(key, group);
-    }
-    for (const group of [...groups.values()].sort((left, right) => compareDue(left[0], right[0]))) {
-      const module = group[0].question.targetModule;
-      addSession({
-        id: nextId("maintenance", module, "mastered"),
-        kind: "maintenance",
-        module,
-        mode: "retry",
-        questionIds: group.map((item) => item.question.id),
-        title: `Mastery maintenance · ${MODULE_LABELS[module]}`,
-        summary: `Refresh ${group.length} previously mastered question${group.length === 1 ? "" : "s"} without treating the result as new readiness evidence.`,
-        rationale: [
-          "These items have reached mastery but are due on their longer maintenance interval.",
-          "Unresolved retrieval, baselines and fresh work take precedence.",
-        ],
-        estimatedMinutes: estimatedMinutesForQuestions(group.length),
-        durationMinutes: null,
-        strictTimed: false,
-        topic: null,
-        evidenceConfidence: evidenceConfidence(evidence[module].strictFreshCount),
-      });
     }
   }
 

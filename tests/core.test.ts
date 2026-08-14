@@ -234,22 +234,24 @@ test("scoring handles correct, incorrect and unanswered with no negative marks",
   assert.equal(finalized.responses.q3.unanswered, true);
 });
 
-test("freshness is permanent and retry mastery advances only after delayed successes", () => {
+test("freshness is permanent and one correct redo clears the mistake", () => {
   const item = question("q1");
   const first = createAttempt({ questions: [item], module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
   const firstFinished = finalizeAttempt(first, { q1: item }, false, first.startedAt + 10_000);
   let state = applyCompletedAttempt(defaultState(), firstFinished);
   assert.equal(state.progress.q1.neverSeen, false);
   assert.equal(state.progress.q1.firstAttemptCorrect, false);
-  assert.equal(state.mistakes.q1.correctStreak, 0);
+  assert.equal(state.mistakes.q1.intervalDays, 1);
 
   const retry = createAttempt({ questions: [item], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: state.progress });
+  // First exposure is permanent: a later correct answer never rewrites it.
   assert.equal(retry.responses.q1.firstExposure, false);
   retry.responses.q1.selectedAnswer = "A";
   state = applyCompletedAttempt(state, finalizeAttempt(retry, { q1: item }, false, retry.startedAt + 8_000));
-  assert.equal(state.mistakes.q1.correctStreak, 1);
-  assert.equal(state.mistakes.q1.intervalDays, 3);
-  assert.equal(state.progress.q1.mastered, false);
+
+  assert.equal(state.mistakes.q1, undefined);
+  assert.equal(state.progress.q1.mastered, true);
+  assert.equal(state.progress.q1.firstAttemptCorrect, false);
 });
 
 test("progress and retrieval scheduling share one completion clock", () => {
@@ -278,58 +280,57 @@ test("a completion with no recorded end time still stamps a usable progress cloc
   assert.equal((stamped ?? 0) >= before, true);
 });
 
-test("a correct retry reschedules the question instead of leaving it due", () => {
+test("a wrong redo re-queues the question rather than dropping it", () => {
   const item = question("q1");
   const first = createAttempt({ questions: [item], module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
   let state = applyCompletedAttempt(defaultState(), finalizeAttempt(first, { q1: item }, false, first.startedAt + 10_000));
 
-  const wrongAt = state.mistakes.q1.dueDate;
-  assert.equal(state.mistakes.q1.correctStreak, 0);
-
-  // Getting it right must visibly change its state: streak up, and the next appearance
-  // pushed from tomorrow out to the three-day interval.
+  // "Once" means one correct answer, not one attempt: missing it again must not clear it.
   const retry = createAttempt({ questions: [item], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: state.progress });
-  retry.responses.q1.selectedAnswer = "A";
+  retry.responses.q1.selectedAnswer = "B";
   const retryEnd = retry.startedAt + 8_000;
   state = applyCompletedAttempt(state, finalizeAttempt(retry, { q1: item }, false, retryEnd));
 
-  assert.equal(state.mistakes.q1.correctStreak, 1);
-  assert.equal(state.mistakes.q1.lastResult, true);
-  assert.equal(state.mistakes.q1.intervalDays, 3);
-  assert.equal(state.mistakes.q1.dueDate, retryEnd + 3 * 86_400_000);
-  assert.ok(state.mistakes.q1.dueDate > wrongAt);
-  assert.equal(state.mistakes.q1.dueDate > retryEnd, true, "a correctly answered question must not stay due");
+  assert.ok(state.mistakes.q1, "a still-wrong question must stay in the queue");
+  assert.equal(state.mistakes.q1.dueDate, retryEnd + 86_400_000);
+  assert.equal(state.progress.q1.mastered, false);
 });
 
-test("three delayed successes mark mastery, and one slip resets it", () => {
+test("clearing a question is not permanent: missing it again re-queues it", () => {
   const item = question("q1");
   const first = createAttempt({ questions: [item], module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
   let state = applyCompletedAttempt(defaultState(), finalizeAttempt(first, { q1: item }, false, first.startedAt + 10_000));
 
-  const correctRetry = (at: number) => {
-    const retry = createAttempt({ questions: [item], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: state.progress });
-    retry.responses.q1.selectedAnswer = "A";
-    state = applyCompletedAttempt(state, finalizeAttempt(retry, { q1: item }, false, at));
-  };
-
-  correctRetry(1_000_000);
-  assert.equal(state.progress.q1.mastered, false);
-  correctRetry(2_000_000);
-  assert.equal(state.progress.q1.mastered, false);
-  correctRetry(3_000_000);
+  const cleared = createAttempt({ questions: [item], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: state.progress });
+  cleared.responses.q1.selectedAnswer = "A";
+  state = applyCompletedAttempt(state, finalizeAttempt(cleared, { q1: item }, false, 2_000_000));
+  assert.equal(state.mistakes.q1, undefined);
   assert.equal(state.progress.q1.mastered, true);
-  assert.equal(state.mistakes.q1.intervalDays, 14);
 
-  // The record is deliberately kept so the long maintenance intervals can bring it back,
-  // and so a later mistake is measured against the same history.
+  // Meeting it again in a later paper and getting it wrong restarts the cycle.
+  const later = createAttempt({ questions: [item], module: "maths1", mode: "exam", durationMinutes: null, strictTimed: false, generated: true, progress: state.progress });
+  later.responses.q1.selectedAnswer = "C";
+  state = applyCompletedAttempt(state, finalizeAttempt(later, { q1: item }, false, 3_000_000));
   assert.ok(state.mistakes.q1);
-
-  const slip = createAttempt({ questions: [item], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: state.progress });
-  slip.responses.q1.selectedAnswer = "B";
-  state = applyCompletedAttempt(state, finalizeAttempt(slip, { q1: item }, false, 4_000_000));
   assert.equal(state.progress.q1.mastered, false);
-  assert.equal(state.mistakes.q1.correctStreak, 0);
   assert.equal(state.mistakes.q1.intervalDays, 1);
+});
+
+test("a queue entry left over from the older schedule is retired on load", () => {
+  const migrated = mergeState({
+    mistakes: {
+      done: { questionId: "done", dueDate: 5_000, intervalDays: 14, correctStreak: 3, lastResult: true },
+      open: { questionId: "open", dueDate: 6_000, intervalDays: 1, correctStreak: 0, lastResult: false },
+    },
+    progress: {
+      done: { neverSeen: false, firstSeenAt: 1, firstAttemptCorrect: false, firstAttemptTime: 1, firstAttemptMode: "practice", totalAttempts: 4, totalCorrect: 3, totalIncorrect: 1, mostRecentResult: true, mastered: true, exposureCount: 4, lastAttemptedAt: 5 },
+      open: { neverSeen: false, firstSeenAt: 1, firstAttemptCorrect: false, firstAttemptTime: 1, firstAttemptMode: "practice", totalAttempts: 1, totalCorrect: 0, totalIncorrect: 1, mostRecentResult: false, mastered: false, exposureCount: 1, lastAttemptedAt: 5 },
+    },
+  } as never);
+
+  assert.equal(migrated.mistakes.done, undefined, "an already-cleared question must not linger in the queue");
+  assert.ok(migrated.mistakes.open);
+  assert.equal(migrated.progress.done.mastered, true);
 });
 
 test("per-question time records the visit and excludes time spent on the review list", () => {

@@ -2939,15 +2939,13 @@ export function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote,
   const queued = Object.values(state.mistakes).sort((left, right) => left.dueDate - right.dueDate);
   const items = queued.filter((item) => questionMap[item.questionId]);
   const unavailable = queued.length - items.length;
-  // An item is never deleted — the 14 and 30 day intervals exist precisely so a mastered
-  // question comes back occasionally. What changes on a correct answer is its state, so
-  // the list is grouped by that state rather than showing one undifferentiated pile.
-  const isMastered = (item: MistakeItem) => Boolean(state.progress[item.questionId]?.mastered);
-  const dueItems = items.filter((item) => !isMastered(item) && item.dueDate <= now);
-  const scheduledItems = items.filter((item) => !isMastered(item) && item.dueDate > now);
-  const masteredItems = items.filter(isMastered);
-  const outstanding = dueItems.length + scheduledItems.length;
-  const nextDue = [...dueItems, ...scheduledItems][0] ?? masteredItems[0] ?? null;
+  // A correct answer clears the question out of the queue entirely, so everything left
+  // is unresolved: either ready to redo now, or waiting for its overnight delay.
+  const dueItems = items.filter((item) => item.dueDate <= now);
+  const scheduledItems = items.filter((item) => item.dueDate > now);
+  const outstanding = items.length;
+  const nextDue = items[0] ?? null;
+  const cleared = Object.values(state.progress).filter((item) => item.mastered).length;
   const countFor = (target: ModuleId, targetScope: "all" | "due") => items.filter((item) => {
     const question = questionMap[item.questionId];
     if (!question || question.targetModule !== target) return false;
@@ -2961,15 +2959,15 @@ export function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote,
         <div>
           <span className="eyebrow">Spaced retrieval</span>
           <h1>Mistakes become scheduled work.</h1>
-          <p>A correct answer is progress, not instant mastery: it moves the question out of today’s work and schedules it further away. After three delayed successes it counts as mastered and returns only on the long 14 and 30 day intervals.</p>
+          <p>Every question you get wrong comes back once, the next day. Answer it correctly and it clears for good; get it wrong again and it returns tomorrow, so nothing unresolved is quietly dropped.</p>
         </div>
       </section>
 
       <section className="metric-strip">
         <div><Brain size={18} /><span>Still to resolve<strong>{outstanding} question{outstanding === 1 ? "" : "s"}</strong></span></div>
-        <div><RotateCcw size={18} /><span>Due now<strong>{dueItems.length}</strong></span></div>
-        <div><CheckCircle2 size={18} /><span>Mastered<strong>{masteredItems.length}</strong></span></div>
-        <div><Clock3 size={18} /><span>Next due<strong>{nextDue ? formatDate(nextDue.dueDate) : "—"}</strong></span></div>
+        <div><RotateCcw size={18} /><span>Ready to redo<strong>{dueItems.length}</strong></span></div>
+        <div><CheckCircle2 size={18} /><span>Cleared<strong>{cleared}</strong></span></div>
+        <div><Clock3 size={18} /><span>Next return<strong>{nextDue ? formatDate(nextDue.dueDate) : "—"}</strong></span></div>
       </section>
 
       {unavailable ? (
@@ -2992,8 +2990,8 @@ export function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote,
             <fieldset>
               <legend>Which mistakes</legend>
               <div className="segmented">
-                <button className={scope === "all" ? "selected" : ""} onClick={() => setScope("all")}>Every mistake</button>
-                <button className={scope === "due" ? "selected" : ""} onClick={() => setScope("due")}>Due now only</button>
+                <button className={scope === "all" ? "selected" : ""} onClick={() => setScope("all")}>Everything unresolved</button>
+                <button className={scope === "due" ? "selected" : ""} onClick={() => setScope("due")}>Ready to redo only</button>
               </div>
             </fieldset>
             <fieldset>
@@ -3019,7 +3017,7 @@ export function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote,
             <div>
               <strong>{selectedCount} question{selectedCount === 1 ? "" : "s"} · {MODULE_LABELS[module]}</strong>
               <span>
-                {scope === "all" ? "Everything still in the queue, including mastered items" : "Only what the schedule has brought back today"}
+                {scope === "all" ? "Everything still unresolved, whether or not it has come back yet" : "Only what has come back so far"}
                 {timed ? ` · ${formatDuration(esatPacedDurationMs(selectedCount))} strict, no pause` : " · untimed, pause allowed"}
               </span>
             </div>
@@ -3029,11 +3027,11 @@ export function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote,
           </div>
         </section>
       ) : null}
-      {!items.length ? <EmptyState icon={Brain} title="No mistakes in the queue" body="Incorrect answers will enter a transparent 1–3–7–14–30 day retrieval schedule." /> : (
+      {!items.length ? <EmptyState icon={Brain} title="No mistakes in the queue" body="Anything you answer incorrectly returns here the next day. One correct answer clears it." /> : (
         <>
           <MistakeGroup
             title="Due now"
-            caption="These are today’s retrieval work. Answering one correctly moves it to the scheduled list below."
+            caption="Ready to redo. Answer one correctly and it clears for good."
             tone="bad"
             items={dueItems}
             state={state}
@@ -3041,24 +3039,13 @@ export function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote,
             questionMap={questionMap}
             onRetry={onRetry}
             onNote={onNote}
-            emptyBody={outstanding ? "Nothing is due today. Everything still to resolve is scheduled below." : undefined}
+            emptyBody={outstanding ? "Nothing is ready yet. Everything still to resolve returns tomorrow." : undefined}
           />
           <MistakeGroup
-            title="Scheduled"
-            caption="Answered correctly and waiting on their next interval. They return automatically on the date shown."
+            title="Returns tomorrow"
+            caption="Missed today, so they wait overnight before coming back — a redo straight away would test memory rather than recall."
             tone="neutral"
             items={scheduledItems}
-            state={state}
-            now={now}
-            questionMap={questionMap}
-            onRetry={onRetry}
-            onNote={onNote}
-          />
-          <MistakeGroup
-            title="Mastered"
-            caption="Three delayed successes recorded. These stay on the long maintenance intervals rather than being deleted, so the record of the original mistake is never lost."
-            tone="good"
-            items={masteredItems}
             state={state}
             now={now}
             questionMap={questionMap}
@@ -3071,7 +3058,7 @@ export function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote,
   );
 }
 
-/** One state of the retrieval queue: due, scheduled, or mastered. */
+/** One state of the retrieval queue: ready to redo now, or waiting overnight. */
 function MistakeGroup({ title, caption, tone, items, state, now, questionMap, onRetry, onNote, emptyBody }: {
   title: string;
   caption: string;
@@ -3096,7 +3083,6 @@ function MistakeGroup({ title, caption, tone, items, state, now, questionMap, on
           {items.map((item) => {
             const question = questionMap[item.questionId];
             const due = item.dueDate <= now;
-            const mastered = Boolean(state.progress[item.questionId]?.mastered);
             return (
               <article className="mistake-card" key={item.questionId}>
                 {question.questionImage
@@ -3104,13 +3090,13 @@ function MistakeGroup({ title, caption, tone, items, state, now, questionMap, on
                   : <div className="mistake-text-preview"><div><MathText>{question.questionText}</MathText><QuestionFigure question={question} /></div></div>}
                 <div className="mistake-copy">
                   <div>
-                    <Pill tone={mastered ? "good" : due ? "bad" : "neutral"}>{mastered ? "Mastered" : due ? "Due now" : `Due ${formatDate(item.dueDate)}`}</Pill>
+                    <Pill tone={due ? "bad" : "neutral"}>{due ? "Ready to redo" : `Returns ${formatDate(item.dueDate)}`}</Pill>
                     <Pill tone="blue">{MODULE_LABELS[question.targetModule]}</Pill>
                   </div>
                   <h3>{question.esatTopic} · {sourceLabel(question)}</h3>
                   <p>
-                    {Math.min(3, item.correctStreak)}/3 delayed correct responses · next interval {item.intervalDays} day{item.intervalDays === 1 ? "" : "s"}
-                    {mastered ? "" : due ? " · ready now" : ` · returns ${formatDate(item.dueDate)}`}
+                    Answer this correctly once and it clears for good.
+                    {due ? "" : ` It returns on ${formatDate(item.dueDate)}, or redo it now.`}
                   </p>
                   <textarea value={state.notes[item.questionId] ?? ""} onChange={(event) => onNote(item.questionId, event.target.value)} placeholder="Personal note, e.g. remember the sign convention…" aria-label={`Note for ${sourceLabel(question)}`} />
                   <button className="button button-secondary compact" onClick={() => onRetry(question)}><RotateCcw size={15} /> Retry question</button>

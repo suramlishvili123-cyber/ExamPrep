@@ -27,10 +27,11 @@ Firestore storage. There is no server to run and no other authentication path.
   reports the seconds spent on each question against the 89-second ESAT reference,
   coloured by outcome. Time spent on the review list belongs to no question and is
   excluded from that attribution, though it still counts towards session length.
-- **Mistake diagnosis and spaced retrieval** on a transparent 1–3–7–14–30 day schedule.
-  The queue is grouped by state, so a correct answer visibly moves a question from due
-  to scheduled, and to mastered after three delayed successes. Items are rescheduled
-  rather than deleted, so the long maintenance intervals can still bring them back.
+- **Mistake diagnosis and one-pass retrieval.** A missed question returns the next day —
+  overnight, so the redo tests recall rather than working memory. Answer it correctly
+  once and it clears for good; miss it again and it comes back tomorrow, so nothing
+  unresolved is quietly dropped. The queue is grouped into what is ready to redo now and
+  what returns tomorrow.
 - **Mistake-cause analytics.** The causes recorded against missed questions are
   summarised by frequency, module and topic, with a trend that is withheld until enough
   mistakes are diagnosed. Self-reported, so it guides revision and never feeds readiness.

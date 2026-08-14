@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import {
   defaultState,
+  mergeState,
   type Attempt,
   type AttemptMode,
   type BankPayload,
@@ -216,22 +217,19 @@ test("due work includes equality, excludes future items, reports stale IDs and s
   const maths = question("due-maths", "maths1", "Algebra");
   const physics = question("due-physics", "physics", "Mechanics");
   const future = question("future", "maths1", "Geometry");
-  const mastered = question("maintenance", "maths1", "Number");
   const state = defaultState();
   state.settings.examDate = examDateAfter(60);
   setPlanMinutes(state, 45);
-  for (const item of [maths, physics, future, mastered]) state.progress[item.id] = progress(false, "practice");
-  state.progress[mastered.id].mastered = true;
+  for (const item of [maths, physics, future]) state.progress[item.id] = progress(false, "practice");
   state.mistakes = {
     [maths.id]: { questionId: maths.id, dueDate: NOW, intervalDays: 1, correctStreak: 0, lastResult: false },
     [physics.id]: { questionId: physics.id, dueDate: NOW - 2 * DAY_MS, intervalDays: 1, correctStreak: 0, lastResult: false },
     [future.id]: { questionId: future.id, dueDate: NOW + 1, intervalDays: 1, correctStreak: 0, lastResult: false },
-    [mastered.id]: { questionId: mastered.id, dueDate: NOW - 10 * DAY_MS, intervalDays: 30, correctStreak: 4, lastResult: true },
     missing: { questionId: "missing", dueDate: NOW - DAY_MS, intervalDays: 1, correctStreak: 0, lastResult: false },
   };
 
-  const plan = buildAdaptiveStudyPlan({ archiveQuestions: [maths, physics, future, mastered], state, now: NOW });
-  assert.equal(plan.dueCount, 3);
+  const plan = buildAdaptiveStudyPlan({ archiveQuestions: [maths, physics, future], state, now: NOW });
+  assert.equal(plan.dueCount, 2);
   assert.equal(plan.unavailableDueCount, 1);
   assert.equal(plan.sessions[0].kind, "retrieval");
   assert.equal(plan.sessions[0].module, "physics", "the oldest unresolved due item should lead");
@@ -242,8 +240,30 @@ test("due work includes equality, excludes future items, reports stale IDs and s
   ))).size === 1));
   assert.deepEqual(new Set(retrieval.flatMap((session) => session.questionIds)), new Set([maths.id, physics.id]));
   assert.ok(!plan.sessions.some((session) => session.questionIds.includes(future.id)));
-  const maintenanceIndex = plan.sessions.findIndex((session) => session.kind === "maintenance");
-  assert.ok(maintenanceIndex === -1 || maintenanceIndex >= retrieval.length, "mastered work must never precede unresolved retrieval");
+});
+
+test("a cleared question is gone from the queue, so it is never scheduled again", () => {
+  // One correct answer removes the record, and mergeState retires any left over from the
+  // older multi-interval schedule. Either way the planner has nothing to bring back.
+  const cleared = question("cleared", "maths1", "Number");
+  const open = question("open", "maths1", "Algebra");
+  const state = defaultState();
+  state.settings.examDate = examDateAfter(60);
+  setPlanMinutes(state, 45);
+  for (const item of [cleared, open]) state.progress[item.id] = progress(false, "practice");
+  state.progress[cleared.id].mastered = true;
+  state.mistakes = {
+    [cleared.id]: { questionId: cleared.id, dueDate: NOW - 10 * DAY_MS, intervalDays: 30, correctStreak: 4, lastResult: true },
+    [open.id]: { questionId: open.id, dueDate: NOW - DAY_MS, intervalDays: 1, correctStreak: 0, lastResult: false },
+  };
+
+  const loaded = mergeState(state);
+  assert.equal(loaded.mistakes[cleared.id], undefined);
+
+  const plan = buildAdaptiveStudyPlan({ archiveQuestions: [cleared, open], state: loaded, now: NOW });
+  assert.equal(plan.dueCount, 1);
+  assert.ok(!plan.sessions.some((session) => session.questionIds.includes(cleared.id)));
+  assert.ok(!plan.sessions.some((session) => session.kind === "maintenance"));
 });
 
 test("duplicate mistake records cannot schedule the same question twice", () => {
