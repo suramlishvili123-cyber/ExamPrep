@@ -120,20 +120,31 @@ test("accessibility CSS keeps controls and result data available on narrow scree
   assert.match(globalStyles, /\.mini-trend\s*>\s*button\.trend-bar\s*\{[^}]*min-width:\s*24px[^}]*min-height:\s*24px/);
   assert.doesNotMatch(globalStyles, /\.exam-progress\s*\{\s*display:\s*none/);
   assert.doesNotMatch(globalStyles, /\.exam-nav\s*\.button:nth-child\(2\)\s*\{\s*display:\s*none/);
-  assert.doesNotMatch(globalStyles, /\.topic-row\s*>\s*:nth-child\(4\)[^}]*display:\s*none/);
 
   const finalPhoneRules = globalStyles.slice(globalStyles.lastIndexOf("@media (max-width: 650px)"));
   assert.match(finalPhoneRules, /\.auth-story-copy\s*>\s*p, \.auth-benefits[^}]*display:\s*none/);
   assert.match(finalPhoneRules, /\.exam-progress\s*\{[^}]*display:\s*grid/);
   assert.match(finalPhoneRules, /\.exam-nav\s*\.button:nth-child\(2\)\s*\{\s*display:\s*inline-flex/);
   assert.match(finalPhoneRules, /\.question-toolbar\s*\{[^}]*flex-wrap:\s*wrap/);
-  assert.match(finalPhoneRules, /\.topic-row\s*>\s*:nth-child\(4\)[^}]*display:\s*block/);
 
   assert.doesNotMatch(analysisStyles, /\.history-row\s*>\s*:nth-child\([^}]+display:\s*none/);
   assert.doesNotMatch(analysisStyles, /\.section-row\s*>\s*:nth-child\([^}]+display:\s*none/);
   assert.doesNotMatch(analysisStyles, /\.log-row\s*>\s*:nth-child\([^}]+display:\s*none/);
   assert.doesNotMatch(analysisStyles, /\.compare-row\s+small\s*\{\s*display:\s*none/);
   assert.match(analysisStyles, /\.history-list, \.section-table, \.question-log, \.compare-list\s*\{[^}]*overflow-x:\s*auto/);
+
+  // Mistake causes and per-question timing carry findings, not decoration. A narrow
+  // viewport may reflow them, but the topic, module markers, counts and outcome must
+  // never be dropped; only the bar, which restates the percentage beside it, may go.
+  assert.doesNotMatch(analysisStyles, /\.cause-modules\s*\{\s*display:\s*none/);
+  assert.doesNotMatch(analysisStyles, /\.cause-name[^{]*\{[^}]*display:\s*none/);
+  assert.doesNotMatch(analysisStyles, /\.cause-count[^{]*\{[^}]*display:\s*none/);
+  assert.doesNotMatch(analysisStyles, /\.timing-outcome[^{]*\{[^}]*display:\s*none/);
+  assert.doesNotMatch(analysisStyles, /\.timing-value\s*\{[^}]*display:\s*none/);
+  assert.doesNotMatch(analysisStyles, /\.heatmap-grid\s*\{[^}]*display:\s*none/);
+  // The calendar is wider than a phone, so it must scroll inside its own container
+  // rather than clip cells or push the page sideways.
+  assert.match(analysisStyles, /\.heatmap-scroll\s*\{[^}]*overflow-x:\s*auto/);
 });
 
 test("light and dark accessibility tokens meet WCAG contrast thresholds", () => {

@@ -23,9 +23,13 @@ service is withdrawn. Export your data before deletion if you want to retain a c
 
 ## Your controls
 
-Settings provides JSON and CSV export, local-device deletion, and permanent deletion of
-the signed-in account's cloud revision data. Cloud deletion cannot be undone. You can
-also revoke ESAT Atlas in your Google Account's third-party connections.
+Settings provides JSON and CSV export; clearing this device (which also signs you out and
+leaves your cloud copy intact); permanent erasure of the signed-in account's cloud
+revision data; and permanent deletion of the account itself, which removes that data and
+your ESAT Atlas identity from Firebase Authentication. Both permanent options require
+confirmation and cannot be undone, so export first if you want a copy. You can also revoke
+ESAT Atlas in your Google Account's third-party connections, which stops future sign-ins
+but does not by itself delete data already stored here.
 
 ## Operator and contact
 

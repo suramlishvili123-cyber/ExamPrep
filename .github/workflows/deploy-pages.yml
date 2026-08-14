@@ -37,6 +37,8 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm run test:unit
+      - name: Component tests
+        run: npm run test:components
       - name: Build static site
         run: npm run build
       - name: Verify built output

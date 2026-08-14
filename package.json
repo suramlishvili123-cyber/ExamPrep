@@ -17,11 +17,12 @@
     "build:solutions": "node scripts/run_python.mjs scripts/build_worked_solutions.py",
     "build:mocks": "node scripts/run_python.mjs scripts/build_original_mocks.py",
     "validate:bank": "node scripts/run_python.mjs scripts/validate_question_bank.py",
-    "test:unit": "node --import tsx --test tests/core.test.ts tests/scoring.test.ts tests/math-markup.test.ts tests/math-render.test.ts tests/original-mocks.test.ts tests/study-plan.test.ts tests/learning-guides.test.ts",
+    "test:unit": "node --import tsx --test tests/core.test.ts tests/scoring.test.ts tests/math-markup.test.ts tests/math-render.test.ts tests/original-mocks.test.ts tests/study-plan.test.ts tests/learning-guides.test.ts tests/insights.test.ts tests/persistence.test.ts",
+    "test:components": "node --import tsx --test tests/components.test.tsx tests/views.test.tsx",
     "test:build": "node --test tests/static-build.test.mjs",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "release:gate": "node scripts/check_release_gate.mjs",
-    "test": "npm run validate:bank && npm run typecheck && npm run lint && npm run test:unit && npm run build && npm run test:build"
+    "test": "npm run validate:bank && npm run typecheck && npm run lint && npm run test:unit && npm run test:components && npm run build && npm run test:build"
   },
   "dependencies": {
     "firebase": "^12.17.1",
@@ -32,6 +33,9 @@
   "devDependencies": {
     "@eslint/js": "9.39.4",
     "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "22.19.19",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
@@ -41,6 +45,7 @@
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "16.4.0",
+    "jsdom": "^27.4.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.12",
     "typescript": "5.9.3",

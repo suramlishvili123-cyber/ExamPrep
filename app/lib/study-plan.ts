@@ -4,6 +4,9 @@ import {
   eligibleQuestions,
   esatPacedDurationMs,
   listPaperSets,
+  localDayKey,
+  localDaySerial,
+  localDayStart,
   paperQuestions,
   type AttemptMode,
   type ModuleId,
@@ -137,20 +140,6 @@ function sanitizedInteger(value: unknown, minimum: number, maximum: number, fall
   return Math.round(clamp(finiteNumber(value, fallback), minimum, maximum));
 }
 
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-function localDayKey(now: number): string {
-  const date = new Date(now);
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function localDaySerial(now: number): number {
-  const date = new Date(now);
-  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
-}
-
 function parseExamDaySerial(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -185,11 +174,6 @@ function localWeekStart(now: number): number {
   const mondayIndex = (start.getDay() + 6) % 7;
   start.setDate(start.getDate() - mondayIndex);
   return start.getTime();
-}
-
-function localDayStart(now: number): number {
-  const date = new Date(now);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
 function completedPlanWorkToday(state: StoredState, now: number): {

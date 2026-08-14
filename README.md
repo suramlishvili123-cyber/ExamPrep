@@ -23,7 +23,19 @@ Firestore storage. There is no server to run and no other authentication path.
 - **Result history and analysis.** Every completion keeps its paper, raw score, accuracy,
   estimated score, standing, per-section (topic) breakdown, pacing analysis and a full
   question-by-question log.
+- **Per-question timing.** Finishing a session — including a single-question retry —
+  reports the seconds spent on each question against the 89-second ESAT reference,
+  coloured by outcome. Time spent on the review list belongs to no question and is
+  excluded from that attribution, though it still counts towards session length.
 - **Mistake diagnosis and spaced retrieval** on a transparent 1–3–7–14–30 day schedule.
+  The queue is grouped by state, so a correct answer visibly moves a question from due
+  to scheduled, and to mastered after three delayed successes. Items are rescheduled
+  rather than deleted, so the long maintenance intervals can still bring them back.
+- **Mistake-cause analytics.** The causes recorded against missed questions are
+  summarised by frequency, module and topic, with a trend that is withheld until enough
+  mistakes are diagnosed. Self-reported, so it guides revision and never feeds readiness.
+- **Study consistency.** A streak and a 26-week calendar built from completed sessions,
+  shaded on fixed minute thresholds so a light week never looks like a heavy one.
 - **Worked learning support on every question.** The 81 authored items retain their
   checked derivations, all 160 TMUA items show the supplied publisher worked-solution
   page, and the 357 answer-key-only NSAA/ENGAA items receive a clearly labelled,
@@ -36,7 +48,11 @@ Firestore storage. There is no server to run and no other authentication path.
   retrieval, missing baselines, first-exposure topic weakness, fresh coverage, exam
   phase and available study time. Every recommendation shows its rationale, launches
   the exact selected questions and keeps retakes separate from readiness evidence.
-- **Data portability.** JSON and CSV export of every attempt, response and note.
+- **Data portability and control.** JSON and CSV export of every attempt, response and
+  note; clearing this device (which signs out and leaves the cloud copy intact); and
+  permanent erasure of either the account's stored revision data or the account itself.
+  The device copy is a bounded cache — under storage pressure it sheds detail in tiers,
+  always keeping the session in progress and the full profile.
 
 ENGAA Part A is ignored because it duplicates NSAA material. The crossed-out
 even-numbered Part B questions are excluded as outside ESAT; 27 remaining Part B

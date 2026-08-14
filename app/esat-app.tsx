@@ -55,8 +55,10 @@ import {
   esatPacedDurationMs,
   finalizeAttempt,
   isAttemptExpired,
+  isReadinessEvidence,
   formatDuration,
   formatLongDuration,
+  formatSeconds,
   listPaperSets,
   listTopics,
   mergeState,
@@ -65,9 +67,11 @@ import {
   remainingMs,
   settleCurrentVisit,
   storageKeyForUser,
+  touchSyncSection,
   type Attempt,
   type AttemptMode,
   type BankPayload,
+  type MistakeItem,
   type ModuleId,
   type MockPayload,
   type PaperSet,
@@ -96,6 +100,14 @@ import {
   type AdaptiveStudyPlan,
   type StudyPlanSession,
 } from "./lib/study-plan";
+import { persistStoredState, type PersistResult } from "./lib/persistence";
+import {
+  errorTagSummary,
+  studyActivity,
+  type ErrorTagRow,
+  type StudyActivity,
+  type StudyDay,
+} from "./lib/insights";
 import {
   EXAM_TACTICS,
   TECHNIQUE_GUIDES,
@@ -105,14 +117,16 @@ import {
 import { MathText } from "./math-text";
 import { mathToPlainText } from "./lib/math-markup";
 import {
+  deleteAccountAndData,
   deleteActiveAttemptCloud,
   deleteAttemptCloud,
+  deleteUserStateCloud,
   firebaseConfigured,
   loadActiveAttemptCloud,
   loadUserStateCloud,
   observeUser,
   saveActiveAttemptCloud,
-  saveAttemptCloud,
+  saveAttemptOutcomeCloud,
   saveUserProfileCloud,
   saveUserStateCloud,
   signInWithGoogle,
@@ -276,14 +290,56 @@ function percent(value: number | null): string {
   return value === null ? "Not enough data" : `${Math.round(value * 100)}%`;
 }
 
+/** Proportion correct, 0-1. A zero-length record must not yield NaN. */
+function attemptAccuracy(attempt: Attempt): number {
+  const total = attempt.questionIds.length;
+  return total ? (attempt.rawScore ?? 0) / total : 0;
+}
+
+/** Bar height/width for an attempt's accuracy. */
+function attemptAccuracyPercent(attempt: Attempt): number {
+  return attemptAccuracy(attempt) * 100;
+}
+
+/**
+ * The most recent comparable attempt that finished *before* this one. Selecting on
+ * completion time rather than array position means a re-sorted or merged history cannot
+ * make "vs last" compare against a later result.
+ */
+function previousComparableAttempt(attempts: Attempt[], attempt: Attempt): Attempt | null {
+  const endedAt = attempt.endedAt ?? attempt.startedAt;
+  return attempts.reduce<Attempt | null>((best, candidate) => {
+    if (candidate.attemptId === attempt.attemptId || candidate.rawScore === null) return best;
+    if (candidate.module !== attempt.module || attemptKind(candidate) !== attemptKind(attempt)) return best;
+    const candidateEnd = candidate.endedAt ?? candidate.startedAt;
+    if (candidateEnd >= endedAt) return best;
+    return !best || candidateEnd > (best.endedAt ?? best.startedAt) ? candidate : best;
+  }, null);
+}
+
+/**
+ * Change against an earlier attempt, in percentage points. Papers differ in length, so
+ * comparing raw marks would report progress that is really just a longer paper.
+ */
+function accuracyDelta(attempt: Attempt, previous: Attempt | null): number | null {
+  if (!previous || previous.rawScore === null || attempt.rawScore === null) return null;
+  return Math.round((attemptAccuracy(attempt) - attemptAccuracy(previous)) * 100);
+}
+
+// Constructed once: these format inside loops over attempts, log rows and 180-odd
+// calendar cells, and building an Intl formatter per call is the expensive part.
+const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const LONG_DATE_FORMAT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
 function formatDate(timestamp: number | null): string {
   if (!timestamp) return "—";
-  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(timestamp);
+  return DATE_FORMAT.format(timestamp);
 }
 
 function formatDateTime(timestamp: number | null): string {
   if (!timestamp) return "—";
-  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(timestamp);
+  return DATE_TIME_FORMAT.format(timestamp);
 }
 
 function download(filename: string, contents: string, type: string): void {
@@ -348,7 +404,7 @@ function ScoreEstimateBlock({ estimate, compact = false }: { estimate: ScoreEsti
   );
 }
 
-function ScoreEvidenceNotice({ report }: { report: AttemptScoreReport }) {
+export function ScoreEvidenceNotice({ report }: { report: AttemptScoreReport }) {
   const detail = report.reason === "retrieval"
     ? "This session measures recall on material you have already seen. It updates mastery and scheduling, but cannot estimate exam standing."
     : report.reason === "original"
@@ -479,11 +535,14 @@ export default function EsatApp() {
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [openAttemptId, setOpenAttemptId] = useState<string | null>(null);
   const timedOutRef = useRef(false);
+  /** When the review list was opened, or null while a question is on screen. */
+  const reviewOpenedAtRef = useRef<number | null>(null);
   const syncedUserRef = useRef<string | null>(null);
   const cloudSettingsReadyUserRef = useRef<string | null>(null);
   const stateRef = useRef(state);
   const activeAttemptRef = useRef<Attempt | null>(null);
   const storageWarnedRef = useRef(false);
+  const compactionWarnedRef = useRef(false);
   const deepLinkReadRef = useRef(false);
   const tabIdRef = useRef("");
   const authGenerationRef = useRef(0);
@@ -559,7 +618,13 @@ export default function EsatApp() {
     setState(localState);
     syncedUserRef.current = user.uid;
     setAuthBusy(true);
-    Promise.all([loadUserStateCloud(user.uid), loadActiveAttemptCloud(user.uid)])
+    Promise.all([
+      loadUserStateCloud(user.uid),
+      // One unreadable resumable session must not discard the whole cloud profile:
+      // attempts, progress and the retrieval queue are far more valuable than an
+      // autosave that can be rebuilt by starting a new session.
+      loadActiveAttemptCloud(user.uid).catch(() => null),
+    ])
       .then(async ([remoteState, remoteActiveAttempt]) => {
         if (generation !== authGenerationRef.current) return;
         const localActiveAttempt = localState.activeAttempt;
@@ -601,13 +666,28 @@ export default function EsatApp() {
   useEffect(() => {
     if (!hydrated || !user || destructiveCloudActionRef.current) return;
     const write = () => {
+      let outcome: PersistResult;
       try {
-        localStorage.setItem(storageKeyForUser(user.uid), JSON.stringify(stateRef.current));
+        outcome = persistStoredState(localStorage, storageKeyForUser(user.uid), stateRef.current);
       } catch {
-        if (!storageWarnedRef.current) {
-          storageWarnedRef.current = true;
-          setToast("This browser refused to save progress locally. Sign-in keeps your cloud copy safe.");
-        }
+        // Reaching `localStorage` at all can throw where storage is blocked outright.
+        outcome = { stored: false, tier: 0, bytes: 0, droppedAttempts: 0, reason: "unavailable" };
+      }
+      if (outcome.stored && outcome.reason === "ok") return;
+      // Each distinct outcome is reported once per session: repeating it on every
+      // debounced save would bury the interface in identical toasts.
+      if (!outcome.stored && !storageWarnedRef.current) {
+        storageWarnedRef.current = true;
+        setToast(outcome.reason === "quota"
+          ? "This device's storage is full, so progress is being kept in your Firebase account instead. Your results are safe."
+          : "This browser refused to save progress locally. Sign-in keeps your cloud copy safe.");
+        return;
+      }
+      if (outcome.stored && !compactionWarnedRef.current) {
+        compactionWarnedRef.current = true;
+        setToast(outcome.droppedAttempts
+          ? `This device is low on storage, so only your ${outcome.droppedAttempts === 1 ? "oldest result is" : `${outcome.droppedAttempts} oldest results are`} kept in Firebase rather than on this device. Nothing has been lost.`
+          : "This device is low on storage, so fine-grained answer history is kept in Firebase rather than on this device. Nothing has been lost.");
       }
     };
     const timeout = window.setTimeout(write, 250);
@@ -729,17 +809,22 @@ export default function EsatApp() {
     (timedOut = false) => {
       const current = stateRef.current;
       if (!current.activeAttempt) return;
-      const finalized = finalizeAttempt(current.activeAttempt, questionMap, timedOut);
+      // The current question's visit ended when the review list opened. Passing that
+      // moment — rather than reading it back off state — is correct whether or not the
+      // settle has committed yet, so a timer expiry mid-commit can neither double-charge
+      // the question nor drop its final visit.
+      const visitEndedAt = reviewOpenedAtRef.current ?? undefined;
+      const finalized = finalizeAttempt(current.activeAttempt, questionMap, timedOut, Date.now(), visitEndedAt);
       const next = applyCompletedAttempt(current, finalized);
       stateRef.current = next;
       setState(next);
       setResult(finalized);
+      reviewOpenedAtRef.current = null;
       setReviewOpen(false);
       timedOutRef.current = false;
       if (user) {
         Promise.all([
-          saveAttemptCloud(user.uid, finalized),
-          saveUserStateCloud(user.uid, next),
+          saveAttemptOutcomeCloud(user.uid, finalized, next),
           deleteActiveAttemptCloud(user.uid, finalized.attemptId),
         ]).catch(() =>
           setToast("Saved locally; cloud sync will be retried later."),
@@ -788,6 +873,35 @@ export default function EsatApp() {
 
   const updateActive = useCallback((updater: (attempt: Attempt) => Attempt) => {
     setState((current) => (current.activeAttempt ? { ...current, activeAttempt: updater(current.activeAttempt) } : current));
+  }, []);
+
+  /**
+   * The review list is not a question, so no question should be billed for the time spent
+   * on it. Opening it ends the current visit; leaving it starts a fresh one.
+   */
+  const openOrCloseReview = useCallback((open: boolean) => {
+    const at = Date.now();
+    reviewOpenedAtRef.current = open ? at : null;
+    updateActive((attempt) => {
+      if (attempt.pausedAt) return attempt;
+      return open ? settleCurrentVisit(attempt, at) : { ...attempt, lastVisitStartedAt: at };
+    });
+    setReviewOpen(open);
+  }, [updateActive]);
+
+  // Settings, targets and notes are the three independently mergeable sections. Every
+  // edit has to stamp its section clock, otherwise a later sign-in cannot tell a local
+  // change from a stale one and silently resolves in favour of whatever the cloud holds.
+  const updateSettings = useCallback((patch: Partial<Settings>) => {
+    setState((current) => touchSyncSection({ ...current, settings: { ...current.settings, ...patch } }, "settings"));
+  }, []);
+
+  const updateTarget = useCallback((module: ModuleId, value: number) => {
+    setState((current) => touchSyncSection({ ...current, targets: { ...current.targets, [module]: value } }, "targets"));
+  }, []);
+
+  const updateNote = useCallback((questionId: string, note: string) => {
+    setState((current) => touchSyncSection({ ...current, notes: { ...current.notes, [questionId]: note } }, "notes"));
   }, []);
 
   const selectOption = useCallback(
@@ -846,6 +960,7 @@ export default function EsatApp() {
           },
         };
       });
+      reviewOpenedAtRef.current = null;
       setReviewOpen(false);
     },
     [updateActive],
@@ -864,7 +979,10 @@ export default function EsatApp() {
     if (!active || active.pausedAt || reviewOpen || !state.settings.keyboardShortcuts) return;
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target && (["INPUT", "SELECT", "TEXTAREA", "BUTTON", "SUMMARY"].includes(target.tagName) || target.isContentEditable)) return;
+      // Buttons are deliberately not excluded. Choosing an option with the mouse leaves
+      // focus on that option, and the A-H / 1-8 / arrow shortcuts have to keep working
+      // afterwards. None of the keys handled below activate a focused button.
+      if (target && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable)) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const currentQuestion = questionMap[active.questionIds[active.currentIndex]];
       if (!currentQuestion) return;
@@ -877,13 +995,13 @@ export default function EsatApp() {
       else if (event.key === "ArrowRight") navigateQuestion(active.currentIndex + 1);
       else if (event.key === "Backspace" || event.key === "Delete") clearOption();
       else if (key === "F") toggleFlag();
-      else if (key === "R") setReviewOpen(true);
+      else if (key === "R") openOrCloseReview(true);
       else handled = false;
       if (handled) event.preventDefault();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [active, clearOption, navigateQuestion, questionMap, reviewOpen, selectOption, state.settings.keyboardShortcuts, toggleFlag]);
+  }, [active, clearOption, navigateQuestion, openOrCloseReview, questionMap, reviewOpen, selectOption, state.settings.keyboardShortcuts, toggleFlag]);
 
   function beginQuestionList(
     pool: Question[],
@@ -1056,6 +1174,7 @@ export default function EsatApp() {
     const discarded = state.activeAttempt;
     if (!discarded) return;
     setState((current) => ({ ...current, activeAttempt: null }));
+    reviewOpenedAtRef.current = null;
     setReviewOpen(false);
     setResult(null);
     setView("dashboard");
@@ -1072,6 +1191,108 @@ export default function EsatApp() {
     setOpenAttemptId(null);
     setToast("That result was removed from your history. Question progress and the retrieval queue were left untouched.");
     if (user) deleteAttemptCloud(user.uid, attemptId).catch(() => undefined);
+  }
+
+  /**
+   * Wipe every local trace of the signed-in account without touching its cloud copy.
+   * Signing out is part of the operation, not a courtesy: while the session stays open,
+   * any later save would push this now-empty profile over the cloud copy the
+   * confirmation promises to keep.
+   */
+  async function clearLocalProgress(): Promise<void> {
+    if (!user) return;
+    if (!window.confirm("Erase all progress stored on this device and sign out? Your Firebase copy is not deleted, and it returns the next time you sign in.")) return;
+    const storageKey = storageKeyForUser(user.uid);
+    destructiveCloudActionRef.current = true;
+    setAuthBusy(true);
+    try {
+      await signOutUser();
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        // Storage can be unavailable in hardened/private browser contexts.
+      }
+      syncedUserRef.current = null;
+      cloudSettingsReadyUserRef.current = null;
+      stateRef.current = defaultState();
+      activeAttemptRef.current = null;
+      setState(defaultState());
+      setResult(null);
+      reviewOpenedAtRef.current = null;
+      setReviewOpen(false);
+      setOpenAttemptId(null);
+    } catch {
+      setToast("This device could not be cleared because sign-out did not complete. Please try again.");
+    } finally {
+      destructiveCloudActionRef.current = false;
+      setAuthBusy(false);
+    }
+  }
+
+  /** Permanently purge the account's server-side revision data, as the privacy notice offers. */
+  async function handleEraseCloudData(): Promise<void> {
+    if (!user) return;
+    if (!window.confirm("Permanently erase every attempt, answer, note, target and setting from this account's Firebase storage and from this browser? This cannot be undone.")) return;
+    destructiveCloudActionRef.current = true;
+    setAuthBusy(true);
+    try {
+      await deleteUserStateCloud(user.uid);
+      try {
+        localStorage.removeItem(storageKeyForUser(user.uid));
+      } catch {
+        // A refused local delete must not abort a completed server-side purge.
+      }
+      // Stamped as the newest edit so a stale replica on another device cannot
+      // resurrect the erased profile the next time that device merges.
+      const cleared = (["settings", "targets", "notes"] as const)
+        .reduce((state, section) => touchSyncSection(state, section), defaultState());
+      stateRef.current = cleared;
+      activeAttemptRef.current = null;
+      setState(cleared);
+      setResult(null);
+      reviewOpenedAtRef.current = null;
+      setReviewOpen(false);
+      setOpenAttemptId(null);
+      setToast("Your revision data was permanently erased from Firebase and from this device.");
+    } catch (error) {
+      setToast(error instanceof Error ? `Your data could not be erased: ${error.message}` : "Your data could not be erased. Please try again.");
+    } finally {
+      destructiveCloudActionRef.current = false;
+      setAuthBusy(false);
+    }
+  }
+
+  /** Purge the server data, then remove the Firebase Auth identity itself. */
+  async function handleDeleteAccount(): Promise<void> {
+    if (!user) return;
+    if (!window.confirm("Permanently delete this ESAT Atlas account and all of its cloud and device data? Google will ask you to confirm the account. This cannot be undone.")) return;
+    const storageKey = storageKeyForUser(user.uid);
+    destructiveCloudActionRef.current = true;
+    setAuthBusy(true);
+    try {
+      await deleteAccountAndData(user);
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        // As above: the account is already gone server-side.
+      }
+      const cleared = defaultState();
+      stateRef.current = cleared;
+      activeAttemptRef.current = null;
+      syncedUserRef.current = null;
+      cloudSettingsReadyUserRef.current = null;
+      setState(cleared);
+      setResult(null);
+      reviewOpenedAtRef.current = null;
+      setReviewOpen(false);
+      setOpenAttemptId(null);
+      setToast("Your ESAT Atlas account and stored revision data were permanently deleted.");
+    } catch (error) {
+      setToast(error instanceof Error ? `Account deletion did not complete: ${error.message}` : "Account deletion did not complete. Please try again.");
+    } finally {
+      destructiveCloudActionRef.current = false;
+      setAuthBusy(false);
+    }
   }
 
   async function handleSignIn(): Promise<void> {
@@ -1149,7 +1370,7 @@ export default function EsatApp() {
         questionMap={questionMap}
         now={tick}
         reviewOpen={reviewOpen}
-        setReviewOpen={setReviewOpen}
+        setReviewOpen={openOrCloseReview}
         onSelect={selectOption}
         onClear={clearOption}
         onNavigate={navigateQuestion}
@@ -1192,7 +1413,7 @@ export default function EsatApp() {
         questionMap={questionMap}
         showScoreEstimate={state.settings.showScoreEstimate}
         returnLabel={result.planSessionId ? "Continue today’s plan" : "Back to dashboard"}
-        previous={state.attempts.find((attempt) => attempt.attemptId !== result.attemptId && attempt.module === result.module && attemptKind(attempt) === attemptKind(result) && attempt.rawScore !== null) ?? null}
+        previous={previousComparableAttempt(state.attempts, result)}
         onClose={() => { setResult(null); setView(result.planSessionId ? "plan" : "dashboard"); }}
         onContinue={() => continueSequence(result)}
         onRetryMissed={() => {
@@ -1261,7 +1482,7 @@ export default function EsatApp() {
             <Pill tone="good"><CheckCircle2 size={13} /> Source bank validated</Pill>
           </div>
           <div className="topbar-actions">
-            <button className="icon-button" onClick={() => setState((current) => ({ ...current, settings: { ...current.settings, theme: current.settings.theme === "light" ? "dark" : "light" } }))} aria-label={`Switch to ${state.settings.theme === "light" ? "dark" : "light"} theme`}>
+            <button className="icon-button" onClick={() => updateSettings({ theme: state.settings.theme === "light" ? "dark" : "light" })} aria-label={`Switch to ${state.settings.theme === "light" ? "dark" : "light"} theme`}>
               {state.settings.theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
             <button className="account-button" onClick={handleSignOut} title="Sign out" disabled={authBusy}>
@@ -1316,10 +1537,7 @@ export default function EsatApp() {
                   onStart={beginPlanSession}
                   onPractice={() => setView("practice")}
                   onSettings={() => setView("settings")}
-                  onPlanMinutesChange={(minutes) => setState((current) => ({
-                    ...current,
-                    settings: { ...current.settings, adaptivePlanMinutes: minutes },
-                  }))}
+                  onPlanMinutesChange={(minutes) => updateSettings({ adaptivePlanMinutes: minutes })}
                 />
               ) : null}
               {view === "practice" ? (
@@ -1381,7 +1599,7 @@ export default function EsatApp() {
                   onOpenAttempt={setOpenAttemptId}
                 />
               ) : null}
-              {view === "analytics" ? <AnalyticsView attempts={state.attempts} questionMap={questionMap} showScoreEstimate={state.settings.showScoreEstimate} /> : null}
+              {view === "analytics" ? <AnalyticsView attempts={state.attempts} questionMap={questionMap} showScoreEstimate={state.settings.showScoreEstimate} now={tick} /> : null}
               {view === "mistakes" ? (
                 <MistakesView
                   state={state}
@@ -1409,7 +1627,7 @@ export default function EsatApp() {
                       retryTimed,
                     );
                   }}
-                  onNote={(questionId, note) => setState((current) => ({ ...current, notes: { ...current.notes, [questionId]: note } }))}
+                  onNote={updateNote}
                 />
               ) : null}
               {view === "papers" ? (
@@ -1426,7 +1644,11 @@ export default function EsatApp() {
               {view === "settings" ? (
                 <SettingsView
                   state={state}
-                  setState={setState}
+                  busy={authBusy}
+                  onSettingsChange={updateSettings}
+                  onTargetChange={updateTarget}
+                  onEraseCloudData={handleEraseCloudData}
+                  onDeleteAccount={handleDeleteAccount}
                   onExportJson={() => download("esat-atlas-export.json", JSON.stringify(state, null, 2), "application/json")}
                   onExportCsv={() => {
                     const csvCell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -1458,12 +1680,7 @@ export default function EsatApp() {
                     }
                     download("esat-atlas-attempts.csv", rows.join("\n"), "text/csv");
                   }}
-                  onReset={() => {
-                    if (!window.confirm("Erase all local progress on this device? Cloud progress is not deleted and will sync back on the next sign-in.")) return;
-                    localStorage.removeItem(STORAGE_KEY);
-                    setState(defaultState());
-                    setToast("Local progress cleared on this device.");
-                  }}
+                  onReset={clearLocalProgress}
                 />
               ) : null}
               </>
@@ -1482,7 +1699,7 @@ export default function EsatApp() {
   );
 }
 
-function Dashboard({
+export function Dashboard({
   state,
   bank,
   approvedCounts,
@@ -1584,15 +1801,22 @@ function Dashboard({
           <div className="panel-heading"><div><span className="eyebrow">Exam readiness trend</span><h2>Fresh, timed performance only</h2></div><Pill tone="neutral">Retakes excluded</Pill></div>
           {strictAttempts.length ? (
             <div className="mini-trend">
-              {strictAttempts.slice(0, 12).reverse().map((attempt) => (
-                <button
-                  key={attempt.attemptId}
-                  className={`trend-bar ${attempt.module}`}
-                  style={{ height: `${Math.max(8, ((attempt.rawScore ?? 0) / attempt.questionIds.length) * 100)}%` }}
-                  title={`${MODULE_LABELS[attempt.module]} ${attempt.rawScore}/${attempt.questionIds.length} · ${formatDate(attempt.endedAt)}`}
-                  onClick={() => onOpenAttempt(attempt.attemptId)}
-                />
-              ))}
+              {strictAttempts.slice(0, 12).reverse().map((attempt) => {
+                // A bar carries no text, so its label is the only thing announced; the
+                // title alone would leave it as an unnamed control on some readers.
+                const label = `${MODULE_LABELS[attempt.module]} ${attempt.rawScore}/${attempt.questionIds.length} · ${formatDate(attempt.endedAt)}`;
+                return (
+                  <button
+                    key={attempt.attemptId}
+                    type="button"
+                    className={`trend-bar ${attempt.module}`}
+                    style={{ height: `${Math.max(8, attemptAccuracyPercent(attempt))}%` }}
+                    title={label}
+                    aria-label={`Open breakdown: ${label}`}
+                    onClick={() => onOpenAttempt(attempt.attemptId)}
+                  />
+                );
+              })}
             </div>
           ) : (
             <EmptyState icon={BarChart3} title="No fresh trend yet" body="Sit a past paper or a strict 27-question module to establish your first honest baseline." action={<button className="button button-secondary" onClick={onPractice}>Choose a paper</button>} />
@@ -1756,7 +1980,7 @@ function PlanSessionCard({ session, index, onStart }: { session: StudyPlanSessio
   );
 }
 
-function AdaptiveStudyPlanView({ plan, settings, onStart, onPractice, onSettings, onPlanMinutesChange }: {
+export function AdaptiveStudyPlanView({ plan, settings, onStart, onPractice, onSettings, onPlanMinutesChange }: {
   plan: AdaptiveStudyPlan;
   settings: Settings;
   onStart: (session: StudyPlanSession) => void;
@@ -1926,7 +2150,7 @@ function guideEvidence(rows: SectionRow[]): Map<string, GuideEvidence> {
   return evidence;
 }
 
-function QuickTricksView({
+export function QuickTricksView({
   attempts, questionMap, onPractiseTopic,
 }: {
   attempts: Attempt[];
@@ -2192,7 +2416,7 @@ function QuickTricksView({
   );
 }
 
-function PracticeView({
+export function PracticeView({
   state, now, approvedCounts, paperSets, module, setModule, count, setCount, filter, setFilter, timing, setTiming,
   topic, setTopic, topics, paperModule, setPaperModule, paperExam, setPaperExam, paperYear, setPaperYear, onStartPaper, onStart, onExam, onFullMock,
 }: {
@@ -2332,7 +2556,7 @@ function PracticeView({
   );
 }
 
-function OriginalMocksView({ payload, attempts, showScoreEstimate, onStart, onFull, onOpenAttempt }: {
+export function OriginalMocksView({ payload, attempts, showScoreEstimate, onStart, onFull, onOpenAttempt }: {
   payload: MockPayload;
   attempts: Attempt[];
   showScoreEstimate: boolean;
@@ -2389,12 +2613,233 @@ function OriginalMocksView({ payload, attempts, showScoreEstimate, onStart, onFu
   );
 }
 
-function AnalyticsView({ attempts, questionMap, showScoreEstimate }: { attempts: Attempt[]; questionMap: Record<string, Question>; showScoreEstimate: boolean }) {
+const TAG_TREND_COPY: Record<ErrorTagRow["trend"], { label: string; tone: "neutral" | "good" | "warn" | "bad" | "blue" }> = {
+  rising: { label: "Rising", tone: "bad" },
+  falling: { label: "Easing", tone: "good" },
+  steady: { label: "Steady", tone: "neutral" },
+  new: { label: "New", tone: "warn" },
+  "insufficient data": { label: "Too few", tone: "neutral" },
+};
+
+/**
+ * The causes a candidate has recorded against their own mistakes. This is the one view
+ * built from self-reported data, so it is labelled as a diagnosis rather than a
+ * measurement, and it says plainly how much of the evidence is still untagged.
+ */
+export function ErrorCausesPanel({ attempts, questionMap }: { attempts: Attempt[]; questionMap: Record<string, Question> }) {
+  const summary = useMemo(() => errorTagSummary(attempts, questionMap), [attempts, questionMap]);
+  const diagnosed = summary.taggedResponses + summary.untaggedResponses;
+  const coverage = diagnosed ? summary.taggedResponses / diagnosed : 0;
+
+  return (
+    <article className="panel wide-panel">
+      <div className="panel-heading">
+        <div><span className="eyebrow">Mistake causes</span><h2>What actually costs you marks</h2></div>
+        <Pill tone="neutral">Your own diagnosis</Pill>
+      </div>
+      {summary.rows.length ? (
+        <>
+          <p className="panel-copy">
+            You have diagnosed <strong>{summary.taggedResponses}</strong> of your <strong>{diagnosed}</strong> missed
+            question{diagnosed === 1 ? "" : "s"}{summary.leading ? <> — most often <strong>{summary.leading.tag}</strong></> : null}.
+            One mistake can have several causes, so the shares below overlap.
+          </p>
+          <div className="cause-list">
+            {summary.rows.map((row) => {
+              const trend = TAG_TREND_COPY[row.trend];
+              const modules = MODULE_ORDER.filter((module) => row.modules[module] > 0);
+              return (
+                <div className="cause-row" key={row.tag}>
+                  <span className="cause-name">
+                    <strong>{row.tag}</strong>
+                    <small>{row.topTopics.length ? row.topTopics.map((item) => item.topic).join(" · ") : "No topic recorded"}</small>
+                  </span>
+                  <span className="cause-bar">
+                    <i><b style={{ width: `${Math.max(2, Math.round(row.share * 100))}%` }} /></i>
+                  </span>
+                  <span className="cause-count">
+                    <strong>{row.count}</strong>
+                    <small>{Math.round(row.share * 100)}%</small>
+                  </span>
+                  <span className="cause-modules" aria-label={modules.length ? `Seen in ${modules.map((module) => MODULE_LABELS[module]).join(", ")}` : "No module recorded"}>
+                    {modules.map((module) => <i className={`module-dot ${module}`} key={module} title={`${MODULE_LABELS[module]}: ${row.modules[module]}`} />)}
+                  </span>
+                  <Pill tone={trend.tone}>{trend.label}</Pill>
+                </div>
+              );
+            })}
+          </div>
+          {summary.untaggedResponses ? (
+            <p className="panel-footnote">
+              {summary.untaggedResponses} missed question{summary.untaggedResponses === 1 ? " has" : "s have"} no cause
+              recorded ({Math.round(coverage * 100)}% diagnosed). Tag them on a result screen to sharpen this picture.
+            </p>
+          ) : (
+            <p className="panel-footnote">Every missed question has a recorded cause. Causes are self-reported, so they guide revision rather than measure attainment.</p>
+          )}
+        </>
+      ) : (
+        <EmptyState
+          icon={Brain}
+          title={diagnosed ? "No causes recorded yet" : "No missed questions yet"}
+          body={diagnosed
+            ? `You have ${diagnosed} missed question${diagnosed === 1 ? "" : "s"} with no diagnosis. After a session, open "Confirm why each mark was lost" and tag each one — this panel then shows which causes actually repeat.`
+            : "Once a session records a missed question, tag why the mark was lost and the recurring causes will be summarised here."}
+        />
+      )}
+    </article>
+  );
+}
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/** Only alternate rows are labelled; seven labels in that space are unreadable. */
+const LABELLED_WEEKDAYS = new Set([0, 2, 4]);
+
+function heatmapCellLabel(day: StudyDay): string {
+  const date = LONG_DATE_FORMAT.format(day.dayStart);
+  if (!day.sessions) return `${date}: no recorded study`;
+  return `${date}: ${formatLongDuration(day.studyMs)} across ${day.sessions} session${day.sessions === 1 ? "" : "s"} and ${day.questions} question${day.questions === 1 ? "" : "s"}`;
+}
+
+/** Study habit, kept visually and conceptually separate from attainment. */
+export function StudyConsistencyPanel({ activity }: { activity: StudyActivity }) {
+  const streakNote = activity.currentStreak === 0
+    ? "Record any completed session today to start a streak."
+    : activity.studiedToday
+      ? "Today is already recorded."
+      : "Yesterday is recorded — study today to keep the streak alive.";
+
+  return (
+    <section className="panel study-consistency">
+      <div className="panel-heading">
+        <div><span className="eyebrow">Study consistency</span><h2>Every day you completed a session</h2></div>
+        <Pill tone="neutral">Habit, not attainment</Pill>
+      </div>
+      <div className="streak-strip">
+        <div><span>Current streak</span><strong>{activity.currentStreak}<small>day{activity.currentStreak === 1 ? "" : "s"}</small></strong></div>
+        <div><span>Longest streak</span><strong>{activity.longestStreak}<small>day{activity.longestStreak === 1 ? "" : "s"}</small></strong></div>
+        <div><span>Days studied</span><strong>{activity.activeDays}</strong></div>
+        <div><span>Recorded time</span><strong>{formatLongDuration(activity.totalStudyMs)}</strong></div>
+      </div>
+      <p className="panel-copy streak-note">{streakNote}{activity.busiestDay ? ` Your heaviest day was ${formatLongDuration(activity.busiestDay.studyMs)}.` : ""}</p>
+
+      <div className="heatmap-frame">
+        <div className="heatmap-scroll">
+          <div className="heatmap-months" aria-hidden="true">
+            {activity.weeks.map((week) => <span key={week.key}>{week.monthLabel ?? ""}</span>)}
+          </div>
+          <div className="heatmap-body">
+            <div className="heatmap-weekdays" aria-hidden="true">
+              {WEEKDAY_LABELS.map((label, index) => <span key={label}>{LABELLED_WEEKDAYS.has(index) ? label : ""}</span>)}
+            </div>
+            <div className="heatmap-grid" role="img" aria-label={`Study calendar for the last ${Math.round(activity.windowDays / 7)} weeks: ${activity.activeDaysInWindow} active days, current streak ${activity.currentStreak} days`}>
+              {activity.weeks.map((week) => (
+                <div className="heatmap-week" key={week.key}>
+                  {week.days.map((day, index) => (
+                    day
+                      ? <i key={day.dayKey} className={`heatmap-cell level-${day.level}`} title={heatmapCellLabel(day)} />
+                      : <i key={`${week.key}-gap-${index}`} className="heatmap-cell heatmap-cell-empty" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="heatmap-legend">
+        <span>{activity.activeDaysInWindow} active day{activity.activeDaysInWindow === 1 ? "" : "s"} shown</span>
+        <div aria-hidden="true">
+          <small>Less</small>
+          {[0, 1, 2, 3, 4].map((level) => <i className={`heatmap-cell level-${level}`} key={level} />)}
+          <small>More</small>
+        </div>
+      </div>
+      <p className="panel-footnote">A day counts once a session is submitted with recorded time. Shading steps at 15, 30 and 60 minutes, so a light week never looks like a heavy one.</p>
+    </section>
+  );
+}
+
+/**
+ * Per-question time for the session just submitted. Bars are scaled against the ESAT
+ * reference pace so the marker means the same thing on every result, and each bar is
+ * coloured by outcome: time only matters alongside whether the mark was won.
+ */
+export function QuestionTimingPanel({ attempt, questionMap }: { attempt: Attempt; questionMap: Record<string, Question> }) {
+  const rows = attempt.questionIds
+    .map((id, index) => ({ id, index, response: attempt.responses[id], question: questionMap[id] }))
+    .filter((row) => Boolean(row.response));
+  if (!rows.length) return null;
+
+  const target = esatPacedDurationMs(1);
+  const slowest = Math.max(...rows.map((row) => row.response.timeSpentMs));
+  // Keep the reference marker inside the track even when every question was quick.
+  const scale = Math.max(slowest, target * 1.25);
+  const overTarget = rows.filter((row) => row.response.timeSpentMs > target).length;
+  const fastest = rows.reduce((best, row) => (row.response.timeSpentMs < best.response.timeSpentMs ? row : best), rows[0]);
+  const longest = rows.reduce((worst, row) => (row.response.timeSpentMs > worst.response.timeSpentMs ? row : worst), rows[0]);
+
+  return (
+    <section className="panel question-timing">
+      <div className="panel-heading">
+        <div><span className="eyebrow">Time per question</span><h2>Where your {formatLongDuration(attempt.durationMs ?? 0)} went</h2></div>
+        <Pill tone="neutral">Reference {formatSeconds(target)}</Pill>
+      </div>
+      <p className="panel-copy">
+        {rows.length === 1 ? (
+          // Naming a quickest and a longest question is meaningless for a set of one,
+          // which is exactly what a single-question retry from the mistakes queue is.
+          <>
+            You spent <strong>{formatSeconds(rows[0].response.timeSpentMs)}</strong> on this question, against the
+            {" "}{formatSeconds(target)} the real ESAT allows on average.
+          </>
+        ) : (
+          <>
+            {overTarget} of {rows.length} questions ran past the {formatSeconds(target)} ESAT reference.
+            Quickest was Q{fastest.index + 1} at {formatSeconds(fastest.response.timeSpentMs)}; longest was
+            Q{longest.index + 1} at {formatSeconds(longest.response.timeSpentMs)}.
+          </>
+        )}
+      </p>
+      <ol className="timing-list" style={{ ["--pace-marker" as string]: `${(target / scale) * 100}%` }}>
+        {rows.map((row) => {
+          const { response, question } = row;
+          const tone = response.correct ? "good" : response.unanswered ? "neutral" : "bad";
+          const outcome = response.correct ? "Correct" : response.unanswered ? "Blank" : "Wrong";
+          return (
+            <li className="timing-row" key={row.id}>
+              <span className="timing-index">{row.index + 1}</span>
+              <span className="timing-track">
+                <i
+                  className={`timing-bar bar-${tone}`}
+                  style={{ width: `${Math.max(1.5, (response.timeSpentMs / scale) * 100)}%` }}
+                />
+              </span>
+              <span className="timing-value">{formatSeconds(response.timeSpentMs)}</span>
+              <span className="timing-outcome">
+                <Pill tone={tone}>{outcome}</Pill>
+                <small>{question?.esatTopic ?? "—"}</small>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="panel-footnote">
+        The dashed line marks the {formatSeconds(target)} average the real ESAT allows (40 minutes for 27 questions).
+        Individual questions are meant to vary around it; a run of long, wrong answers is the signal worth acting on.
+      </p>
+    </section>
+  );
+}
+
+export function AnalyticsView({ attempts, questionMap, showScoreEstimate, now }: { attempts: Attempt[]; questionMap: Record<string, Question>; showScoreEstimate: boolean; now: number }) {
   const completed = attempts.filter((attempt) => attempt.rawScore !== null);
   const allResponses = completed.flatMap((attempt) => Object.values(attempt.responses));
   const fresh = allResponses.filter((response) => response.firstExposure);
   const retakes = allResponses.filter((response) => !response.firstExposure);
-  const strict = completed.filter((attempt) => attempt.strictTimed && attempt.freshQuestionCount > 0);
+  // "Readiness evidence" has to mean the same thing here as it does on the dashboard and
+  // on every result screen, so this uses the shared predicate rather than a looser local
+  // one that would admit repeated or non-representative strict sets.
+  const strict = completed.filter(isReadinessEvidence);
   const topicRows = sectionBreakdown(allResponses, questionMap);
   const changed = allResponses.filter((response) => response.firstSelectedAnswer && response.finalAnswer && response.firstSelectedAnswer !== response.finalAnswer);
   const changedToCorrect = changed.filter((response) => response.correct).length;
@@ -2410,6 +2855,7 @@ function AnalyticsView({ attempts, questionMap, showScoreEstimate }: { attempts:
     { label: "2–3m", min: 120_000, max: 180_000 },
     { label: "3m+", min: 180_000, max: Infinity },
   ].map((bucket) => ({ ...bucket, responses: allResponses.filter((response) => response.timeSpentMs >= bucket.min && response.timeSpentMs < bucket.max) }));
+  const activity = useMemo(() => studyActivity(attempts, now), [attempts, now]);
 
   return (
     <>
@@ -2422,6 +2868,7 @@ function AnalyticsView({ attempts, questionMap, showScoreEstimate }: { attempts:
             <article><span>Study volume</span><strong>{allResponses.length}</strong><small>question responses</small></article>
             <article><span>Strict modules</span><strong>{strict.length}</strong><small>readiness evidence</small></article>
           </section>
+          <StudyConsistencyPanel activity={activity} />
           <section className="analytics-grid">
             <article className="panel wide-panel">
               <div className="panel-heading"><div><span className="eyebrow">Fresh score trend</span><h2>Strict modules</h2></div>{showScoreEstimate ? <Pill tone="neutral">Bars show raw marks</Pill> : null}</div>
@@ -2429,7 +2876,7 @@ function AnalyticsView({ attempts, questionMap, showScoreEstimate }: { attempts:
                 <div className="large-trend">
                   {strict.slice(0, 16).reverse().map((attempt) => (
                     <div key={attempt.attemptId} className="trend-column">
-                      <div className={`trend-bar ${attempt.module}`} style={{ height: `${((attempt.rawScore ?? 0) / attempt.questionIds.length) * 100}%` }} title={`${attemptTitle(attempt)} · ${formatDate(attempt.endedAt)}`} />
+                      <div className={`trend-bar ${attempt.module}`} style={{ height: `${attemptAccuracyPercent(attempt)}%` }} title={`${attemptTitle(attempt)} · ${formatDate(attempt.endedAt)}`} />
                       <span>{attempt.rawScore}</span>
                       <small>{MODULE_LABELS[attempt.module].replace("Mathematics ", "M")}</small>
                     </div>
@@ -2437,6 +2884,7 @@ function AnalyticsView({ attempts, questionMap, showScoreEstimate }: { attempts:
                 </div>
               ) : <EmptyState icon={Activity} title="No strict modules" body="Practice results are deliberately excluded from this readiness chart." />}
             </article>
+            <ErrorCausesPanel attempts={completed} questionMap={questionMap} />
             <article className="panel">
               <div className="panel-heading"><div><span className="eyebrow">Fresh vs repeated</span><h2>Learning separation</h2></div></div>
               <div className="comparison-bars">
@@ -2472,7 +2920,7 @@ function AnalyticsView({ attempts, questionMap, showScoreEstimate }: { attempts:
   );
 }
 
-function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote, scope, setScope, module, setModule, timed, setTimed }: {
+export function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote, scope, setScope, module, setModule, timed, setTimed }: {
   state: StoredState;
   now: number;
   questionMap: Record<string, Question>;
@@ -2486,15 +2934,26 @@ function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote, scope,
   timed: boolean;
   setTimed: (timed: boolean) => void;
 }) {
-  const items = Object.values(state.mistakes).sort((left, right) => left.dueDate - right.dueDate);
-  const dueNow = items.filter((item) => item.dueDate <= now).length;
+  // A queued item whose question has left the bank cannot be shown or retried, so it must
+  // not be counted either; otherwise the headline totals promise work the list never offers.
+  const queued = Object.values(state.mistakes).sort((left, right) => left.dueDate - right.dueDate);
+  const items = queued.filter((item) => questionMap[item.questionId]);
+  const unavailable = queued.length - items.length;
+  // An item is never deleted — the 14 and 30 day intervals exist precisely so a mastered
+  // question comes back occasionally. What changes on a correct answer is its state, so
+  // the list is grouped by that state rather than showing one undifferentiated pile.
+  const isMastered = (item: MistakeItem) => Boolean(state.progress[item.questionId]?.mastered);
+  const dueItems = items.filter((item) => !isMastered(item) && item.dueDate <= now);
+  const scheduledItems = items.filter((item) => !isMastered(item) && item.dueDate > now);
+  const masteredItems = items.filter(isMastered);
+  const outstanding = dueItems.length + scheduledItems.length;
+  const nextDue = [...dueItems, ...scheduledItems][0] ?? masteredItems[0] ?? null;
   const countFor = (target: ModuleId, targetScope: "all" | "due") => items.filter((item) => {
     const question = questionMap[item.questionId];
     if (!question || question.targetModule !== target) return false;
     return targetScope === "all" || item.dueDate <= now;
   }).length;
   const selectedCount = countFor(module, scope);
-  const mastered = Object.values(state.progress).filter((item) => item.mastered).length;
 
   return (
     <>
@@ -2502,16 +2961,26 @@ function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote, scope,
         <div>
           <span className="eyebrow">Spaced retrieval</span>
           <h1>Mistakes become scheduled work.</h1>
-          <p>A correct retry is progress, not instant mastery. Three delayed successes are required before an item leaves the queue.</p>
+          <p>A correct answer is progress, not instant mastery: it moves the question out of today’s work and schedules it further away. After three delayed successes it counts as mastered and returns only on the long 14 and 30 day intervals.</p>
         </div>
       </section>
 
       <section className="metric-strip">
-        <div><Brain size={18} /><span>In the queue<strong>{items.length} question{items.length === 1 ? "" : "s"}</strong></span></div>
-        <div><RotateCcw size={18} /><span>Due now<strong>{dueNow}</strong></span></div>
-        <div><CheckCircle2 size={18} /><span>Mastered<strong>{mastered}</strong></span></div>
-        <div><Clock3 size={18} /><span>Next due<strong>{items.length ? formatDate(items[0].dueDate) : "—"}</strong></span></div>
+        <div><Brain size={18} /><span>Still to resolve<strong>{outstanding} question{outstanding === 1 ? "" : "s"}</strong></span></div>
+        <div><RotateCcw size={18} /><span>Due now<strong>{dueItems.length}</strong></span></div>
+        <div><CheckCircle2 size={18} /><span>Mastered<strong>{masteredItems.length}</strong></span></div>
+        <div><Clock3 size={18} /><span>Next due<strong>{nextDue ? formatDate(nextDue.dueDate) : "—"}</strong></span></div>
       </section>
+
+      {unavailable ? (
+        <div className="integrity-banner">
+          <TriangleAlert size={18} />
+          <div>
+            <strong>{unavailable} queued question{unavailable === 1 ? " is" : "s are"} no longer in the validated bank.</strong>
+            <span>They are excluded from the counts above and cannot be retried. They will be dropped automatically if the archive restores them under a new identifier.</span>
+          </div>
+        </div>
+      ) : null}
 
       {items.length ? (
         <section className="panel redo-panel">
@@ -2550,7 +3019,7 @@ function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote, scope,
             <div>
               <strong>{selectedCount} question{selectedCount === 1 ? "" : "s"} · {MODULE_LABELS[module]}</strong>
               <span>
-                {scope === "all" ? "Every mistake still in the queue" : "Only what the schedule has brought back today"}
+                {scope === "all" ? "Everything still in the queue, including mastered items" : "Only what the schedule has brought back today"}
                 {timed ? ` · ${formatDuration(esatPacedDurationMs(selectedCount))} strict, no pause` : " · untimed, pause allowed"}
               </span>
             </div>
@@ -2561,33 +3030,103 @@ function MistakesView({ state, now, questionMap, onRetry, onRedo, onNote, scope,
         </section>
       ) : null}
       {!items.length ? <EmptyState icon={Brain} title="No mistakes in the queue" body="Incorrect answers will enter a transparent 1–3–7–14–30 day retrieval schedule." /> : (
-        <section className="mistake-list">
+        <>
+          <MistakeGroup
+            title="Due now"
+            caption="These are today’s retrieval work. Answering one correctly moves it to the scheduled list below."
+            tone="bad"
+            items={dueItems}
+            state={state}
+            now={now}
+            questionMap={questionMap}
+            onRetry={onRetry}
+            onNote={onNote}
+            emptyBody={outstanding ? "Nothing is due today. Everything still to resolve is scheduled below." : undefined}
+          />
+          <MistakeGroup
+            title="Scheduled"
+            caption="Answered correctly and waiting on their next interval. They return automatically on the date shown."
+            tone="neutral"
+            items={scheduledItems}
+            state={state}
+            now={now}
+            questionMap={questionMap}
+            onRetry={onRetry}
+            onNote={onNote}
+          />
+          <MistakeGroup
+            title="Mastered"
+            caption="Three delayed successes recorded. These stay on the long maintenance intervals rather than being deleted, so the record of the original mistake is never lost."
+            tone="good"
+            items={masteredItems}
+            state={state}
+            now={now}
+            questionMap={questionMap}
+            onRetry={onRetry}
+            onNote={onNote}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+/** One state of the retrieval queue: due, scheduled, or mastered. */
+function MistakeGroup({ title, caption, tone, items, state, now, questionMap, onRetry, onNote, emptyBody }: {
+  title: string;
+  caption: string;
+  tone: "bad" | "neutral" | "good";
+  items: MistakeItem[];
+  state: StoredState;
+  now: number;
+  questionMap: Record<string, Question>;
+  onRetry: (question: Question) => void;
+  onNote: (id: string, note: string) => void;
+  emptyBody?: string;
+}) {
+  if (!items.length && !emptyBody) return null;
+  return (
+    <section className="mistake-group">
+      <div className="mistake-group-head">
+        <h2>{title}<Pill tone={tone}>{items.length}</Pill></h2>
+        <p>{caption}</p>
+      </div>
+      {items.length ? (
+        <div className="mistake-list">
           {items.map((item) => {
             const question = questionMap[item.questionId];
-            if (!question) return null;
             const due = item.dueDate <= now;
+            const mastered = Boolean(state.progress[item.questionId]?.mastered);
             return (
               <article className="mistake-card" key={item.questionId}>
                 {question.questionImage
                   ? <img src={publicAsset(question.questionImage)} alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`} loading="lazy" />
                   : <div className="mistake-text-preview"><div><MathText>{question.questionText}</MathText><QuestionFigure question={question} /></div></div>}
                 <div className="mistake-copy">
-                  <div><Pill tone={due ? "bad" : "neutral"}>{due ? "Due now" : `Due ${formatDate(item.dueDate)}`}</Pill><Pill tone="blue">{MODULE_LABELS[question.targetModule]}</Pill></div>
+                  <div>
+                    <Pill tone={mastered ? "good" : due ? "bad" : "neutral"}>{mastered ? "Mastered" : due ? "Due now" : `Due ${formatDate(item.dueDate)}`}</Pill>
+                    <Pill tone="blue">{MODULE_LABELS[question.targetModule]}</Pill>
+                  </div>
                   <h3>{question.esatTopic} · {sourceLabel(question)}</h3>
-                  <p>{item.correctStreak}/3 delayed correct responses · current interval {item.intervalDays} day{item.intervalDays === 1 ? "" : "s"}</p>
+                  <p>
+                    {Math.min(3, item.correctStreak)}/3 delayed correct responses · next interval {item.intervalDays} day{item.intervalDays === 1 ? "" : "s"}
+                    {mastered ? "" : due ? " · ready now" : ` · returns ${formatDate(item.dueDate)}`}
+                  </p>
                   <textarea value={state.notes[item.questionId] ?? ""} onChange={(event) => onNote(item.questionId, event.target.value)} placeholder="Personal note, e.g. remember the sign convention…" aria-label={`Note for ${sourceLabel(question)}`} />
                   <button className="button button-secondary compact" onClick={() => onRetry(question)}><RotateCcw size={15} /> Retry question</button>
                 </div>
               </article>
             );
           })}
-        </section>
+        </div>
+      ) : (
+        <p className="mistake-group-empty">{emptyBody}</p>
       )}
-    </>
+    </section>
   );
 }
 
-function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstimate, onStart, onOpenAttempt }: {
+export function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstimate, onStart, onOpenAttempt }: {
   state: StoredState;
   paperSets: PaperSet[];
   filter: HistoryFilter;
@@ -2628,9 +3167,11 @@ function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstima
 
       {completed.length ? (
         <>
-          <div className="history-filters" role="tablist" aria-label="Filter results">
+          {/* Toggle buttons, not tabs: there is no tabpanel to own, and the list below
+              is filtered in place rather than swapped for another panel. */}
+          <div className="history-filters" role="group" aria-label="Filter results">
             {filters.map((item) => (
-              <button key={item.id} role="tab" aria-selected={filter === item.id} className={filter === item.id ? "selected" : ""} onClick={() => setFilter(item.id)}>{item.label}</button>
+              <button key={item.id} type="button" aria-pressed={filter === item.id} className={filter === item.id ? "selected" : ""} onClick={() => setFilter(item.id)}>{item.label}</button>
             ))}
           </div>
           {visible.length ? (
@@ -2755,7 +3296,7 @@ function QuestionLearningSupport({ question }: { question: Question }) {
   );
 }
 
-function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, onBack, onDelete, onResit }: {
+export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, onBack, onDelete, onResit }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   attempts: Attempt[];
@@ -2782,10 +3323,7 @@ function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, 
     .filter((item) => item.rawScore !== null && item.attemptId !== attempt.attemptId && (paperKey ? attemptPaperKey(item) === paperKey : item.mode === attempt.mode && item.module === attempt.module))
     .slice(0, 5);
   const previous = sameSet.find((item) => (item.endedAt ?? 0) < (attempt.endedAt ?? 0)) ?? null;
-  // Papers differ in length, so the comparison is in percentage points, not raw marks.
-  const delta = previous && previous.rawScore !== null
-    ? Math.round((report.accuracy - previous.rawScore / previous.questionIds.length) * 100)
-    : null;
+  const delta = accuracyDelta(attempt, previous);
 
   return (
     <>
@@ -2843,19 +3381,24 @@ function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, 
         <section className="panel">
           <div className="panel-heading"><div><span className="eyebrow">Same set, earlier attempts</span><h2>Progress on this material</h2></div></div>
           <div className="compare-list">
-            {[attempt, ...sameSet].map((item) => (
-              <div key={item.attemptId} className={item.attemptId === attempt.attemptId ? "compare-row current" : "compare-row"}>
-                <span>{formatDate(item.endedAt)}</span>
-                <i><b style={{ width: `${((item.rawScore ?? 0) / item.questionIds.length) * 100}%` }} /></i>
-                <strong>{item.rawScore}/{item.questionIds.length}</strong>
-                {showScoreEstimate && scoreReportForAttempt(item).estimate
-                  ? <small>≈ {scoreReportForAttempt(item).estimate?.scaledScore.toFixed(1)}</small>
-                  : showScoreEstimate ? <small>raw only</small> : null}
-              </div>
-            ))}
+            {[attempt, ...sameSet].map((item) => {
+              const itemEstimate = showScoreEstimate ? scoreReportForAttempt(item).estimate : null;
+              return (
+                <div key={item.attemptId} className={item.attemptId === attempt.attemptId ? "compare-row current" : "compare-row"}>
+                  <span>{formatDate(item.endedAt)}</span>
+                  <i><b style={{ width: `${attemptAccuracyPercent(item)}%` }} /></i>
+                  <strong>{item.rawScore}/{item.questionIds.length}</strong>
+                  {itemEstimate
+                    ? <small>≈ {itemEstimate.scaledScore.toFixed(1)}</small>
+                    : showScoreEstimate ? <small>raw only</small> : null}
+                </div>
+              );
+            })}
           </div>
         </section>
       ) : null}
+
+      <QuestionTimingPanel attempt={attempt} questionMap={questionMap} />
 
       <section className="panel question-log">
         <div className="panel-heading">
@@ -2976,18 +3519,56 @@ function ScoreMethodology() {
   );
 }
 
-function SettingsView({ state, setState, onExportJson, onExportCsv, onReset }: {
+/**
+ * A numeric setting that stays editable while it is being typed. Clamping on every
+ * keystroke makes the field impossible to clear and retype, because an empty string
+ * parses to zero and is immediately rewritten as the minimum; the committed value is
+ * therefore only normalised once the edit finishes.
+ */
+export function NumberSetting({ id, value, min, max, step, decimals = 0, onCommit }: {
+  id: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  decimals?: number;
+  onCommit: (value: number) => void;
+}) {
+  const format = (input: number): string => input.toFixed(decimals);
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = (raw: string): void => {
+    setDraft(null);
+    const parsed = Number(raw);
+    if (raw.trim() === "" || !Number.isFinite(parsed)) return;
+    const rounded = Math.round(parsed / step) * step;
+    onCommit(Number(Math.min(max, Math.max(min, rounded)).toFixed(decimals)));
+  };
+  return (
+    <input
+      id={id}
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={draft ?? format(value)}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={(event) => commit(event.target.value)}
+      onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+    />
+  );
+}
+
+export function SettingsView({ state, busy, onSettingsChange, onTargetChange, onExportJson, onExportCsv, onReset, onEraseCloudData, onDeleteAccount }: {
   state: StoredState;
-  setState: React.Dispatch<React.SetStateAction<StoredState>>;
+  busy: boolean;
+  onSettingsChange: (patch: Partial<Settings>) => void;
+  onTargetChange: (module: ModuleId, value: number) => void;
   onExportJson: () => void;
   onExportCsv: () => void;
   onReset: () => void;
+  onEraseCloudData: () => void;
+  onDeleteAccount: () => void;
 }) {
-  const clampTarget = (value: string): number => {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return 1;
-    return Math.min(9, Math.max(1, Math.round(parsed * 10) / 10));
-  };
   return (
     <>
       <section className="page-heading"><div><span className="eyebrow">Personal settings</span><h1>Targets and study constraints.</h1><p>Personal targets are planning aids, never official Cambridge thresholds.</p></div></section>
@@ -2995,9 +3576,9 @@ function SettingsView({ state, setState, onExportJson, onExportCsv, onReset }: {
         <article className="panel">
           <div className="panel-heading"><div><span className="eyebrow">Module targets</span><h2>Your own goals</h2></div></div>
           {MODULE_ORDER.map((module) => (
-            <label className="setting-row" key={module}>
+            <label className="setting-row" key={module} htmlFor={`target-${module}`}>
               <span>{MODULE_LABELS[module]}<small>1.0–9.0 personal target</small></span>
-              <input type="number" min="1" max="9" step="0.1" value={state.targets[module]} onChange={(event) => setState((current) => ({ ...current, targets: { ...current.targets, [module]: clampTarget(event.target.value) } }))} />
+              <NumberSetting id={`target-${module}`} value={state.targets[module]} min={1} max={9} step={0.1} decimals={1} onCommit={(value) => onTargetChange(module, value)} />
             </label>
           ))}
         </article>
@@ -3005,15 +3586,15 @@ function SettingsView({ state, setState, onExportJson, onExportCsv, onReset }: {
           <div className="panel-heading"><div><span className="eyebrow">Study planner</span><h2>Time available</h2></div></div>
           <label className="setting-row">
             <span>ESAT date<small>Used for the countdown</small></span>
-            <input type="date" value={state.settings.examDate} onChange={(event) => setState((current) => ({ ...current, settings: { ...current.settings, examDate: event.target.value } }))} />
+            <input type="date" value={state.settings.examDate} onChange={(event) => onSettingsChange({ examDate: event.target.value })} />
           </label>
-          <label className="setting-row">
+          <label className="setting-row" htmlFor="weekly-hours">
             <span>Weekly hours<small>Compared against your recorded session time</small></span>
-            <input type="number" min="1" max="40" value={state.settings.weeklyHours} onChange={(event) => setState((current) => ({ ...current, settings: { ...current.settings, weeklyHours: Math.min(40, Math.max(1, Math.round(Number(event.target.value) || 1))) } }))} />
+            <NumberSetting id="weekly-hours" value={state.settings.weeklyHours} min={1} max={40} step={1} onCommit={(value) => onSettingsChange({ weeklyHours: value })} />
           </label>
           <label className="setting-row">
             <span>Typical plan length<small>Maximum question time scheduled for one day</small></span>
-            <select value={state.settings.adaptivePlanMinutes} onChange={(event) => setState((current) => ({ ...current, settings: { ...current.settings, adaptivePlanMinutes: Number(event.target.value) } }))}>
+            <select value={state.settings.adaptivePlanMinutes} onChange={(event) => onSettingsChange({ adaptivePlanMinutes: Number(event.target.value) })}>
               {PLAN_MINUTE_OPTIONS.map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
             </select>
           </label>
@@ -3021,9 +3602,9 @@ function SettingsView({ state, setState, onExportJson, onExportCsv, onReset }: {
         </article>
         <article className="panel">
           <div className="panel-heading"><div><span className="eyebrow">Player and reporting</span><h2>Interaction</h2></div></div>
-          <label className="toggle-row"><span>Keyboard shortcuts<small>A–H, 1–8, arrows, backspace, F and R</small></span><input type="checkbox" checked={state.settings.keyboardShortcuts} onChange={(event) => setState((current) => ({ ...current, settings: { ...current.settings, keyboardShortcuts: event.target.checked } }))} /></label>
-          <label className="toggle-row"><span>Strict-mode pacing aid<small>Optional; hidden by default</small></span><input type="checkbox" checked={state.settings.pacingAid} onChange={(event) => setState((current) => ({ ...current, settings: { ...current.settings, pacingAid: event.target.checked } }))} /></label>
-          <label className="toggle-row"><span>Show estimated 1.0–9.0 score<small>Turn off to work from raw marks only</small></span><input type="checkbox" checked={state.settings.showScoreEstimate} onChange={(event) => setState((current) => ({ ...current, settings: { ...current.settings, showScoreEstimate: event.target.checked } }))} /></label>
+          <label className="toggle-row"><span>Keyboard shortcuts<small>A–H, 1–8, arrows, backspace, F and R</small></span><input type="checkbox" checked={state.settings.keyboardShortcuts} onChange={(event) => onSettingsChange({ keyboardShortcuts: event.target.checked })} /></label>
+          <label className="toggle-row"><span>Strict-mode pacing aid<small>Optional; hidden by default</small></span><input type="checkbox" checked={state.settings.pacingAid} onChange={(event) => onSettingsChange({ pacingAid: event.target.checked })} /></label>
+          <label className="toggle-row"><span>Show estimated 1.0–9.0 score<small>Turn off to work from raw marks only</small></span><input type="checkbox" checked={state.settings.showScoreEstimate} onChange={(event) => onSettingsChange({ showScoreEstimate: event.target.checked })} /></label>
         </article>
         <article className="panel">
           <div className="panel-heading"><div><span className="eyebrow">Data portability</span><h2>Own your revision record</h2></div></div>
@@ -3032,8 +3613,17 @@ function SettingsView({ state, setState, onExportJson, onExportCsv, onReset }: {
             <button className="button button-secondary" onClick={onExportJson}><Download size={16} /> Export JSON</button>
             <button className="button button-secondary" onClick={onExportCsv}><Download size={16} /> Attempts CSV</button>
           </div>
-          <p className="panel-footnote">Clearing local data does not delete your Firebase copy; signing in again restores it.</p>
-          <button className="button button-ghost" onClick={onReset}><TriangleAlert size={16} /> Clear local progress</button>
+          <p className="panel-footnote">Clearing this device signs you out and removes its saved copy. Your Firebase copy is not deleted, and signing in again restores it.</p>
+          <button className="button button-ghost" onClick={onReset} disabled={busy}><TriangleAlert size={16} /> Clear this device and sign out</button>
+        </article>
+        <article className="panel danger-panel">
+          <div className="panel-heading"><div><span className="eyebrow">Permanent deletion</span><h2>Erase your data or your account</h2></div><Pill tone="bad">Cannot be undone</Pill></div>
+          <p className="panel-copy">Export first if you want a copy. Erasing revision data keeps you signed in and starts you from an empty record; deleting the account also removes your ESAT Atlas identity from Firebase Authentication.</p>
+          <div className="danger-actions">
+            <button className="button button-ghost" onClick={onEraseCloudData} disabled={busy}><TriangleAlert size={16} /> Erase all revision data</button>
+            <button className="button button-ghost" onClick={onDeleteAccount} disabled={busy}><X size={16} /> Delete account and data</button>
+          </div>
+          <p className="panel-footnote">Google will ask you to confirm the account before deletion. Revoking ESAT Atlas in your Google Account&apos;s third-party connections does not by itself remove data already stored here.</p>
         </article>
       </section>
       <ScoreMethodology />
@@ -3041,7 +3631,7 @@ function SettingsView({ state, setState, onExportJson, onExportCsv, onReset }: {
   );
 }
 
-function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSelect, onClear, onNavigate, onFlag, onConfidence, onFinish, onExit, onPause, pacingAid, multiTabWarning, dismissMultiTab }: {
+export function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSelect, onClear, onNavigate, onFlag, onConfidence, onFinish, onExit, onPause, pacingAid, multiTabWarning, dismissMultiTab }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   now: number;
@@ -3082,7 +3672,7 @@ function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSe
 
   return (
     <div className="exam-shell">
-      <header className="exam-header">
+      <header className="exam-header" inert={Boolean(attempt.pausedAt)}>
         <div className="exam-brand"><div className="brand-mark">EA</div><span><strong>{MODULE_LABELS[attempt.module]}</strong>{attempt.mode === "historic" ? attempt.sourceSetLabel : attempt.mode === "original" ? "Original challenge mock" : attempt.strictTimed ? "Strict exam simulation" : "Practice session"}</span></div>
         <div className="exam-progress"><span>Question {attempt.currentIndex + 1} of {attempt.questionIds.length}</span><div><i style={{ width: `${(attempt.currentIndex + 1) / attempt.questionIds.length * 100}%` }} /></div></div>
         <div className="exam-header-actions">
@@ -3093,7 +3683,7 @@ function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSe
       {multiTabWarning ? <div className="multi-tab"><TriangleAlert size={18} /><span><strong>This attempt is open in another tab.</strong>Continue in one tab only to prevent competing saves.</span><button aria-label="Dismiss multi-tab warning" onClick={dismissMultiTab}><X size={16} /></button></div> : null}
       {attempt.pausedAt ? <div className="pause-overlay"><Pause size={28} /><h2>Practice paused</h2><p>Your timer and question visit are paused.</p><button className="button button-primary" onClick={onPause}><Play size={17} /> Resume session</button></div> : null}
       {reviewOpen ? (
-        <main className="review-screen">
+        <main className="review-screen" inert={Boolean(attempt.pausedAt)}>
           <div className="review-heading">
             <div><span className="eyebrow">Module review</span><h1>Check before submitting</h1><p>{answered} answered · {attempt.questionIds.length - answered} unanswered · {Object.values(attempt.responses).filter((item) => item.flagged).length} flagged</p></div>
             <button className="button button-secondary" onClick={() => setReviewOpen(false)}>Return to question</button>
@@ -3101,6 +3691,7 @@ function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSe
           <div className="review-grid">
             {attempt.questionIds.map((id, index) => {
               const item = attempt.responses[id];
+              if (!item) return null;
               return (
                 <button key={id} className={`${item.selectedAnswer ? "answered" : "unanswered"} ${item.flagged ? "flagged" : ""}`} onClick={() => onNavigate(index)}>
                   <strong>{index + 1}</strong>
@@ -3116,7 +3707,7 @@ function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSe
           </div>
         </main>
       ) : (
-        <main className="exam-content">
+        <main className="exam-content" inert={Boolean(attempt.pausedAt)}>
           <section className="question-stage">
             <div className="question-toolbar">
               <div><Pill tone="neutral">{displayedSource}</Pill>{!attempt.strictTimed ? <Pill tone="blue">{question.esatTopic}</Pill> : null}</div>
@@ -3153,7 +3744,7 @@ function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSe
         </main>
       )}
       {!reviewOpen ? (
-        <footer className="exam-footer">
+        <footer className="exam-footer" inert={Boolean(attempt.pausedAt)}>
           <div>{!attempt.strictTimed ? <button className="button button-secondary compact" onClick={onPause}><Pause size={15} /> Pause</button> : <span className="strict-note"><ShieldCheck size={15} /> Strict timing continues if this tab loses focus.</span>}</div>
           <div className="exam-nav">
             <button className="button button-secondary" onClick={() => onNavigate(attempt.currentIndex - 1)} disabled={attempt.currentIndex === 0}><ChevronLeft size={17} /> Previous</button>
@@ -3168,7 +3759,7 @@ function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSe
   );
 }
 
-function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, previous, onClose, onContinue, onRetryMissed, onTag }: {
+export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, previous, onClose, onContinue, onRetryMissed, onTag }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   showScoreEstimate: boolean;
@@ -3190,9 +3781,7 @@ function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, pr
   const estimate = report.estimate;
   const topics = sectionBreakdown(responses, questionMap);
   const pacing = pacingSummary(responses, attempt.questionIds.length, attempt.durationMs ?? 0);
-  const delta = previous && previous.rawScore !== null
-    ? Math.round(((attempt.rawScore ?? 0) / attempt.questionIds.length - previous.rawScore / previous.questionIds.length) * 100)
-    : null;
+  const delta = accuracyDelta(attempt, previous);
 
   return (
     <main className="result-screen">
@@ -3245,11 +3834,13 @@ function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, pr
       </section>
 
       {topics.length ? (
-        <section className="panel">
+        <section className="panel result-sections">
           <div className="panel-heading"><div><span className="eyebrow">Section breakdown</span><h2>How each area went</h2></div><TrendingUp size={18} /></div>
           <SectionTable rows={topics} />
         </section>
       ) : null}
+
+      <QuestionTimingPanel attempt={attempt} questionMap={questionMap} />
 
       {missed.length ? (
         <section className="panel review-errors">

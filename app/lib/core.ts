@@ -279,29 +279,110 @@ export function defaultState(): StoredState {
   };
 }
 
+/** A plain object, or an empty one. Guards against arrays, null and primitives alike. */
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+/**
+ * Numbers and numeric strings only. `Number()` alone would quietly turn null, "", [] and
+ * false into 0, which then clamps to the minimum — so a missing target would come back as
+ * 1.0 rather than the default the candidate actually has.
+ */
+function boundedNumber(value: unknown, minimum: number, maximum: number, fallback: number): number {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim() !== ""
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(maximum, Math.max(minimum, numeric));
+}
+
+function booleanOr(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+/**
+ * The minimum shape the interface can render. An attempt missing its identifier, its
+ * question list or its response map cannot be scored, listed or reopened, so it is
+ * dropped rather than allowed to throw somewhere deep in a view.
+ */
+function isAttemptShaped(value: unknown): boolean {
+  const attempt = asRecord(value);
+  return typeof attempt.attemptId === "string"
+    && attempt.attemptId.length > 0
+    && Array.isArray(attempt.questionIds)
+    && attempt.questionIds.every((id) => typeof id === "string")
+    && Boolean(attempt.responses)
+    && typeof attempt.responses === "object"
+    && !Array.isArray(attempt.responses);
+}
+
+/**
+ * The single gate every persisted record passes through, from `localStorage` and from
+ * Firestore alike. Both are outside this application's control — an older schema, a
+ * partial write or a hand-edited document — so nothing beyond this point may assume a
+ * field has the type its interface declares.
+ */
 export function mergeState(value: Partial<StoredState> | null | undefined): StoredState {
   const base = defaultState();
-  if (!value) return base;
+  if (!value || typeof value !== "object") return base;
   const normalizeAttempt = (attempt: Attempt): Attempt => ({
     ...attempt,
-    sourceExams: attempt.sourceExams ?? [],
+    sourceYears: Array.isArray(attempt.sourceYears) ? attempt.sourceYears : [],
+    sourceExams: Array.isArray(attempt.sourceExams) ? attempt.sourceExams : [],
     sourceSetLabel: attempt.sourceSetLabel ?? (attempt.sourceYears?.length ? `Archive ${attempt.sourceYears.join(", ")}` : "Practice set"),
-    sequenceSource: attempt.sequenceSource ?? "archive",
+    sequenceSource: attempt.sequenceSource === "original" ? "original" : "archive",
+    responses: asRecord(attempt.responses) as Attempt["responses"],
   });
-  const savedPlanMinutes = Number(value.settings?.adaptivePlanMinutes);
-  const adaptivePlanMinutes = Number.isFinite(savedPlanMinutes)
-    ? Math.min(120, Math.max(15, Math.round(savedPlanMinutes / 15) * 15))
-    : base.settings.adaptivePlanMinutes;
+
+  const storedSettings = asRecord(value.settings);
+  const settings: Settings = {
+    theme: storedSettings.theme === "dark" ? "dark" : "light",
+    keyboardShortcuts: booleanOr(storedSettings.keyboardShortcuts, base.settings.keyboardShortcuts),
+    examDate: typeof storedSettings.examDate === "string" ? storedSettings.examDate : base.settings.examDate,
+    weeklyHours: Math.round(boundedNumber(storedSettings.weeklyHours, 1, 40, base.settings.weeklyHours)),
+    // Snapped to the 15-minute options the planner and the settings select both offer.
+    adaptivePlanMinutes: Math.round(
+      boundedNumber(storedSettings.adaptivePlanMinutes, 15, 120, base.settings.adaptivePlanMinutes) / 15,
+    ) * 15,
+    pacingAid: booleanOr(storedSettings.pacingAid, base.settings.pacingAid),
+    showScoreEstimate: booleanOr(storedSettings.showScoreEstimate, base.settings.showScoreEstimate),
+  };
+
+  const storedTargets = asRecord(value.targets);
+  const targets = Object.fromEntries(MODULE_ORDER.map((module) => [
+    module,
+    Math.round(boundedNumber(storedTargets[module], 1, 9, base.targets[module]) * 10) / 10,
+  ])) as Record<ModuleId, number>;
+
+  const notes = Object.fromEntries(
+    Object.entries(asRecord(value.notes))
+      .filter(([, note]) => typeof note === "string")
+      .map(([questionId, note]) => [questionId, note as string]),
+  );
+
+  // Newest first, established here rather than trusted from storage. Several views take
+  // "the latest" or "the most recent five" by position, and a record that arrived from a
+  // partial sync or an older schema carries no ordering guarantee of its own.
+  const attempts = (Array.isArray(value.attempts) ? value.attempts : [])
+    .filter(isAttemptShaped)
+    .map(normalizeAttempt)
+    .sort((left, right) => (right.endedAt ?? right.startedAt) - (left.endedAt ?? left.startedAt));
+
   return {
     ...base,
     ...value,
-    attempts: (value.attempts ?? []).map(normalizeAttempt),
-    activeAttempt: value.activeAttempt ? normalizeAttempt(value.activeAttempt) : null,
-    progress: value.progress ?? base.progress,
-    mistakes: value.mistakes ?? base.mistakes,
-    notes: value.notes ?? base.notes,
-    targets: { ...base.targets, ...(value.targets ?? {}) },
-    settings: { ...base.settings, ...(value.settings ?? {}), adaptivePlanMinutes },
+    attempts,
+    activeAttempt: isAttemptShaped(value.activeAttempt) ? normalizeAttempt(value.activeAttempt as Attempt) : null,
+    progress: asRecord(value.progress) as StoredState["progress"],
+    mistakes: asRecord(value.mistakes) as StoredState["mistakes"],
+    notes,
+    targets,
+    settings,
     syncMetadata: normalizeSyncMetadata(value.syncMetadata),
   };
 }
@@ -566,9 +647,16 @@ export function finalizeAttempt(
   questionMap: Record<string, Question>,
   timedOut = false,
   now = Date.now(),
+  /**
+   * When the candidate stopped looking at the current question, if that is earlier than
+   * submission — leaving the review list open, for instance. Without it, time spent
+   * checking the whole paper is charged to whichever question happened to be open, which
+   * is almost always the last one.
+   */
+  visitEndedAt?: number,
 ): Attempt {
   const endedAt = effectiveAttemptEndTime(attempt, timedOut, now);
-  const settled = settleCurrentVisit(attempt, endedAt);
+  const settled = settleCurrentVisit(attempt, visitEndedAt ?? endedAt);
   const responses = { ...settled.responses };
   let rawScore = 0;
   for (const questionId of settled.questionIds) {
@@ -641,7 +729,7 @@ export function applyCompletedAttempt(state: StoredState, attempt: Attempt): Sto
     }
     item.totalAttempts += 1;
     item.exposureCount += 1;
-    item.lastAttemptedAt = attempt.endedAt;
+    item.lastAttemptedAt = completedAt;
     item.mostRecentResult = Boolean(response.correct);
     if (response.correct) item.totalCorrect += 1;
     else item.totalIncorrect += 1;
@@ -775,11 +863,52 @@ export function moduleStats(attempts: Attempt[], module: ModuleId): ModuleStats 
   };
 }
 
+/**
+ * Local-calendar helpers. Every "day" the product talks about — a study streak, a plan
+ * window, a heatmap cell — is the candidate's local day, never UTC. These live here so
+ * the planner and the activity statistics cannot drift apart on what "today" means.
+ */
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** `YYYY-MM-DD` for the local calendar day containing `now`. */
+export function localDayKey(now: number): string {
+  const date = new Date(now);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** Midnight at the start of the local calendar day containing `now`. */
+export function localDayStart(now: number): number {
+  const date = new Date(now);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+/**
+ * A monotonic index for a local calendar day. Subtracting two serials gives an exact
+ * whole-day difference, which subtracting two timestamps does not across a DST change.
+ */
+export function localDaySerial(now: number): number {
+  const date = new Date(now);
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000);
+}
+
+/** Midnight on the local day `days` after the day containing `now`. */
+export function localDayOffset(now: number, days: number): number {
+  const date = new Date(now);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days).getTime();
+}
+
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** Whole seconds, as the post-test review reports per-question time: "84 s". */
+export function formatSeconds(ms: number): string {
+  return `${Math.max(0, Math.round(ms / 1000))} s`;
 }
 
 /** Human-readable elapsed time for summaries, e.g. "1 h 24 m" or "8 m 05 s". */
@@ -790,10 +919,4 @@ export function formatLongDuration(ms: number): string {
   const seconds = totalSeconds % 60;
   if (hours) return `${hours} h ${String(minutes).padStart(2, "0")} m`;
   return `${minutes} m ${String(seconds).padStart(2, "0")} s`;
-}
-
-export function daysUntil(dateString: string): number | null {
-  const timestamp = new Date(`${dateString}T12:00:00`).getTime();
-  if (!Number.isFinite(timestamp)) return null;
-  return Math.max(0, Math.ceil((timestamp - Date.now()) / 86_400_000));
 }

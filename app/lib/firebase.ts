@@ -50,14 +50,21 @@ interface FirebaseClient {
 
 let client: FirebaseClient | null = null;
 
+/**
+ * Vite substitutes `import.meta.env` at build time. Under a plain ESM loader — the
+ * component test runner, or any non-bundled import of this module — it is absent, and
+ * reading a property through it would throw while the module is merely being imported.
+ */
+const buildEnv: Record<string, string | undefined> = import.meta.env ?? {};
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "AIzaSyDm9DnkoYFdzpDsmdKGZNmEJa_WuNBIoN4",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? "esat-a6d5d.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "esat-a6d5d",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ?? "esat-a6d5d.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "545060097640",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID ?? "1:545060097640:web:f578c1304b3b28de79b5dd",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID ?? "G-GKKM1NBWYM",
+  apiKey: buildEnv.VITE_FIREBASE_API_KEY ?? "AIzaSyDm9DnkoYFdzpDsmdKGZNmEJa_WuNBIoN4",
+  authDomain: buildEnv.VITE_FIREBASE_AUTH_DOMAIN ?? "esat-a6d5d.firebaseapp.com",
+  projectId: buildEnv.VITE_FIREBASE_PROJECT_ID ?? "esat-a6d5d",
+  storageBucket: buildEnv.VITE_FIREBASE_STORAGE_BUCKET ?? "esat-a6d5d.firebasestorage.app",
+  messagingSenderId: buildEnv.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "545060097640",
+  appId: buildEnv.VITE_FIREBASE_APP_ID ?? "1:545060097640:web:f578c1304b3b28de79b5dd",
+  measurementId: buildEnv.VITE_FIREBASE_MEASUREMENT_ID ?? "G-GKKM1NBWYM",
 };
 
 function configAvailable(): boolean {
@@ -74,15 +81,24 @@ function configAvailable(): boolean {
 const ACTIVE_ATTEMPT_COLLECTION = "activeAttempts";
 const ACTIVE_ATTEMPT_DOCUMENT = "current";
 const FIRESTORE_BATCH_LIMIT = 450;
-const USER_STATE_COLLECTIONS = [
-  "attempts",
-  ACTIVE_ATTEMPT_COLLECTION,
-  "settings",
-  "targets",
-  "notes",
-  "questionProgress",
-  "mistakeQueue",
-] as const;
+/** Collections whose document IDs are arbitrary, so a purge has to enumerate them. */
+const ENUMERATED_USER_COLLECTIONS = ["attempts", "questionProgress", "mistakeQueue"] as const;
+
+/**
+ * Documents this schema stores at one fixed, known ID.
+ *
+ * They must be deleted by path rather than listed. Their security rules pin the document
+ * name (`documentId == "main"`), and Cloud Firestore rules are not filters: it will only
+ * allow a list when the query itself guarantees every possible result is permitted. An
+ * unconstrained `getDocs` on these collections is therefore rejected outright, which
+ * would make account deletion fail with permission-denied.
+ */
+const FIXED_USER_DOCUMENTS: ReadonlyArray<readonly [string, string]> = [
+  [ACTIVE_ATTEMPT_COLLECTION, ACTIVE_ATTEMPT_DOCUMENT],
+  ["settings", "main"],
+  ["targets", "main"],
+  ["notes", "main"],
+];
 
 function isCompletedAttempt(attempt: Attempt): boolean {
   return attempt.completionStatus !== "active" && attempt.endedAt !== null && attempt.rawScore !== null;
@@ -163,13 +179,45 @@ export async function signOutUser(): Promise<void> {
   if (firebase) await signOut(firebase.auth);
 }
 
-export async function saveAttemptCloud(uid: string, attempt: Attempt): Promise<void> {
+/**
+ * Persist exactly what one completed attempt changed: the attempt itself, and the
+ * progress and retrieval records for the questions it contained.
+ *
+ * The alternative — replaying the whole profile through `saveUserStateCloud` on every
+ * submission — costs one write per stored question plus one per stored attempt, so a
+ * candidate who has revised for a month pays hundreds of writes to finish a 27-question
+ * module. Nothing outside this attempt's questions can have changed.
+ */
+export async function saveAttemptOutcomeCloud(
+  uid: string,
+  attempt: Attempt,
+  state: Pick<StoredState, "progress" | "mistakes">,
+): Promise<void> {
   const firebase = getFirebaseClient();
   if (!firebase) return;
   if (!isCompletedAttempt(attempt)) {
-    throw new Error("saveAttemptCloud only accepts completed attempts; use saveActiveAttemptCloud while a session is active.");
+    throw new Error("saveAttemptOutcomeCloud only accepts completed attempts; use saveActiveAttemptCloud while a session is active.");
   }
-  await setDoc(doc(firebase.db, "users", uid, "attempts", attempt.attemptId), attempt, { merge: true });
+  const operations: Array<(batch: WriteBatch) => void> = [
+    // merge:true so the sibling syncMetadata written by profile saves is preserved.
+    (batch) => batch.set(
+      doc(firebase.db, "users", uid),
+      { updatedAt: Date.now(), schemaVersion: 3 },
+      { merge: true },
+    ),
+    (batch) => batch.set(doc(firebase.db, "users", uid, "attempts", attempt.attemptId), attempt, { merge: true }),
+  ];
+  for (const questionId of new Set(attempt.questionIds)) {
+    const progress = state.progress[questionId];
+    if (progress) {
+      operations.push((batch) => batch.set(doc(firebase.db, "users", uid, "questionProgress", questionId), progress, { merge: true }));
+    }
+    const mistake = state.mistakes[questionId];
+    if (mistake) {
+      operations.push((batch) => batch.set(doc(firebase.db, "users", uid, "mistakeQueue", questionId), mistake, { merge: true }));
+    }
+  }
+  await commitOperations(firebase.db, operations);
 }
 
 /** Store the one resumable session separately from immutable attempt history. */
@@ -208,27 +256,6 @@ export async function deleteActiveAttemptCloud(uid: string, expectedAttemptId?: 
     if (!snapshot.exists() || snapshot.data().attemptId !== expectedAttemptId) return;
     transaction.delete(reference);
   });
-}
-
-export async function saveSettingsCloud(
-  uid: string,
-  settings: StoredState["settings"],
-  updatedAt?: number,
-): Promise<void> {
-  const firebase = getFirebaseClient();
-  if (!firebase) return;
-  const rootData: {
-    updatedAt: number;
-    schemaVersion: number;
-    syncMetadata?: Pick<SyncMetadata, "settings">;
-  } = { updatedAt: Date.now(), schemaVersion: 3 };
-  if (updatedAt !== undefined) {
-    rootData.syncMetadata = { settings: normalizeSyncMetadata({ settings: updatedAt }).settings };
-  }
-  await Promise.all([
-    setDoc(doc(firebase.db, "users", uid), rootData, { merge: true }),
-    setDoc(doc(firebase.db, "users", uid, "settings", "main"), settings),
-  ]);
 }
 
 /** The profile sections this write replaces; attempts and progress are synced separately. */
@@ -338,9 +365,14 @@ export async function deleteUserStateCloud(uid: string): Promise<void> {
     throw new Error("The signed-in Firebase user does not match the requested data owner.");
   }
   const snapshots = await Promise.all(
-    USER_STATE_COLLECTIONS.map((name) => getDocsFromServer(collection(firebase.db, "users", uid, name))),
+    ENUMERATED_USER_COLLECTIONS.map((name) => getDocsFromServer(collection(firebase.db, "users", uid, name))),
   );
   const references = snapshots.flatMap((snapshot) => snapshot.docs.map((record) => record.ref));
+  // Deleting a document that does not exist is a no-op, so the fixed paths keep the
+  // whole purge idempotent without an extra existence read.
+  for (const [collectionName, documentId] of FIXED_USER_DOCUMENTS) {
+    references.push(doc(firebase.db, "users", uid, collectionName, documentId));
+  }
   references.push(doc(firebase.db, "users", uid));
   await commitOperations(
     firebase.db,

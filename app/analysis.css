@@ -62,6 +62,11 @@
 .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .button-ghost { border: 1px solid var(--line); background: transparent; color: var(--muted); }
 .button-ghost:hover { border-color: var(--red); color: var(--red); }
+.button-ghost:disabled { opacity: .55; cursor: not-allowed; }
+.button-ghost:disabled:hover { border-color: var(--line); color: var(--muted); }
+.danger-panel { border-color: var(--red-soft); }
+.danger-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; }
+.danger-actions .button-ghost { border-color: var(--red-soft); color: var(--red); }
 .detail-hero { display: grid; grid-template-columns: minmax(190px, .8fr) 1.2fr; gap: 16px; align-items: center; margin-bottom: 18px; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); }
 .detail-raw strong { display: block; font-size: 52px; font-weight: 850; letter-spacing: -.05em; line-height: 1; }
 .detail-raw span { display: block; margin-top: 4px; color: var(--muted); font-size: 14px; font-weight: 700; }
@@ -116,7 +121,8 @@
 
 .original-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .clear-answer { margin-top: 9px; }
-.result-estimate { margin-bottom: 16px; }
+/* Spacing on the result screen comes from the container's own stack gap. */
+.result-estimate { padding: clamp(18px, 1.8vw, 22px); }
 .sidebar-scrim { position: fixed; inset: 0; z-index: 39; border: 0; padding: 0; background: rgba(9, 22, 19, .42); cursor: pointer; }
 .loading-screen-error { flex-direction: column; text-align: center; padding: 24px; }
 .loading-screen-error .button { margin-top: 6px; }
@@ -141,6 +147,15 @@
 }
 
 /* ---- Score scale, offer context and the published distribution ---- */
+
+/* Shown wherever an estimate is withheld — every practice, retrieval, short or original
+   result — so it carries the same weight as the estimate block it replaces. */
+.score-evidence-notice { display: flex; align-items: flex-start; gap: 11px; padding: 15px 17px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.score-evidence-notice > svg { flex: 0 0 auto; margin-top: 1px; color: var(--muted); }
+.score-evidence-notice > div { min-width: 0; }
+.score-evidence-notice strong, .score-evidence-notice span { display: block; }
+.score-evidence-notice strong { font-size: 14px; letter-spacing: -.01em; }
+.score-evidence-notice span { margin-top: 5px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 
 .score-scale { position: relative; margin: 6px 0 30px; }
 .score-scale-track { display: block; height: 9px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }
@@ -242,8 +257,6 @@
 .log-answer.is-correct kbd { background: var(--action-bg); border-color: var(--action-bg); color: var(--action-fg); }
 .log-answer.is-yours { border-color: var(--red); background: var(--red-soft); }
 .log-answer.is-yours kbd { background: var(--red-fill); border-color: var(--red-fill); color: white; }
-.log-explanation strong { display: block; margin-bottom: 5px; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
-.log-explanation p { margin: 0; font-size: 14px; line-height: 1.7; }
 
 @media (max-width: 820px) {
   .log-review { grid-template-columns: 1fr; }
@@ -308,4 +321,83 @@
   .distribution-chart, .curve-table, .redo-grid .segmented { overflow-x: auto; }
   .distribution-chart { min-width: 0; }
   .redo-grid .segmented { flex-wrap: wrap; }
+}
+
+/* ------------------------------------------------------------ mistake causes -- */
+.cause-list { display: grid; gap: 2px; }
+.cause-row { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(90px, 1fr) 62px 46px 76px; align-items: center; gap: 14px; padding: 11px 0; border-top: 1px solid var(--line); }
+.cause-row:first-child { border-top: 0; }
+.cause-name { min-width: 0; }
+.cause-name strong { display: block; font-size: 14px; }
+.cause-name small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cause-bar i { display: block; height: 6px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+.cause-bar b { display: block; height: 100%; border-radius: 4px; background: var(--red); }
+.cause-count { text-align: right; }
+.cause-count strong { display: block; font-size: 15px; }
+.cause-count small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+.cause-modules { display: flex; gap: 4px; }
+
+/* -------------------------------------------------------- study consistency -- */
+/* The month row, the weekday gutter and the grid are all positioned from these three
+   values, so the labels cannot drift out of alignment with the columns they name. */
+.study-consistency { --heat-cell: 12px; --heat-gap: 3px; --heat-label: 26px; --heat-label-gap: 8px; --heat-gutter: calc(var(--heat-label) + var(--heat-label-gap)); margin-bottom: 14px; }
+.streak-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.streak-strip > div { padding: 13px 15px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); }
+.streak-strip span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; }
+.streak-strip strong { display: flex; align-items: baseline; gap: 5px; margin-top: 6px; font-size: 24px; letter-spacing: -.04em; }
+.streak-strip small { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0; }
+.streak-note { margin-top: 14px; }
+.heatmap-frame { margin-top: 6px; }
+.heatmap-scroll { overflow-x: auto; padding-bottom: 4px; }
+.heatmap-months { display: grid; grid-auto-flow: column; grid-auto-columns: var(--heat-cell); gap: var(--heat-gap); margin-left: var(--heat-gutter); margin-bottom: 5px; }
+.heatmap-months span { color: var(--muted); font-size: 10px; font-weight: 700; white-space: nowrap; }
+.heatmap-body { display: flex; gap: var(--heat-label-gap); }
+.heatmap-weekdays { display: grid; grid-template-rows: repeat(7, var(--heat-cell)); gap: var(--heat-gap); width: var(--heat-label); flex: none; }
+.heatmap-weekdays span { color: var(--muted); font-size: 10px; font-weight: 700; line-height: var(--heat-cell); white-space: nowrap; text-align: right; }
+.heatmap-grid { display: flex; gap: var(--heat-gap); }
+.heatmap-week { display: grid; grid-template-rows: repeat(7, var(--heat-cell)); gap: var(--heat-gap); }
+.heatmap-cell { width: var(--heat-cell); height: var(--heat-cell); border-radius: 3px; background: var(--heat-0); }
+.heatmap-cell.level-1 { background: var(--heat-1); }
+.heatmap-cell.level-2 { background: var(--heat-2); }
+.heatmap-cell.level-3 { background: var(--heat-3); }
+.heatmap-cell.level-4 { background: var(--heat-4); }
+.heatmap-cell-empty { background: transparent; }
+.heatmap-legend { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.heatmap-legend > div { display: flex; align-items: center; gap: 4px; }
+.heatmap-legend small { font-size: 11px; }
+
+/* ---------------------------------------------------------- per-question time -- */
+.timing-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.timing-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) 54px minmax(0, 150px); align-items: center; gap: 12px; }
+.timing-index { color: var(--muted); font-size: 12px; font-weight: 750; text-align: right; font-variant-numeric: tabular-nums; }
+.timing-track { position: relative; height: 14px; border-radius: 5px; background: var(--surface-3); overflow: visible; }
+/* One tick per row; adjacent rows join into the dashed ESAT-reference line. */
+.timing-track::after { content: ""; position: absolute; left: var(--pace-marker, 50%); top: -3px; bottom: -3px; border-left: 1px dashed var(--line-strong); }
+.timing-bar { display: block; height: 100%; border-radius: 5px; background: var(--green); }
+.timing-bar.bar-good { background: var(--green); }
+.timing-bar.bar-bad { background: var(--red); }
+.timing-bar.bar-neutral { background: var(--line-strong); }
+.timing-value { font-size: 12px; font-weight: 750; text-align: right; font-variant-numeric: tabular-nums; }
+.timing-outcome { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.timing-outcome small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 860px) {
+  .streak-strip { grid-template-columns: repeat(2, 1fr); }
+  /* The bar is a second view of the percentage printed next to it, so it is the only
+     thing dropped here. Every number, label and module marker stays on screen. */
+  .cause-row { grid-template-columns: minmax(0, 1fr) 54px 46px 72px; gap: 10px; }
+  .cause-row .cause-bar { display: none; }
+}
+
+@media (max-width: 560px) {
+  /* Wrap rather than hide: the topic a cause clusters in, and the modules it spans,
+     are findings in their own right and must survive a phone viewport. */
+  .cause-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+  .cause-name { flex: 1 1 100%; }
+  .cause-name small { white-space: normal; }
+  .cause-count { display: flex; align-items: baseline; gap: 5px; text-align: left; }
+  .cause-count strong, .cause-count small { margin-top: 0; }
+  .cause-modules { margin-left: auto; }
+  .timing-row { grid-template-columns: 22px minmax(0, 1fr) 48px; row-gap: 4px; }
+  .timing-outcome { grid-column: 2 / -1; }
 }

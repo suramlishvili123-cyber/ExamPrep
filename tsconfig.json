@@ -19,6 +19,6 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["app/**/*.ts", "app/**/*.tsx", "static/**/*.tsx", "tests/**/*.ts", "*.ts"],
+  "include": ["app/**/*.ts", "app/**/*.tsx", "static/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "*.ts"],
   "exclude": ["node_modules", "dist"]
 }

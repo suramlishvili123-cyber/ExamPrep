@@ -15,6 +15,7 @@ import {
   moduleStats,
   remainingMs,
   scoreEstimateEligibility,
+  settleCurrentVisit,
   storageKeyForUser,
   touchSyncSection,
   type Attempt,
@@ -126,6 +127,93 @@ test("personal defaults and sync metadata migrate without stale or invalid times
   assert.equal(touchSyncSection(touched, "settings", 150).syncMetadata.settings, 200);
 });
 
+test("a malformed persisted record is coerced rather than trusted", () => {
+  // Everything here is a type the interface would later call a method on: a string target
+  // reaches .toFixed, a non-array attempts list reaches .map, a bad theme reaches the
+  // document dataset. None of it can be assumed, because both localStorage and Firestore
+  // are outside this application's control.
+  const merged = mergeState({
+    settings: {
+      theme: "chartreuse",
+      keyboardShortcuts: "yes",
+      examDate: 20260814,
+      weeklyHours: "abc",
+      adaptivePlanMinutes: -5,
+      pacingAid: 1,
+      showScoreEstimate: 0,
+    },
+    targets: { maths1: "8.25", physics: 99, maths2: null },
+    notes: { q1: "keep", q2: { nope: true } },
+    attempts: { not: "an array" },
+    progress: [1, 2, 3],
+    mistakes: "corrupt",
+  } as never);
+
+  assert.equal(merged.settings.theme, "light");
+  assert.equal(merged.settings.keyboardShortcuts, true);
+  assert.equal(merged.settings.examDate, "");
+  assert.equal(merged.settings.weeklyHours, 8);
+  assert.equal(merged.settings.adaptivePlanMinutes, 15);
+  assert.equal(merged.settings.pacingAid, false);
+  assert.equal(merged.settings.showScoreEstimate, true);
+  assert.deepEqual(merged.targets, { maths1: 8.3, physics: 9, maths2: 7 });
+  assert.deepEqual(merged.notes, { q1: "keep" });
+  assert.deepEqual(merged.attempts, []);
+  assert.deepEqual(merged.progress, {});
+  assert.deepEqual(merged.mistakes, {});
+  assert.equal(typeof merged.targets.maths1.toFixed(1), "string");
+});
+
+test("attempts are ordered newest first regardless of how they were stored", () => {
+  const at = (id: string, endedAt: number | null, startedAt = 0) => ({
+    attemptId: id, questionIds: ["q1"], responses: {}, endedAt, startedAt,
+  });
+  const merged = mergeState({
+    attempts: [at("old", 1_000), at("newest", 9_000), at("middle", 5_000), at("unfinished", null, 7_000)],
+  } as never);
+
+  assert.deepEqual(merged.attempts.map((item) => item.attemptId), ["newest", "unfinished", "middle", "old"]);
+});
+
+test("attempts that cannot be scored or reopened are dropped, not half-rendered", () => {
+  const usable = createAttempt({ questions: [question("q1")], module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
+  const merged = mergeState({
+    attempts: [
+      usable,
+      { attemptId: "", questionIds: [], responses: {} },
+      { attemptId: "no-questions", responses: {} },
+      { attemptId: "responses-are-an-array", questionIds: ["q1"], responses: [] },
+      { questionIds: ["q1"], responses: {} },
+      null,
+    ],
+    activeAttempt: { attemptId: "broken", questionIds: "nope" },
+  } as never);
+
+  assert.equal(merged.attempts.length, 1);
+  assert.equal(merged.attempts[0].attemptId, usable.attemptId);
+  assert.equal(merged.activeAttempt, null);
+});
+
+test("a legacy attempt keeps its identity while gaining current defaults", () => {
+  const legacy = {
+    attemptId: "legacy",
+    questionIds: ["q1"],
+    responses: { q1: { questionId: "q1", selectedAnswer: "A" } },
+    module: "physics",
+    mode: "historic",
+    rawScore: 1,
+    endedAt: 1_000,
+  };
+  const merged = mergeState({ attempts: [legacy] } as never);
+
+  assert.equal(merged.attempts.length, 1);
+  assert.equal(merged.attempts[0].attemptId, "legacy");
+  assert.deepEqual(merged.attempts[0].sourceExams, []);
+  assert.deepEqual(merged.attempts[0].sourceYears, []);
+  assert.equal(merged.attempts[0].sequenceSource, "archive");
+  assert.equal(merged.attempts[0].sourceSetLabel, "Practice set");
+});
+
 test("user-scoped storage keys are stable, encoded and collision-resistant", () => {
   const first = storageKeyForUser("user/a");
   assert.equal(first, storageKeyForUser("user/a"));
@@ -162,6 +250,138 @@ test("freshness is permanent and retry mastery advances only after delayed succe
   assert.equal(state.mistakes.q1.correctStreak, 1);
   assert.equal(state.mistakes.q1.intervalDays, 3);
   assert.equal(state.progress.q1.mastered, false);
+});
+
+test("progress and retrieval scheduling share one completion clock", () => {
+  const item = question("q1");
+  const attempt = createAttempt({ questions: [item], module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
+  const endedAt = attempt.startedAt + 10_000;
+  const state = applyCompletedAttempt(defaultState(), finalizeAttempt(attempt, { q1: item }, false, endedAt));
+
+  assert.equal(state.progress.q1.lastAttemptedAt, endedAt);
+  assert.equal(state.mistakes.q1.dueDate, endedAt + 86_400_000);
+});
+
+test("a completion with no recorded end time still stamps a usable progress clock", () => {
+  // A record rebuilt from an older or partially written cloud document can arrive with a
+  // null endedAt. The merge in the client resolves per-question progress by comparing
+  // lastAttemptedAt, so a null there would make an offline edit win or lose arbitrarily.
+  const item = question("q1");
+  const attempt = createAttempt({ questions: [item], module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
+  const finalized = finalizeAttempt(attempt, { q1: item }, false, attempt.startedAt + 10_000);
+  const before = Date.now();
+  const state = applyCompletedAttempt(defaultState(), { ...finalized, endedAt: null });
+
+  const stamped = state.progress.q1.lastAttemptedAt;
+  assert.equal(typeof stamped, "number");
+  assert.equal(Number.isFinite(stamped ?? Number.NaN), true);
+  assert.equal((stamped ?? 0) >= before, true);
+});
+
+test("a correct retry reschedules the question instead of leaving it due", () => {
+  const item = question("q1");
+  const first = createAttempt({ questions: [item], module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
+  let state = applyCompletedAttempt(defaultState(), finalizeAttempt(first, { q1: item }, false, first.startedAt + 10_000));
+
+  const wrongAt = state.mistakes.q1.dueDate;
+  assert.equal(state.mistakes.q1.correctStreak, 0);
+
+  // Getting it right must visibly change its state: streak up, and the next appearance
+  // pushed from tomorrow out to the three-day interval.
+  const retry = createAttempt({ questions: [item], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: state.progress });
+  retry.responses.q1.selectedAnswer = "A";
+  const retryEnd = retry.startedAt + 8_000;
+  state = applyCompletedAttempt(state, finalizeAttempt(retry, { q1: item }, false, retryEnd));
+
+  assert.equal(state.mistakes.q1.correctStreak, 1);
+  assert.equal(state.mistakes.q1.lastResult, true);
+  assert.equal(state.mistakes.q1.intervalDays, 3);
+  assert.equal(state.mistakes.q1.dueDate, retryEnd + 3 * 86_400_000);
+  assert.ok(state.mistakes.q1.dueDate > wrongAt);
+  assert.equal(state.mistakes.q1.dueDate > retryEnd, true, "a correctly answered question must not stay due");
+});
+
+test("three delayed successes mark mastery, and one slip resets it", () => {
+  const item = question("q1");
+  const first = createAttempt({ questions: [item], module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
+  let state = applyCompletedAttempt(defaultState(), finalizeAttempt(first, { q1: item }, false, first.startedAt + 10_000));
+
+  const correctRetry = (at: number) => {
+    const retry = createAttempt({ questions: [item], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: state.progress });
+    retry.responses.q1.selectedAnswer = "A";
+    state = applyCompletedAttempt(state, finalizeAttempt(retry, { q1: item }, false, at));
+  };
+
+  correctRetry(1_000_000);
+  assert.equal(state.progress.q1.mastered, false);
+  correctRetry(2_000_000);
+  assert.equal(state.progress.q1.mastered, false);
+  correctRetry(3_000_000);
+  assert.equal(state.progress.q1.mastered, true);
+  assert.equal(state.mistakes.q1.intervalDays, 14);
+
+  // The record is deliberately kept so the long maintenance intervals can bring it back,
+  // and so a later mistake is measured against the same history.
+  assert.ok(state.mistakes.q1);
+
+  const slip = createAttempt({ questions: [item], module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: state.progress });
+  slip.responses.q1.selectedAnswer = "B";
+  state = applyCompletedAttempt(state, finalizeAttempt(slip, { q1: item }, false, 4_000_000));
+  assert.equal(state.progress.q1.mastered, false);
+  assert.equal(state.mistakes.q1.correctStreak, 0);
+  assert.equal(state.mistakes.q1.intervalDays, 1);
+});
+
+test("per-question time records the visit and excludes time spent on the review list", () => {
+  const items = [question("q1"), question("q2")];
+  const map = Object.fromEntries(items.map((entry) => [entry.id, entry]));
+  const attempt = createAttempt({ questions: items, module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
+  const start = attempt.startedAt;
+
+  // 30s on Q1, then move to Q2 and spend 45s there.
+  const onQ2 = settleCurrentVisit({ ...attempt }, start + 30_000);
+  const viewingQ2 = { ...onQ2, currentIndex: 1, lastVisitStartedAt: start + 30_000 };
+  // The candidate opens the review list at +75s, then checks the paper for two minutes.
+  const reviewOpenedAt = start + 75_000;
+  const atReview = settleCurrentVisit(viewingQ2, reviewOpenedAt);
+  const submittedAt = reviewOpenedAt + 120_000;
+
+  const finalized = finalizeAttempt(atReview, map, false, submittedAt, atReview.lastVisitStartedAt);
+
+  assert.equal(finalized.responses.q1.timeSpentMs, 30_000);
+  assert.equal(finalized.responses.q2.timeSpentMs, 45_000);
+  // The session still took the full time; only the per-question attribution excludes it.
+  assert.equal(finalized.durationMs, 195_000);
+});
+
+test("review handover is correct whether or not the settle already applied", () => {
+  const items = [question("q1")];
+  const map = { q1: items[0] };
+  const attempt = createAttempt({ questions: items, module: "maths1", mode: "practice", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
+  const start = attempt.startedAt;
+  const reviewOpenedAt = start + 60_000;
+  const submittedAt = reviewOpenedAt + 90_000;
+
+  // Committed: the visit was already settled to the review-open moment.
+  const settled = settleCurrentVisit(attempt, reviewOpenedAt);
+  const fromSettled = finalizeAttempt(settled, map, false, submittedAt, reviewOpenedAt);
+
+  // Not yet committed: a timer expiry can reach finalize before React applies the settle.
+  const fromUnsettled = finalizeAttempt(attempt, map, false, submittedAt, reviewOpenedAt);
+
+  // Both must attribute the same 60s, and neither may charge the 90s of checking.
+  assert.equal(fromSettled.responses.q1.timeSpentMs, 60_000);
+  assert.equal(fromUnsettled.responses.q1.timeSpentMs, 60_000);
+  assert.equal(fromSettled.durationMs, 150_000);
+  assert.equal(fromUnsettled.durationMs, 150_000);
+});
+
+test("without the review handover the last question absorbs the checking time", () => {
+  // Guards the default: a submission that did not leave the question still bills it.
+  const items = [question("q1")];
+  const attempt = createAttempt({ questions: items, module: "maths1", mode: "retry", durationMinutes: null, strictTimed: false, generated: true, progress: {} });
+  const finalized = finalizeAttempt(attempt, { q1: items[0] }, false, attempt.startedAt + 42_000);
+  assert.equal(finalized.responses.q1.timeSpentMs, 42_000);
 });
 
 test("excluded or unresolved questions cannot enter sessions", () => {
