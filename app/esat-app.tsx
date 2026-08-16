@@ -3920,7 +3920,7 @@ export function SettingsView({ state, busy, offline, onToast, onSettingsChange, 
             <input type="checkbox" checked={state.settings.scratchpadEnabled} onChange={(event) => onSettingsChange({ scratchpadEnabled: event.target.checked })} />
           </label>
           <label className="toggle-row">
-            <span>Stylus only<small>Ignore finger and mouse input. Touch is rejected by itself once a stylus is used, and moves the question instead.</small></span>
+            <span>Stylus only<small>Ignore finger and mouse input entirely. Not usually needed: a stylus used once in a session already stops touch drawing, and a broad contact is treated as a resting palm whatever else is in use.</small></span>
             <input
               type="checkbox"
               checked={state.settings.scratchpadStylusOnly}
@@ -4388,6 +4388,15 @@ export function ExamPlayer({
   const [aspect, setAspect] = useState(0);
   const [frame, setFrame] = useState({ width: 0, height: 0 });
   /**
+   * Whether a stylus has been used during this session.
+   *
+   * Kept here rather than in the writing layer, which is keyed by the question and so loses
+   * its own state at every navigation — and deliberately not written to the stylus-only
+   * setting, which is the candidate's own choice and would otherwise be flipped on for
+   * every device and every future session by one incidental touch of a pencil.
+   */
+  const [penSeen, setPenSeen] = useState(false);
+  /**
    * The writable page in board units: the visible part of the question plus any blank paper
    * under it. Derived from the question's own shape rather than the window, so a stroke put
    * halfway down the page is halfway down it on every device.
@@ -4572,6 +4581,8 @@ export function ExamPlayer({
                   pagePixelHeight={page.height}
                   tool={tool}
                   preferences={scratchPreferences}
+                  penSeen={penSeen}
+                  onPenSeen={() => setPenSeen(true)}
                   onStatusChange={handleStatusChange}
                   onNotice={onNotice}
                 />

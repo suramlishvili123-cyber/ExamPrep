@@ -65,6 +65,7 @@ import {
   PEN_WIDTHS,
   SCRATCH_COLOURS,
   eraseAt,
+  inkExtent,
   pageIsFull,
   pagePointCount,
   simplifyStroke,
@@ -90,6 +91,46 @@ const NEUTRAL_PRESSURE = 0.5;
 
 /** Undo depth. Snapshots share their stroke objects, so each entry is a list of pointers. */
 const HISTORY_DEPTH = 40;
+
+/**
+ * A touch contact wider or taller than this, in CSS pixels, is taken to be a palm.
+ *
+ * This can only ever reject, never accept. Most browsers report 1x1 for every touch, and a
+ * default of 1 can never exceed the threshold — so where the geometry is unknown nothing
+ * changes, and where it is reported a resting hand is caught. It matters for capacitive
+ * styluses, which arrive as `pointerType: "touch"` and so cannot be told from a palm by
+ * type alone; a fine tip reports a small contact patch, the heel of a hand a large one.
+ */
+const MAX_TOUCH_CONTACT_PX = 22;
+
+/**
+ * Pen buttons, as bit flags in `PointerEvent.buttons`.
+ *
+ * The eraser end of a Surface or Wacom pen arrives as a pen contact with the eraser flag
+ * set, and the barrel button as the secondary flag. Both mean "rub out" to the hand holding
+ * it, whatever the toolbar happens to have selected. Tested as a mask rather than for
+ * equality: a barrel button held while the tip is down reports both flags at once.
+ */
+const PEN_ERASER_FLAG = 32;
+const PEN_BARREL_FLAG = 2;
+/** The same two, as the `button` that changed on the event that started the contact. */
+const PEN_ERASER_BUTTON = 5;
+const PEN_BARREL_BUTTON = 2;
+
+/** True when this pen event is asking to erase rather than to write. */
+export function isPenErasing(event: Pick<PointerEvent, "pointerType" | "button" | "buttons">): boolean {
+  if (event.pointerType !== "pen") return false;
+  if (event.button === PEN_ERASER_BUTTON || event.button === PEN_BARREL_BUTTON) return true;
+  return (event.buttons & (PEN_ERASER_FLAG | PEN_BARREL_FLAG)) !== 0;
+}
+
+/**
+ * True when a touch contact is large enough to be a resting hand rather than a fingertip.
+ * Unknown geometry — the 0 or 1 most browsers report — is never treated as a palm.
+ */
+export function isPalmContact(width: number, height: number): boolean {
+  return width > MAX_TOUCH_CONTACT_PX || height > MAX_TOUCH_CONTACT_PX;
+}
 
 export interface ScratchPreferences {
   colour: ScratchColour;
@@ -203,6 +244,17 @@ interface AnnotatorProps {
   pagePixelHeight: number;
   tool: ScratchTool;
   preferences: ScratchPreferences;
+  /**
+   * Whether a stylus has been used anywhere in this session.
+   *
+   * Held by the host rather than here: this component is keyed by the question, so its own
+   * state is thrown away at every navigation. A candidate who rests a palm on the glass a
+   * moment before the nib lands on the next question would otherwise have that palm treated
+   * as a first-ever finger and be left with a stray mark.
+   */
+  penSeen: boolean;
+  /** Reported the first time a stylus is used, so the host can remember it. */
+  onPenSeen?: () => void;
   onStatusChange: (status: AnnotationStatus) => void;
   /** Reported when the page fills up, or a stylus is first detected. */
   onNotice?: (message: string) => void;
@@ -217,6 +269,8 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
   pagePixelHeight,
   tool,
   preferences,
+  penSeen,
+  onPenSeen,
   onStatusChange,
   onNotice,
   ref,
@@ -233,9 +287,7 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
   const drawingRef = useRef<{ pointerId: number; stroke: ScratchStroke } | null>(null);
   const erasingRef = useRef<number | null>(null);
   const lastErasePointRef = useRef<[number, number] | null>(null);
-  const penSeenRef = useRef(false);
   const fullWarnedRef = useRef(false);
-  const [penSeen, setPenSeen] = useState(false);
   // Mirrors the stroke count for the accessible label only. The strokes themselves stay in
   // a ref; a ref cannot be read during render, and the label has to say something true.
   const [strokeCount, setStrokeCount] = useState(initialPage?.strokes.length ?? 0);
@@ -322,7 +374,10 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
 
   const commit = useCallback((strokes: ScratchStroke[]) => {
     strokesRef.current = strokes;
-    onChange({ height: boardHeight, strokes });
+    // Never shorter than the writing reaches: see `inkExtent`. The question's own geometry
+    // sets the height, but taking blank paper away later must not hide what was written on
+    // it when the page is read back.
+    onChange({ height: Math.max(boardHeight, inkExtent(strokes)), strokes });
     publishStatus();
   }, [boardHeight, onChange, publishStatus]);
 
@@ -348,18 +403,20 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
   }, []);
 
   /** Whether this pointer is allowed to write. */
-  const accepts = useCallback((pointerType: string): boolean => {
+  const accepts = useCallback((pointerType: string, width: number, height: number): boolean => {
     if (pointerType === "pen") {
-      if (!penSeenRef.current) {
-        penSeenRef.current = true;
-        setPenSeen(true);
+      if (!penSeen) {
+        onPenSeen?.();
         onNotice?.("Stylus detected. Your palm will no longer draw, and a finger now moves the question.");
       }
       return true;
     }
-    if (pointerType === "touch") return !stylusOnly && !penSeenRef.current;
-    return !stylusOnly;
-  }, [onNotice, stylusOnly]);
+    if (pointerType !== "touch") return !stylusOnly;
+    // A palm is rejected on its own account, before the stylus rule, so a hand put down
+    // first on a fresh question cannot leave a mark even where no pen has been seen yet.
+    if (isPalmContact(width, height)) return false;
+    return !stylusOnly && !penSeen;
+  }, [onNotice, onPenSeen, penSeen, stylusOnly]);
 
   const paintLive = useCallback((stroke: ScratchStroke) => {
     const canvas = liveRef.current;
@@ -402,7 +459,7 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     // The Move tool exists for a candidate with no stylus, whose finger would otherwise
     // always draw. It hands every pointer straight back to the browser's own scrolling.
-    if (tool === "pan" || !event.isPrimary || !accepts(event.pointerType)) return;
+    if (tool === "pan" || !event.isPrimary || !accepts(event.pointerType, event.width, event.height)) return;
     // Only after the pointer is accepted: preventing the default on a rejected touch would
     // stop the candidate scrolling the question with a finger.
     event.preventDefault();
@@ -415,7 +472,9 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
       // Ignored deliberately; see above.
     }
 
-    if (tool === "eraser") {
+    // The eraser end and the barrel button rub out whatever the toolbar has selected: that
+    // is what the hand holding the pen expects, and it saves a round trip to the toolbar.
+    if (tool === "eraser" || isPenErasing(event.nativeEvent)) {
       pushUndo();
       erasingRef.current = event.pointerId;
       // A fresh sweep starts here, so it must not join up with wherever the last one ended.
@@ -524,6 +583,7 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
    * not scroll as well: leaving it to do both moved the page twice as far as the finger.
    */
   const touchAction = tool !== "pan" && (penSeen || stylusOnly) ? "auto" : "none";
+
 
   return (
     <div className="annotation-layer" ref={hostRef}>

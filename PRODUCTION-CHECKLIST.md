@@ -21,7 +21,8 @@
       the previous shell cache is removed once it is applied
 - [ ] Writing done on a question offline syncs on reconnection and is readable in the review
 - [ ] Stylus, finger and mouse each write; a resting palm does not; a finger moves the
-      question once a stylus has been used
+      question once a stylus has been used, including after moving to the next question
+- [ ] A pen's eraser end and barrel button rub out without changing the selected tool
 - [ ] The Move tool drags the question with a mouse, a stylus and a finger, and the page
       travels exactly as far as the pointer does
 - [ ] The option cut line lands where the printed options actually begin on each paper, and

@@ -65,9 +65,12 @@ as an application and, after one signed-in visit, runs entirely offline.
   the diagram it belongs to and under the line it follows from, exactly as it would on
   print. Pen, highlighter, an eraser that splits a stroke rather than deleting it, and a
   Move tool that drags the page; four inks, three nib widths, pressure-varying strokes,
-  undo, redo and clear. Blank squared paper can be added below the question — half a page
-  up to two pages — for working that needs more room than the crop leaves. Once a stylus is
-  used a resting palm stops drawing and a finger moves the question instead. The ink is
+  undo, redo and clear. A pen's own eraser end or barrel button rubs out without going near
+  the toolbar. Blank squared paper can be added below the question — half a page up to two
+  pages — for working that needs more room than the crop leaves. Once a stylus is used
+  anywhere in the session a resting palm stops drawing and a finger moves the question
+  instead; a broad contact patch is treated as a palm whatever else is in use, which is what
+  a capacitive stylus needs, since those arrive indistinguishable from a finger. The ink is
   anchored to the paper rather than the screen, so it stays exactly where it was put through
   any magnification and lands in the same place when the page is read back on another
   device. Each question keeps its own writing, it survives a reload, and it is shown back

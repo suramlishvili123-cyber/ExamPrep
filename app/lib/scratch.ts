@@ -92,6 +92,26 @@ export function pagePointCount(page: ScratchPage): number {
   return page.strokes.reduce((total, stroke) => total + stroke.points.length / 3, 0);
 }
 
+/**
+ * How far down the page the writing actually reaches, in board units.
+ *
+ * A page records the height it was written at so the review can show it back at the right
+ * shape. That height comes from the question's geometry, which the candidate can change —
+ * taking away the blank paper they had added, or hiding more of the crop. Storing the new,
+ * shorter height on the next save would leave everything written lower than it off the
+ * bottom of the review. The stored height is therefore never less than the ink needs.
+ */
+export function inkExtent(strokes: ScratchStroke[]): number {
+  let lowest = 0;
+  for (const stroke of strokes) {
+    for (let index = 1; index < stroke.points.length; index += 3) {
+      if (stroke.points[index] > lowest) lowest = stroke.points[index];
+    }
+  }
+  // A margin so the lowest stroke is not flush against the edge of the review.
+  return lowest > 0 ? lowest + 24 : 0;
+}
+
 /** True when another stroke would take the page past what can be stored. */
 export function pageIsFull(page: ScratchPage): boolean {
   return page.strokes.length >= MAX_STROKES_PER_PAGE || pagePointCount(page) >= MAX_POINTS_PER_PAGE;

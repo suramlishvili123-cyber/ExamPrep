@@ -16,6 +16,7 @@ import {
   encodePage,
   encodedPageSize,
   eraseAt,
+  inkExtent,
   pageIsEmpty,
   pageIsFull,
   pagePointCount,
@@ -182,4 +183,17 @@ test("page emptiness and the storage bound are reported honestly", () => {
   assert.equal(pageIsFull(manyStrokes), true);
   const longStroke = { height: 10, strokes: [stroke(new Array(MAX_POINTS_PER_PAGE * 3).fill(1))] };
   assert.equal(pageIsFull(longStroke), true);
+});
+
+test("a page never records a height that would hide what is written on it", () => {
+  // Writing low on a page that had blank paper added below the question.
+  const low = stroke([100, 40, 0.5, 400, 1420, 0.5]);
+  assert.equal(inkExtent([low]), 1444, "the extent clears the lowest stroke");
+  assert.equal(inkExtent([]), 0, "an empty page has no extent");
+  assert.equal(inkExtent([stroke([10, 0, 0.5, 20, 0, 0.5])]), 0, "ink along the top edge needs no room");
+
+  // Height is taken from the question, but only when that is enough for the ink.
+  const questionHeight = 679;
+  assert.equal(Math.max(questionHeight, inkExtent([low])), 1444);
+  assert.equal(Math.max(questionHeight, inkExtent([stroke([10, 30, 0.5, 20, 60, 0.5])])), questionHeight);
 });

@@ -14,7 +14,14 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ExamPlayer, QUESTION_ZOOM_STEPS, fitPageZoom, nearestZoomStep } from "../app/esat-app";
-import { AnnotationToolbar, EMPTY_ANNOTATION_STATUS, type AnnotationStatus, type ScratchPreferences } from "../app/scratchpad";
+import {
+  AnnotationToolbar,
+  EMPTY_ANNOTATION_STATUS,
+  isPalmContact,
+  isPenErasing,
+  type AnnotationStatus,
+  type ScratchPreferences,
+} from "../app/scratchpad";
 import { MIN_QUESTION_ZOOM, MAX_QUESTION_ZOOM, defaultState, type Attempt, type Question, type ResponseRecord, type Settings } from "../app/lib/core";
 import type { ScratchTool } from "../app/lib/scratch";
 
@@ -380,4 +387,73 @@ test("choosing an ink while erasing or moving means writing again", () => {
 
   fireEvent.click(screen.getByRole("button", { name: "Broad nib" }));
   assert.deepEqual(patches[2], { size: 3 });
+});
+
+
+/* ------------------------------------------------------------------ the pointers -- */
+
+test("a pen asks to erase with its eraser end or its barrel button", () => {
+  const pen = (over: Partial<{ button: number; buttons: number }>) =>
+    ({ pointerType: "pen", button: 0, buttons: 1, ...over }) as PointerEvent;
+
+  // The nib alone writes.
+  assert.equal(isPenErasing(pen({})), false);
+  // The eraser end, both as the button that changed and as the flag held down.
+  assert.equal(isPenErasing(pen({ button: 5, buttons: 32 })), true);
+  assert.equal(isPenErasing(pen({ button: -1, buttons: 32 })), true);
+  // The barrel button, including while the tip is also down — which reports both flags, so
+  // an equality test against 32 alone would miss it.
+  assert.equal(isPenErasing(pen({ button: 2, buttons: 3 })), true);
+  assert.equal(isPenErasing(pen({ button: -1, buttons: 3 })), true);
+  assert.equal(isPenErasing(pen({ button: -1, buttons: 33 })), true);
+  // A mouse right-click is not a pen eraser; it must not rub out a candidate's working.
+  assert.equal(isPenErasing({ pointerType: "mouse", button: 2, buttons: 2 } as PointerEvent), false);
+  assert.equal(isPenErasing({ pointerType: "touch", button: 0, buttons: 1 } as PointerEvent), false);
+});
+
+test("a broad contact patch is a palm; an unreported one is never assumed to be", () => {
+  // What almost every browser reports for touch. It must never be read as a palm, or a
+  // candidate with no stylus could not write at all.
+  assert.equal(isPalmContact(0, 0), false);
+  assert.equal(isPalmContact(1, 1), false);
+  // A fingertip or a capacitive stylus tip.
+  assert.equal(isPalmContact(12, 14), false);
+  assert.equal(isPalmContact(22, 22), false);
+  // The heel of a hand, in either direction.
+  assert.equal(isPalmContact(48, 20), true);
+  assert.equal(isPalmContact(20, 60), true);
+});
+
+test("a palm resting first on a fresh question does not draw", () => {
+  const drawn: unknown[] = [];
+  const { container, rerender } = render(
+    <ExamPlayer {...playerProps({ onScratchChange: (_id: string, page: unknown) => drawn.push(page) })} />,
+  );
+  const canvas = () => container.querySelector(".annotation-canvas-live") as HTMLElement;
+
+  // No stylus has been seen yet — this is the state a newly mounted question starts in —
+  // and a wide contact lands before any nib. It is rejected on its own account.
+  fireEvent.pointerDown(canvas(), { pointerId: 1, pointerType: "touch", isPrimary: true, width: 46, height: 38, clientX: 10, clientY: 10 });
+  fireEvent.pointerMove(canvas(), { pointerId: 1, pointerType: "touch", clientX: 30, clientY: 30 });
+  fireEvent.pointerUp(canvas(), { pointerId: 1, pointerType: "touch" });
+  assert.deepEqual(drawn, [], "a palm must not start a stroke");
+
+  // A fingertip on the same question still writes, because no pen has been used.
+  assert.equal(canvas().style.touchAction, "none");
+  rerender(<ExamPlayer {...playerProps({ writingReady: true })} />);
+  assert.equal(canvas().style.touchAction, "none");
+});
+
+test("a stylus seen on one question is remembered on the next", () => {
+  // The layer is keyed by the question, so the host has to hold this. Passing it in is what
+  // the exam player does; here it is asserted that the layer honours it from the first
+  // event, with no pen of its own having been seen.
+  const { container } = render(<ExamPlayer {...playerProps()} />);
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
+  assert.equal(canvas.style.touchAction, "none", "before any stylus, a finger writes");
+
+  fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: "pen", isPrimary: true, pressure: 0.5, width: 2, height: 2, clientX: 20, clientY: 20 });
+  fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: "pen" });
+  // The host was told, and the layer now hands touch to the browser to move the question.
+  assert.equal(canvas.style.touchAction, "auto", "after a stylus, a finger moves the page");
 });
