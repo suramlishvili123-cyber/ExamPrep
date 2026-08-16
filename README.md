@@ -64,17 +64,20 @@ as an application and, after one signed-in visit, runs entirely offline.
   can be sat on a tablet with a stylus and nothing else on the desk — working goes beside
   the diagram it belongs to and under the line it follows from, exactly as it would on
   print. Pen, highlighter, an eraser that splits a stroke rather than deleting it, and a
-  Move tool; four inks, three nib widths, pressure-varying strokes, undo, redo and clear.
-  Once a stylus is used a resting palm stops drawing and a finger scrolls the question
-  instead. The ink is anchored to the paper rather than the screen, so it stays exactly
-  where it was put through any magnification and lands in the same place when the page is
-  read back on another device. Each question keeps its own writing, it survives a reload,
-  and it is shown back beside every mistake in the post-session review. The whole feature
-  is switched on and off from the toolbar, the W key, or Settings.
+  Move tool that drags the page; four inks, three nib widths, pressure-varying strokes,
+  undo, redo and clear. Blank squared paper can be added below the question — half a page
+  up to two pages — for working that needs more room than the crop leaves. Once a stylus is
+  used a resting palm stops drawing and a finger moves the question instead. The ink is
+  anchored to the paper rather than the screen, so it stays exactly where it was put through
+  any magnification and lands in the same place when the page is read back on another
+  device. Each question keeps its own writing, it survives a reload, and it is shown back
+  beside every mistake in the post-session review. The whole feature is switched on and off
+  from the toolbar, the W key, or Settings.
 - **A question you can actually read.** The question is magnified from 40% to 300% of the
   width that fits, with a Fit control that brings a whole tall paper onto one screen and
-  ⌘/Ctrl-scroll to zoom. The printed option list at the foot of a scan can be hidden, since
-  the answer panel lists the same options in typeset form.
+  Ctrl or Cmd with the wheel to zoom. The printed option list at the foot of a scan can be
+  hidden behind a cut line you drag to wherever that paper puts it — the answer panel lists
+  the same options in typeset form, so nothing is lost.
 - **Data portability and control.** JSON and CSV export of every attempt, response and
   note; clearing this device (which signs out and leaves the cloud copy intact); and
   permanent erasure of either the account's stored revision data or the account itself.

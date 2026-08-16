@@ -138,6 +138,7 @@ import {
 import {
   AnnotationToolbar,
   EMPTY_ANNOTATION_STATUS,
+  EXTRA_SPACE_OPTIONS,
   QuestionAnnotator,
   ScratchpadPreview,
   type AnnotationStatus,
@@ -1638,6 +1639,7 @@ export default function EsatApp() {
         questionZoom={state.settings.questionZoom}
         questionHideOptions={state.settings.questionHideOptions}
         questionOptionTrim={state.settings.questionOptionTrim}
+        questionExtraSpace={state.settings.questionExtraSpace}
         onQuestionViewChange={updateSettings}
         writingReady={scratchLoadedFor === active.attemptId}
         scratchPageFor={scratchPageFor}
@@ -3941,17 +3943,16 @@ export function SettingsView({ state, busy, offline, onToast, onSettingsChange, 
             />
           </label>
           <label className="setting-row">
-            <span>How much of the crop to hide<small>Papers place their option list differently; adjust if too much or too little is cut</small></span>
+            <span>Room to write below the question<small>Blank paper added under the question for working that needs more space</small></span>
             <select
-              value={state.settings.questionOptionTrim}
-              disabled={!state.settings.questionHideOptions}
-              onChange={(event) => onSettingsChange({ questionOptionTrim: Number(event.target.value) })}
+              value={state.settings.questionExtraSpace}
+              disabled={!state.settings.scratchpadEnabled}
+              onChange={(event) => onSettingsChange({ questionExtraSpace: Number(event.target.value) })}
             >
-              {[0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6].map((value) => (
-                <option key={value} value={value}>Bottom {Math.round(value * 100)}%</option>
-              ))}
+              {EXTRA_SPACE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
+          <p className="panel-footnote">While the option list is hidden, a line across the question marks the cut. Drag it, or use the arrow keys, to set exactly where the printed options begin on the paper you are sitting.</p>
           <p className="panel-footnote">The real ESAT is sat with paper for working. Writing on screen is a convenience for practice on a tablet, not a simulation of exam conditions.</p>
         </article>
         {offline ? <OfflinePanel runtime={offline} onToast={onToast ?? (() => undefined)} /> : null}
@@ -4034,23 +4035,39 @@ export function QuestionSurface({
   index,
   zoom,
   trim,
+  extraSpace,
+  panning,
   onAspectChange,
   onFrameChange,
   onZoomGesture,
+  onTrimChange,
   children,
 }: {
   question: Question;
   index: number;
   zoom: number;
+  /** Fraction of the question's height hidden from the foot of the crop. */
   trim: number;
+  /** Blank paper below the question, as a multiple of its height. */
+  extraSpace: number;
+  /** True while the Move tool is chosen, which makes a drag pan the page. */
+  panning: boolean;
   onAspectChange: (aspect: number) => void;
   onFrameChange: (size: { width: number; height: number }) => void;
   onZoomGesture?: (direction: 1 | -1) => void;
-  /** The writing layer, sized by this component to the question's own box. */
-  children?: React.ReactNode;
+  /** Called as the cut line is dragged, with the new fraction. */
+  onTrimChange?: (trim: number) => void;
+  /**
+   * The writing layer. Called with the page's exact pixel size so the layer can size its
+   * canvases from it rather than waiting for an observation that a background tab never
+   * delivers.
+   */
+  children?: (page: { width: number; height: number }) => React.ReactNode;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const authoredRef = useRef<HTMLDivElement | null>(null);
+  const panRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
+  const trimDragRef = useRef<{ pointerId: number; top: number } | null>(null);
   const [frame, setFrame] = useState({ width: 0, height: 0 });
   const [aspect, setAspect] = useState(0);
 
@@ -4068,8 +4085,13 @@ export function QuestionSurface({
     const node = frameRef.current;
     if (!node) return;
     const style = window.getComputedStyle(node);
-    const horizontal = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-    const vertical = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    // A computed padding can come back as an empty string — an element that is not being
+    // laid out, or a stylesheet that has not applied yet. `parseFloat("")` is NaN, and
+    // `Math.max(1, NaN)` is NaN, not 1: the arithmetic below would then produce a page with
+    // no size at all and the question would simply not appear.
+    const edge = (value: string) => (Number.isFinite(parseFloat(value)) ? parseFloat(value) : 0);
+    const horizontal = edge(style.paddingLeft) + edge(style.paddingRight);
+    const vertical = edge(style.paddingTop) + edge(style.paddingBottom);
     const next = {
       width: Math.max(1, Math.round(node.clientWidth - horizontal)),
       height: Math.max(1, Math.round(node.clientHeight - vertical)),
@@ -4077,6 +4099,18 @@ export function QuestionSurface({
     setFrame((current) => (current.width === next.width && current.height === next.height ? current : next));
     onFrameChange(next);
   }, [onFrameChange]);
+
+  /**
+   * Measure as soon as the frame exists, rather than waiting for the observer's first
+   * delivery. A `ResizeObserver` reports during the rendering steps, which a browser skips
+   * entirely while the page is not being painted — a background tab, a hidden window, a
+   * restored session that has not been looked at yet. Waiting for it there would leave the
+   * question sized from a zero-width frame, which is a one-pixel page.
+   */
+  const attachFrame = useCallback((node: HTMLDivElement | null) => {
+    frameRef.current = node;
+    if (node) measureFrame();
+  }, [measureFrame]);
 
   useEffect(() => {
     const node = frameRef.current;
@@ -4091,11 +4125,11 @@ export function QuestionSurface({
   }, [measureFrame]);
 
   // An authored item has no intrinsic size, so its shape is measured at a fixed composition
-  // width and then scaled — which is also what keeps it from reflowing.
+  // width and then scaled - which is also what keeps it from reflowing.
   //
   // `offsetHeight`, not the bounding rectangle: the element it measures is inside the
   // element being scaled, so its rectangle is the scaled height. Deriving the shape from
-  // that would make the shape depend on the magnification, which then changes the scale —
+  // that would make the shape depend on the magnification, which then changes the scale -
   // a loop that settles on whatever fixed point it happens to find rather than on the
   // question's real proportions. The offset height is the untransformed layout box.
   useEffect(() => {
@@ -4110,49 +4144,151 @@ export function QuestionSurface({
 
   const effectiveAspect = aspect > 0 ? aspect : DEFAULT_QUESTION_ASPECT;
   const pageWidth = Math.max(1, Math.round(frame.width * zoom));
-  const pageHeight = Math.max(1, Math.round(pageWidth * effectiveAspect));
-  const visibleHeight = trim > 0 ? Math.max(120, Math.round(pageHeight * (1 - trim))) : pageHeight;
+  const questionHeight = Math.max(1, Math.round(pageWidth * effectiveAspect));
+  const shownQuestionHeight = Math.max(80, Math.round(questionHeight * (1 - trim)));
+  const extraHeight = Math.max(0, Math.round(questionHeight * extraSpace));
+  const pageHeight = shownQuestionHeight + extraHeight;
+
+  /**
+   * Drag to move the page.
+   *
+   * Handing the pointer back to the browser is not enough: a mouse never drag-scrolls, and
+   * neither does a stylus, so the Move tool did nothing on exactly the devices it exists
+   * for. These handlers sit on the frame and receive the pointer by bubbling up from the
+   * writing layer above, which ignores it whenever Move is chosen.
+   */
+  const onPanDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const node = frameRef.current;
+    // A middle-button drag pans whatever tool is chosen, as in any document viewer.
+    if (!node || (!panning && event.button !== 1)) return;
+    event.preventDefault();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // A pointer that has already gone is a failed capture, not a failed pan.
+    }
+    panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: node.scrollLeft, top: node.scrollTop };
+  };
+
+  const onPanMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const pan = panRef.current;
+    const node = frameRef.current;
+    if (!pan || !node || pan.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    node.scrollLeft = pan.left - (event.clientX - pan.x);
+    node.scrollTop = pan.top - (event.clientY - pan.y);
+  };
+
+  const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (panRef.current?.pointerId === event.pointerId) panRef.current = null;
+  };
+
+  /** Drag the cut line to say exactly where the printed options begin on this paper. */
+  const onTrimDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!onTrimChange) return;
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // As above.
+    }
+    trimDragRef.current = {
+      pointerId: event.pointerId,
+      top: event.currentTarget.parentElement?.getBoundingClientRect().top ?? 0,
+    };
+  };
+
+  const onTrimMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = trimDragRef.current;
+    if (!drag || !onTrimChange || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const shown = Math.max(1, event.clientY - drag.top);
+    // Clamped so the cut can never hide the whole question, nor nothing at all.
+    const next = Math.min(0.8, Math.max(0.02, 1 - shown / questionHeight));
+    onTrimChange(Math.round(next * 100) / 100);
+  };
+
+  const endTrim = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (trimDragRef.current?.pointerId === event.pointerId) trimDragRef.current = null;
+  };
 
   return (
     <div
-      className={`question-frame ${question.authored ? "authored-frame" : ""}`}
-      ref={frameRef}
+      className={`question-frame ${question.authored ? "authored-frame" : ""} ${panning ? "is-panning" : ""}`}
+      ref={attachFrame}
+      onPointerDown={onPanDown}
+      onPointerMove={onPanMove}
+      onPointerUp={endPan}
+      onPointerCancel={endPan}
+      onLostPointerCapture={endPan}
       onWheel={(event) => {
-        // Ctrl or ⌘ with the wheel is the zoom gesture every document viewer uses, and it
+        // Ctrl or Cmd with the wheel is the zoom gesture every document viewer uses, and it
         // is what a trackpad pinch arrives as.
         if (!onZoomGesture || !(event.ctrlKey || event.metaKey)) return;
         event.preventDefault();
         onZoomGesture(event.deltaY < 0 ? 1 : -1);
       }}
     >
-      <div className="question-page" style={{ width: `${pageWidth}px`, height: `${visibleHeight}px` }}>
-        <div className="question-page-inner" style={{ width: `${pageWidth}px`, height: `${pageHeight}px` }}>
-          {question.questionImage ? (
-            <img
-              className="question-page-image"
-              src={publicAsset(question.questionImage)}
-              alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`}
-              onLoad={(event) => {
-                const image = event.currentTarget;
-                if (image.naturalWidth > 0) publishAspect(image.naturalHeight / image.naturalWidth);
-              }}
-            />
-          ) : (
-            <div
-              className="question-page-authored"
-              style={{ width: `${AUTHORED_BASE_WIDTH}px`, transform: `scale(${pageWidth / AUTHORED_BASE_WIDTH})` }}
-            >
-              <div className="authored-question" ref={authoredRef}>
-                <span>Question {index + 1}</span>
-                <p><MathText>{question.questionText}</MathText></p>
-                <QuestionFigure question={question} />
-                <small>Original ESAT Atlas challenge item</small>
+      <div className="question-page" style={{ width: `${pageWidth}px`, height: `${pageHeight}px` }}>
+        <div className="question-clip" style={{ height: `${shownQuestionHeight}px` }}>
+          <div className="question-content" style={{ width: `${pageWidth}px`, height: `${questionHeight}px` }}>
+            {question.questionImage ? (
+              <img
+                className="question-page-image"
+                src={publicAsset(question.questionImage)}
+                alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`}
+                onLoad={(event) => {
+                  const image = event.currentTarget;
+                  if (image.naturalWidth > 0) publishAspect(image.naturalHeight / image.naturalWidth);
+                }}
+              />
+            ) : (
+              <div
+                className="question-page-authored"
+                style={{ width: `${AUTHORED_BASE_WIDTH}px`, transform: `scale(${pageWidth / AUTHORED_BASE_WIDTH})` }}
+              >
+                <div className="authored-question" ref={authoredRef}>
+                  <span>Question {index + 1}</span>
+                  <p><MathText>{question.questionText}</MathText></p>
+                  <QuestionFigure question={question} />
+                  <small>Original ESAT Atlas challenge item</small>
+                </div>
               </div>
-            </div>
-          )}
-          {children}
+            )}
+          </div>
         </div>
-        {trim > 0 ? <span className="question-trim-note">Printed options hidden — they are listed in the answer panel</span> : null}
+        {extraHeight > 0 ? <div className="question-extra" style={{ height: `${extraHeight}px` }} aria-hidden="true" /> : null}
+        {/* The writing layer covers the question and the blank paper below it alike. */}
+        {children?.({ width: pageWidth, height: pageHeight })}
+        {trim > 0 && onTrimChange ? (
+          <div
+            className="question-trim-line"
+            style={{ top: `${shownQuestionHeight}px` }}
+            role="slider"
+            tabIndex={0}
+            aria-label="Where the printed options begin"
+            aria-valuemin={2}
+            aria-valuemax={80}
+            aria-valuenow={Math.round(trim * 100)}
+            aria-valuetext={`Hiding the bottom ${Math.round(trim * 100)} per cent of the question`}
+            onPointerDown={onTrimDown}
+            onPointerMove={onTrimMove}
+            onPointerUp={endTrim}
+            onPointerCancel={endTrim}
+            onLostPointerCapture={endTrim}
+            onKeyDown={(event) => {
+              const step = event.shiftKey ? 0.05 : 0.01;
+              if (event.key === "ArrowUp") onTrimChange(Math.min(0.8, Math.round((trim + step) * 100) / 100));
+              else if (event.key === "ArrowDown") onTrimChange(Math.max(0.02, Math.round((trim - step) * 100) / 100));
+              else return;
+              event.preventDefault();
+            }}
+          >
+            <span>Hidden below here &middot; drag to adjust</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -4179,7 +4315,8 @@ export function ExamPlayer({
   onWritingChange,
   questionZoom = 1,
   questionHideOptions = false,
-  questionOptionTrim = 0.3,
+  questionOptionTrim = 0.28,
+  questionExtraSpace = 0,
   onQuestionViewChange,
   writingReady = false,
   scratchPageFor,
@@ -4211,6 +4348,7 @@ export function ExamPlayer({
   questionZoom?: number;
   questionHideOptions?: boolean;
   questionOptionTrim?: number;
+  questionExtraSpace?: number;
   onQuestionViewChange?: (patch: Partial<Settings>) => void;
   /** False until this attempt's stored writing has been read back. */
   writingReady?: boolean;
@@ -4249,6 +4387,14 @@ export function ExamPlayer({
   // drawn into. Both are needed to work out the magnification that fits a whole page.
   const [aspect, setAspect] = useState(0);
   const [frame, setFrame] = useState({ width: 0, height: 0 });
+  /**
+   * The writable page in board units: the visible part of the question plus any blank paper
+   * under it. Derived from the question's own shape rather than the window, so a stroke put
+   * halfway down the page is halfway down it on every device.
+   */
+  const visibleTrim = questionHideOptions && question?.questionImage ? questionOptionTrim : 0;
+  const annotationPageHeight = BOARD_WIDTH * (aspect > 0 ? aspect : DEFAULT_QUESTION_ASPECT)
+    * (1 - visibleTrim + (writingVisible ? questionExtraSpace : 0));
 
   const handleScratchChange = useCallback(
     (page: ScratchPage) => onScratchChange?.(questionId, page),
@@ -4390,6 +4536,8 @@ export function ExamPlayer({
                 onToolChange={setTool}
                 preferences={scratchPreferences}
                 onPreferencesChange={onScratchPreferencesChange ?? (() => undefined)}
+                extraSpace={questionExtraSpace}
+                onExtraSpaceChange={onQuestionViewChange ? (value) => onQuestionViewChange({ questionExtraSpace: value }) : undefined}
                 status={writingStatus}
                 onUndo={() => annotatorRef.current?.undo()}
                 onRedo={() => annotatorRef.current?.redo()}
@@ -4406,23 +4554,28 @@ export function ExamPlayer({
               index={attempt.currentIndex}
               zoom={questionZoom}
               trim={questionHideOptions && question.questionImage ? questionOptionTrim : 0}
+              extraSpace={writingVisible ? questionExtraSpace : 0}
+              panning={writingVisible && tool === "pan"}
               onAspectChange={setAspect}
               onFrameChange={setFrame}
               onZoomGesture={onQuestionViewChange ? stepZoom : undefined}
+              onTrimChange={onQuestionViewChange ? (value) => onQuestionViewChange({ questionOptionTrim: value }) : undefined}
             >
-              {writingVisible && scratchPreferences ? (
+              {(page) => (writingVisible && scratchPreferences ? (
                 <QuestionAnnotator
                   key={`${attempt.attemptId}:${questionId}`}
                   ref={annotatorRef}
                   initialPage={initialPage}
                   onChange={handleScratchChange}
-                  pageHeight={BOARD_WIDTH * (aspect > 0 ? aspect : 1)}
+                  boardHeight={annotationPageHeight}
+                  pageWidth={page.width}
+                  pagePixelHeight={page.height}
                   tool={tool}
                   preferences={scratchPreferences}
                   onStatusChange={handleStatusChange}
                   onNotice={onNotice}
                 />
-              ) : null}
+              ) : null)}
             </QuestionSurface>
             {writingStatus.fill >= 0.8 ? (
               <p className="annotation-full-warning" role="status">

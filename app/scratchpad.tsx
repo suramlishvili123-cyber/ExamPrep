@@ -65,6 +65,7 @@ import {
   PEN_WIDTHS,
   SCRATCH_COLOURS,
   eraseAt,
+  pageIsFull,
   pagePointCount,
   simplifyStroke,
   type ScratchColour,
@@ -184,11 +185,22 @@ interface AnnotatorProps {
   /** Called after every committed change; the host decides when to persist. */
   onChange: (page: ScratchPage) => void;
   /**
-   * This question's height in board units — 1000 × (height ÷ width) of the question itself.
-   * Fixed by the paper rather than by the window, so the same annotation lands in the same
-   * place on every device.
+   * The page's height in board units — 1000 × (height ÷ width) of the page itself. Fixed by
+   * the paper rather than by the window, so the same writing lands in the same place on
+   * every device.
    */
-  pageHeight: number;
+  boardHeight: number;
+  /**
+   * The page's size in CSS pixels, passed in rather than observed.
+   *
+   * The host already knows it exactly, and a `ResizeObserver` only reports during the
+   * rendering steps — which a browser skips entirely while the page is not being painted.
+   * Depending on the observer alone would leave the canvases at whatever size they were
+   * last told about, so writing would land in the wrong place until the tab was looked at.
+   * The observer is kept as a backstop for changes the host does not drive.
+   */
+  pageWidth: number;
+  pagePixelHeight: number;
   tool: ScratchTool;
   preferences: ScratchPreferences;
   onStatusChange: (status: AnnotationStatus) => void;
@@ -200,7 +212,9 @@ interface AnnotatorProps {
 export const QuestionAnnotator = memo(function QuestionAnnotator({
   initialPage,
   onChange,
-  pageHeight,
+  boardHeight,
+  pageWidth,
+  pagePixelHeight,
   tool,
   preferences,
   onStatusChange,
@@ -236,10 +250,10 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
       canRedo: redoRef.current.length > 0,
       fill: Math.max(
         strokesRef.current.length / MAX_STROKES_PER_PAGE,
-        pagePointCount({ height: pageHeight, strokes: strokesRef.current }) / MAX_POINTS_PER_PAGE,
+        pagePointCount({ height: boardHeight, strokes: strokesRef.current }) / MAX_POINTS_PER_PAGE,
       ),
     });
-  }, [onStatusChange, pageHeight]);
+  }, [boardHeight, onStatusChange]);
 
   const paintAll = useCallback(() => {
     const canvas = baseRef.current;
@@ -259,12 +273,8 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
    * redrawn at whatever magnification the question is shown at — sharp, rather than a bitmap
    * stretched to fit.
    */
-  const measure = useCallback(() => {
-    const host = hostRef.current;
-    if (!host) return;
-    const rect = host.getBoundingClientRect();
-    const width = Math.max(1, Math.round(rect.width));
-    const height = Math.max(1, Math.round(rect.height));
+  const measure = useCallback((width: number, height: number) => {
+    if (width <= 0 || height <= 0) return;
     if (width === sizeRef.current.width && height === sizeRef.current.height) return;
     sizeRef.current = { width, height };
     // Capped: a device pixel ratio of 3 on a large tablet costs a great deal of fill rate for
@@ -272,37 +282,49 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     const ratio = Math.min(2.5, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
     for (const canvas of [baseRef.current, liveRef.current]) {
       if (!canvas) continue;
+      // Only the backing store is set. The CSS size comes from the stylesheet, so the ink
+      // always covers exactly the page even in the moment before a new size is applied.
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
     }
     scaleRef.current = width / BOARD_WIDTH;
     paintAll();
   }, [paintAll]);
 
+  // Resize with the page the host reports, which is exact and needs no paint to arrive.
   useEffect(() => {
-    measure();
-    // Report what was restored, so Clear and the fill warning are right before the first
-    // stroke rather than only after one.
+    measure(pageWidth, pagePixelHeight);
+  }, [measure, pageWidth, pagePixelHeight]);
+
+  // Report what was restored, so Clear and the fill warning are right before the first
+  // stroke rather than only after one.
+  useEffect(() => {
     publishStatus();
+    // Once per question: the layer is keyed by it, and `publishStatus` only reports upwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A backstop for anything the host does not drive, such as a browser zoom change.
+  useEffect(() => {
     const host = hostRef.current;
+    const remeasure = () => {
+      const rect = host?.getBoundingClientRect();
+      if (rect) measure(Math.round(rect.width), Math.round(rect.height));
+    };
     if (typeof ResizeObserver === "undefined" || !host) {
-      window.addEventListener("resize", measure);
-      return () => window.removeEventListener("resize", measure);
+      window.addEventListener("resize", remeasure);
+      return () => window.removeEventListener("resize", remeasure);
     }
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(remeasure);
     observer.observe(host);
     return () => observer.disconnect();
-    // Runs once per question: the layer is keyed by it, and `publishStatus` only reports.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measure]);
 
   const commit = useCallback((strokes: ScratchStroke[]) => {
     strokesRef.current = strokes;
-    onChange({ height: pageHeight, strokes });
+    onChange({ height: boardHeight, strokes });
     publishStatus();
-  }, [onChange, pageHeight, publishStatus]);
+  }, [boardHeight, onChange, publishStatus]);
 
   const pushUndo = useCallback(() => {
     undoRef.current = [...undoRef.current.slice(-(HISTORY_DEPTH - 1)), strokesRef.current];
@@ -403,9 +425,7 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
       return;
     }
 
-    const full = strokesRef.current.length >= MAX_STROKES_PER_PAGE
-      || pagePointCount({ height: pageHeight, strokes: strokesRef.current }) >= MAX_POINTS_PER_PAGE;
-    if (full) {
+    if (pageIsFull({ height: boardHeight, strokes: strokesRef.current })) {
       if (!fullWarnedRef.current) {
         fullWarnedRef.current = true;
         onNotice?.("There is no room left for more writing on this question. Erase some of it to carry on.");
@@ -424,7 +444,7 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     drawingRef.current = { pointerId: event.pointerId, stroke };
     paintLive(stroke);
     publishStatus();
-  }, [accepts, boardPoint, colour, eraseFrom, onNotice, pageHeight, paintLive, publishStatus, pushUndo, size, tool]);
+  }, [accepts, boardHeight, boardPoint, colour, eraseFrom, onNotice, paintLive, publishStatus, pushUndo, size, tool]);
 
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     if (erasingRef.current === event.pointerId) {
@@ -495,9 +515,15 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     },
   }), [clearLive, commit, paintAll, pushUndo]);
 
-  // Once a stylus is in use, or the Move tool is chosen, every touch belongs to the browser
-  // so the question can be scrolled and pinched while the ink stays where it was put.
-  const touchAction = tool === "pan" || penSeen || stylusOnly ? "auto" : "none";
+  /**
+   * Who moves the question under a finger.
+   *
+   * Once a stylus is in use — or touch is switched off entirely — a finger belongs to the
+   * browser, which scrolls the frame natively while the ink stays where it was put. Under
+   * the Move tool the host pans explicitly for every kind of pointer, so the browser must
+   * not scroll as well: leaving it to do both moved the page twice as far as the finger.
+   */
+  const touchAction = tool !== "pan" && (penSeen || stylusOnly) ? "auto" : "none";
 
   return (
     <div className="annotation-layer" ref={hostRef}>
@@ -534,11 +560,20 @@ const TOOL_ITEMS = [
  * The writing controls, rendered in the question's own toolbar rather than floating over the
  * paper — anything floating would cover the thing being annotated.
  */
+export const EXTRA_SPACE_OPTIONS: Array<{ value: number; label: string; short: string }> = [
+  { value: 0, label: "No extra space", short: "None" },
+  { value: 0.5, label: "Half a page more", short: "+\u00bd" },
+  { value: 1, label: "A page more", short: "+1" },
+  { value: 2, label: "Two pages more", short: "+2" },
+];
+
 export function AnnotationToolbar({
   tool,
   onToolChange,
   preferences,
   onPreferencesChange,
+  extraSpace = 0,
+  onExtraSpaceChange,
   status,
   onUndo,
   onRedo,
@@ -549,6 +584,9 @@ export function AnnotationToolbar({
   onToolChange: (tool: ScratchTool) => void;
   preferences: ScratchPreferences;
   onPreferencesChange: (patch: Partial<ScratchPreferences>) => void;
+  /** Blank paper below the question, as a multiple of its height. */
+  extraSpace?: number;
+  onExtraSpaceChange?: (value: number) => void;
   status: AnnotationStatus;
   onUndo: () => void;
   onRedo: () => void;
@@ -610,6 +648,23 @@ export function AnnotationToolbar({
           </button>
         ))}
       </div>
+
+      {onExtraSpaceChange ? (
+        <div className="annotation-group annotation-space" role="group" aria-label="Room to write">
+          {EXTRA_SPACE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={extraSpace === option.value ? "selected" : ""}
+              aria-pressed={extraSpace === option.value}
+              title={`${option.label} below the question`}
+              onClick={() => onExtraSpaceChange(option.value)}
+            >
+              {option.short}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="annotation-group annotation-history" role="group" aria-label="Writing history">
         <button type="button" onClick={onUndo} disabled={!status.canUndo} title="Undo" aria-label="Undo"><Undo2 size={16} /></button>

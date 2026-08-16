@@ -9,10 +9,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  BOARD_WIDTH,
   MAX_POINTS_PER_PAGE,
   MAX_STROKES_PER_PAGE,
-  boardScale,
   decodePage,
   emptyPage,
   encodePage,
@@ -173,16 +171,6 @@ test("a fragment left with a single point is dropped rather than becoming a stra
 });
 
 /* ------------------------------------------------------------------- board space -- */
-
-test("the board scale maps board units to pixels and shrinks a page that would not fit", () => {
-  // A surface 800 px wide is 800/1000 of a board unit per pixel.
-  assert.equal(boardScale({ height: 300, strokes: [] }, 800, 600), 0.8);
-  assert.equal(boardScale(null, BOARD_WIDTH, 400), 1);
-  // A page written on a taller surface is scaled down to fit rather than clipped.
-  const scale = boardScale({ height: 1000, strokes: [] }, 1000, 500);
-  assert.equal(scale, 0.5);
-  assert.equal(1000 * scale, 500, "the whole page must land inside the surface");
-});
 
 test("page emptiness and the storage bound are reported honestly", () => {
   assert.equal(pageIsEmpty(emptyPage()), true);

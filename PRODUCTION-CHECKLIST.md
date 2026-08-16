@@ -20,8 +20,12 @@
 - [ ] Deploying a new build offers the update banner rather than reloading mid-session, and
       the previous shell cache is removed once it is applied
 - [ ] Writing done on a question offline syncs on reconnection and is readable in the review
-- [ ] Stylus, finger and mouse each write; a resting palm does not; a finger scrolls the
+- [ ] Stylus, finger and mouse each write; a resting palm does not; a finger moves the
       question once a stylus has been used
+- [ ] The Move tool drags the question with a mouse, a stylus and a finger, and the page
+      travels exactly as far as the pointer does
+- [ ] The option cut line lands where the printed options actually begin on each paper, and
+      the crop returns in full when it is switched off
 
 ## Firebase gate
 

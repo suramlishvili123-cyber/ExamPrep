@@ -212,6 +212,11 @@ export interface Settings {
   questionHideOptions: boolean;
   /** How much of the crop's height the option list occupies, as a fraction. */
   questionOptionTrim: number;
+  /**
+   * Blank paper added below the question, as a multiple of its height, for working that
+   * needs more room than the crop itself leaves.
+   */
+  questionExtraSpace: number;
 }
 
 /**
@@ -322,7 +327,8 @@ export function defaultState(): StoredState {
       scratchpadSize: 2,
       questionZoom: 1,
       questionHideOptions: false,
-      questionOptionTrim: 0.3,
+      questionOptionTrim: 0.28,
+      questionExtraSpace: 0.5,
     },
     notes: {},
     syncMetadata: normalizeSyncMetadata(null),
@@ -413,9 +419,13 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     // or older value cannot leave the question at a magnification nothing can return from.
     questionZoom: Math.round(boundedNumber(storedSettings.questionZoom, MIN_QUESTION_ZOOM, MAX_QUESTION_ZOOM, base.settings.questionZoom) * 20) / 20,
     questionHideOptions: booleanOr(storedSettings.questionHideOptions, base.settings.questionHideOptions),
+    // A hundredth, because the cut line is dragged rather than picked from a list.
     questionOptionTrim: Math.round(
-      boundedNumber(storedSettings.questionOptionTrim, 0.1, 0.6, base.settings.questionOptionTrim) * 20,
-    ) / 20,
+      boundedNumber(storedSettings.questionOptionTrim, 0.02, 0.8, base.settings.questionOptionTrim) * 100,
+    ) / 100,
+    questionExtraSpace: Math.round(
+      boundedNumber(storedSettings.questionExtraSpace, 0, 2, base.settings.questionExtraSpace) * 4,
+    ) / 4,
   };
 
   const storedTargets = asRecord(value.targets);

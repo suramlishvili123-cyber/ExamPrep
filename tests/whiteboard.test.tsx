@@ -131,9 +131,12 @@ test("the toggle stops writing, and says which key brings it back", () => {
 test("the writing layer sits on the question, not beside it, and the options stay reachable", () => {
   const { container } = render(<ExamPlayer {...playerProps()} />);
 
-  const page = container.querySelector(".question-page-inner");
+  const page = container.querySelector(".question-page");
   assert.ok(page, "the question renders as a page");
-  assert.ok(page?.querySelector(".annotation-layer"), "the writing layer is inside the question's own box");
+  // A direct child of the page, so it covers the question and any blank paper below it —
+  // not just the clipped part of the crop.
+  assert.ok(page?.querySelector(":scope > .annotation-layer"), "the writing layer covers the whole page");
+  assert.ok(container.querySelector(".question-clip > .question-content"), "the crop is clipped inside the page");
   // Nothing takes a column from the answers: the player has one question and one panel.
   assert.equal(container.querySelectorAll(".exam-content > section").length, 1);
   assert.ok(screen.getByRole("radiogroup", { name: "Answer options" }));
@@ -205,20 +208,27 @@ test("the fit control is offered beside the zoom steps", () => {
 
 test("the printed option list can be hidden, and the answer panel still lists the options", () => {
   const patches: Array<Partial<Settings>> = [];
-  const { container, rerender } = render(
-    <ExamPlayer {...playerProps({ onQuestionViewChange: (patch: Partial<Settings>) => patches.push(patch) })} />,
-  );
+  const onQuestionViewChange = (patch: Partial<Settings>) => patches.push(patch);
+  const { container, rerender } = render(<ExamPlayer {...playerProps({ onQuestionViewChange })} />);
 
   const hide = screen.getByRole("button", { name: /Options/ });
   assert.equal(hide.getAttribute("aria-pressed"), "false");
-  assert.equal(container.querySelector(".question-trim-note"), null);
+  assert.equal(container.querySelector(".question-trim-line"), null);
   fireEvent.click(hide);
   assert.deepEqual(patches, [{ questionHideOptions: true }]);
 
-  rerender(<ExamPlayer {...playerProps({ questionHideOptions: true, onQuestionViewChange: () => undefined })} />);
+  rerender(<ExamPlayer {...playerProps({ questionHideOptions: true, onQuestionViewChange })} />);
   assert.equal(screen.getByRole("button", { name: /Options/ }).getAttribute("aria-pressed"), "true");
-  assert.ok(container.querySelector(".question-trim-note"), "the candidate is told the crop is cut");
   assert.equal(screen.getAllByRole("radio").length, 5, "the options must remain answerable");
+
+  // The cut is a line the candidate can see and move, not a fixed guess: no two papers put
+  // their option list in the same place.
+  const line = screen.getByRole("slider", { name: "Where the printed options begin" });
+  assert.equal(line.getAttribute("aria-valuenow"), "28");
+  fireEvent.keyDown(line, { key: "ArrowUp" });
+  assert.deepEqual(patches[1], { questionOptionTrim: 0.29 });
+  fireEvent.keyDown(line, { key: "ArrowDown", shiftKey: true });
+  assert.deepEqual(patches[2], { questionOptionTrim: 0.23 });
 });
 
 test("an authored question has no printed option list to hide", () => {
@@ -227,6 +237,82 @@ test("an authored question has no printed option list to hide", () => {
   assert.equal(screen.queryByRole("button", { name: /Options/ }), null);
   // It is still magnifiable, because a typeset item is composed at a fixed width and scaled.
   assert.ok(screen.getByRole("group", { name: "Question size" }));
+});
+
+/* --------------------------------------------------------------- space and moving -- */
+
+test("blank paper can be added below the question, and only while writing", () => {
+  const patches: Array<Partial<Settings>> = [];
+  const { container, rerender } = render(
+    <ExamPlayer {...playerProps({ questionExtraSpace: 0, onQuestionViewChange: (patch: Partial<Settings>) => patches.push(patch) })} />,
+  );
+  assert.equal(container.querySelector(".question-extra"), null);
+
+  const space = screen.getByRole("group", { name: "Room to write" });
+  const buttons = [...space.querySelectorAll("button")];
+  assert.deepEqual(buttons.map((button) => button.textContent), ["None", "+½", "+1", "+2"]);
+  fireEvent.click(buttons[2]);
+  assert.deepEqual(patches, [{ questionExtraSpace: 1 }]);
+
+  rerender(<ExamPlayer {...playerProps({ questionExtraSpace: 1, onQuestionViewChange: () => undefined })} />);
+  assert.ok(container.querySelector(".question-extra"), "the blank paper is rendered");
+
+  // With writing switched off there is nothing to write on, so no blank paper is added.
+  rerender(<ExamPlayer {...playerProps({ writingEnabled: false, questionExtraSpace: 1 })} />);
+  assert.equal(container.querySelector(".question-extra"), null);
+});
+
+test("the Move tool makes a drag move the question rather than doing nothing", () => {
+  const { container, rerender } = render(<ExamPlayer {...playerProps()} />);
+  const frame = container.querySelector(".question-frame") as HTMLElement;
+  // jsdom does not lay anything out, so scrolling is asserted through the element's own
+  // scroll properties, which the handler sets directly.
+  Object.defineProperty(frame, "scrollLeft", { value: 0, writable: true, configurable: true });
+  Object.defineProperty(frame, "scrollTop", { value: 0, writable: true, configurable: true });
+
+  // With the pen chosen a drag on the frame must not move the page.
+  fireEvent.pointerDown(frame, { pointerId: 1, clientX: 200, clientY: 200, button: 0 });
+  fireEvent.pointerMove(frame, { pointerId: 1, clientX: 150, clientY: 120 });
+  assert.equal(frame.scrollTop, 0, "the pen writes; it does not drag the page");
+  fireEvent.pointerUp(frame, { pointerId: 1 });
+
+  rerender(<ExamPlayer {...playerProps()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Move" }));
+  fireEvent.pointerDown(frame, { pointerId: 2, clientX: 200, clientY: 200, button: 0 });
+  fireEvent.pointerMove(frame, { pointerId: 2, clientX: 150, clientY: 120 });
+  assert.equal(frame.scrollLeft, 50, "dragging left moves the page right");
+  assert.equal(frame.scrollTop, 80, "dragging up moves the page down");
+  fireEvent.pointerUp(frame, { pointerId: 2 });
+
+  // Released, further movement is ignored.
+  fireEvent.pointerMove(frame, { pointerId: 2, clientX: 10, clientY: 10 });
+  assert.equal(frame.scrollTop, 80);
+});
+
+test("only one thing moves the question under a finger", () => {
+  // Under Move the host pans every kind of pointer, so the browser must not scroll as well.
+  const { container, rerender } = render(<ExamPlayer {...playerProps()} />);
+  const canvas = () => container.querySelector(".annotation-canvas-live") as HTMLElement;
+  assert.equal(canvas().style.touchAction, "none", "a finger writes by default");
+
+  // With touch switched off entirely the browser scrolls the frame and nothing draws.
+  rerender(<ExamPlayer {...playerProps({ scratchPreferences: { colour: "ink" as const, size: 2 as const, stylusOnly: true } })} />);
+  assert.equal(canvas().style.touchAction, "auto");
+
+  // Under Move the host pans every pointer itself, so the browser must not scroll as well.
+  fireEvent.click(screen.getByRole("button", { name: "Move" }));
+  assert.equal(canvas().style.touchAction, "none", "under Move the host pans, not the browser");
+});
+
+test("a middle-button drag moves the question whatever tool is chosen", () => {
+  const { container } = render(<ExamPlayer {...playerProps()} />);
+  const frame = container.querySelector(".question-frame") as HTMLElement;
+  Object.defineProperty(frame, "scrollTop", { value: 0, writable: true, configurable: true });
+  Object.defineProperty(frame, "scrollLeft", { value: 0, writable: true, configurable: true });
+
+  fireEvent.pointerDown(frame, { pointerId: 5, clientX: 100, clientY: 300, button: 1 });
+  fireEvent.pointerMove(frame, { pointerId: 5, clientX: 100, clientY: 240 });
+  assert.equal(frame.scrollTop, 60);
 });
 
 /* ---------------------------------------------------------------------- the tools -- */

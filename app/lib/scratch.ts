@@ -7,10 +7,10 @@
  *
  * ## Coordinates
  *
- * A page is written in **board units**: the surface is always 1000 units wide, whatever its
- * pixel width, and its height follows from its aspect ratio. Working written on a tablet
- * therefore replays correctly on a laptop, which matters because the same page is shown
- * again in the post-session review on whatever device happens to be to hand.
+ * A page is written in **board units**: it is always 1000 units wide, whatever its pixel
+ * width, and its height follows from the shape of the question. Writing done on a tablet
+ * therefore replays exactly on a laptop, which matters because the same page is shown again
+ * in the post-session review on whatever device happens to be to hand.
  *
  * ## Why a compact encoding
  *
@@ -22,7 +22,11 @@
  * emit it five bits at a time in printable ASCII.
  */
 
-/** The surface is this many units wide, always. Height follows the aspect ratio. */
+/**
+ * A page is this many units wide, always, whatever it measures in pixels. Its height
+ * follows from the shape of the question it belongs to, so a stroke's coordinates mean the
+ * same thing on every screen.
+ */
 export const BOARD_WIDTH = 1000;
 
 /** Positions are stored to half a board unit — a twentieth of a millimetre on a tablet. */
@@ -91,20 +95,6 @@ export function pagePointCount(page: ScratchPage): number {
 /** True when another stroke would take the page past what can be stored. */
 export function pageIsFull(page: ScratchPage): boolean {
   return page.strokes.length >= MAX_STROKES_PER_PAGE || pagePointCount(page) >= MAX_POINTS_PER_PAGE;
-}
-
-/**
- * The uniform scale that maps board units to CSS pixels on a surface of this size.
- *
- * A page written on a tall window and reopened on a short one is shrunk to fit rather than
- * clipped: losing the bottom third of a candidate's working without saying so would be far
- * worse than showing it slightly smaller.
- */
-export function boardScale(page: ScratchPage | null, widthPx: number, heightPx: number): number {
-  const base = widthPx / BOARD_WIDTH;
-  const availableUnits = base > 0 ? heightPx / base : 0;
-  if (!page || page.height <= 0 || availableUnits <= 0 || page.height <= availableUnits) return base;
-  return base * (availableUnits / page.height);
 }
 
 /* ------------------------------------------------------------------- simplifying -- */
