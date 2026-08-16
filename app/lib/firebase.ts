@@ -27,9 +27,11 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  query,
   runTransaction,
   setDoc,
   waitForPendingWrites,
+  where,
   writeBatch,
   type DocumentReference,
   type Firestore,
@@ -80,9 +82,10 @@ function configAvailable(): boolean {
 
 const ACTIVE_ATTEMPT_COLLECTION = "activeAttempts";
 const ACTIVE_ATTEMPT_DOCUMENT = "current";
+const SCRATCHPAD_COLLECTION = "scratchpads";
 const FIRESTORE_BATCH_LIMIT = 450;
 /** Collections whose document IDs are arbitrary, so a purge has to enumerate them. */
-const ENUMERATED_USER_COLLECTIONS = ["attempts", "questionProgress", "mistakeQueue"] as const;
+const ENUMERATED_USER_COLLECTIONS = ["attempts", "questionProgress", "mistakeQueue", SCRATCHPAD_COLLECTION] as const;
 
 /**
  * Documents this schema stores at one fixed, known ID.
@@ -256,6 +259,71 @@ export async function deleteActiveAttemptCloud(uid: string, expectedAttemptId?: 
     if (!snapshot.exists() || snapshot.data().attemptId !== expectedAttemptId) return;
     transaction.delete(reference);
   });
+}
+
+/* ----------------------------------------------------------- whiteboard pages -- */
+
+/**
+ * One document per (attempt, question) rather than one per attempt.
+ *
+ * Handwriting is bulky, a Firestore document is capped at 1 MiB, and a candidate writing on
+ * all 27 questions of a module would otherwise share one document between them. Splitting
+ * them also means a page is written when its question is left, rather than rewriting the
+ * whole module's working every few seconds.
+ */
+export interface ScratchRecord {
+  attemptId: string;
+  questionId: string;
+  /** The compact encoding from `lib/scratch.ts`. */
+  page: string;
+  height: number;
+  strokeCount: number;
+  updatedAt: number;
+}
+
+/** Question and attempt identifiers are slugs and UUIDs, so this is always a legal ID. */
+function scratchDocumentId(attemptId: string, questionId: string): string {
+  return `${attemptId}~${questionId}`;
+}
+
+/**
+ * Store one page. An empty board deletes its document instead of storing a blank, so a
+ * cleared page does not come back the next time the question is opened on another device.
+ */
+export async function saveScratchPageCloud(uid: string, record: ScratchRecord): Promise<void> {
+  const firebase = getFirebaseClient();
+  if (!firebase) return;
+  const reference = doc(firebase.db, "users", uid, SCRATCHPAD_COLLECTION, scratchDocumentId(record.attemptId, record.questionId));
+  if (!record.page || record.strokeCount === 0) {
+    await deleteDoc(reference);
+    return;
+  }
+  await setDoc(reference, record);
+}
+
+/** Every page written during one attempt, keyed by question. Served from cache when offline. */
+export async function loadScratchPagesCloud(uid: string, attemptId: string): Promise<Record<string, ScratchRecord>> {
+  const firebase = getFirebaseClient();
+  if (!firebase) return {};
+  const snapshot = await getDocs(query(
+    collection(firebase.db, "users", uid, SCRATCHPAD_COLLECTION),
+    where("attemptId", "==", attemptId),
+  ));
+  return Object.fromEntries(snapshot.docs.map((record) => {
+    const data = record.data() as ScratchRecord;
+    return [data.questionId, data];
+  }));
+}
+
+/** Remove an attempt's working — used when its result is deleted from the history. */
+export async function deleteScratchPagesCloud(uid: string, attemptId: string): Promise<void> {
+  const firebase = getFirebaseClient();
+  if (!firebase) return;
+  const snapshot = await getDocs(query(
+    collection(firebase.db, "users", uid, SCRATCHPAD_COLLECTION),
+    where("attemptId", "==", attemptId),
+  ));
+  await commitOperations(firebase.db, snapshot.docs.map((record) => (batch: WriteBatch) => batch.delete(record.ref)));
 }
 
 /** The profile sections this write replaces; attempts and progress are synced separately. */

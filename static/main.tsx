@@ -5,6 +5,8 @@ import { AppErrorBoundary } from "../app/error-boundary";
 import "../app/globals.css";
 import "../app/analysis.css";
 import "../app/study-plan.css";
+import "../app/offline.css";
+import "../app/scratchpad.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("ESAT Atlas root element was not found.");

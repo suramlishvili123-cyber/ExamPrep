@@ -9,11 +9,24 @@
       no QA manifests and no internal OCR/crop metadata
 - [ ] Desktop and 320/390 px browser smoke tests have no console/page errors or horizontal overflow
 
+## Installable-application and offline gate
+
+- [ ] The production origin is HTTPS; a service worker will not register without it
+- [ ] A first visit registers the worker, and a second visit loads with the network disabled
+- [ ] Installing to the home screen on Android and iPad opens standalone with the right icon
+- [ ] The offline question-library download completes, reports its size, and survives a reload
+- [ ] A paper can be sat, submitted and reviewed end to end with the network disabled, and
+      the results appear in the account once the connection returns
+- [ ] Deploying a new build offers the update banner rather than reloading mid-session, and
+      the previous shell cache is removed once it is applied
+- [ ] Whiteboard working written offline syncs on reconnection and is readable in the review
+
 ## Firebase gate
 
 - [ ] Production hostname is authorised for Google sign-in
 - [ ] Google provider is enabled and popup/redirect fallback works on desktop and mobile
-- [ ] Current `firestore.rules` are deployed to the configured project
+- [ ] Current `firestore.rules` are deployed to the configured project, including the
+      `scratchpads` collection added for whiteboard working
 - [ ] Two-account shared-browser test proves local state is UID-scoped
 - [ ] Cross-device active-session recovery, completion sync, export, cloud deletion and
       account deletion are tested against production Firebase

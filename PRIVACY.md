@@ -1,6 +1,6 @@
 # ESAT Atlas privacy notice
 
-Last updated: 13 August 2026
+Last updated: 16 August 2026
 
 ESAT Atlas is an independent revision tool. It is not operated, endorsed or approved by
 UAT-UK, Pearson VUE, the University of Cambridge or Imperial College London.
@@ -10,9 +10,20 @@ UAT-UK, Pearson VUE, the University of Cambridge or Imperial College London.
 Google and Firebase Authentication process the account identity needed to sign you in.
 ESAT Atlas stores your Google user ID and, within that private account, your revision
 attempts, answers, timing, confidence and error tags, question progress, mistake queue,
-targets, settings and personal notes. Your browser also keeps an account-scoped local
-copy so an interrupted session can be recovered. The application does not receive your
-Google password and does not use advertising or analytics cookies.
+targets, settings, personal notes and the working you write on the whiteboard. Your
+browser also keeps an account-scoped local copy so an interrupted session can be
+recovered. The application does not receive your Google password and does not use
+advertising or analytics cookies.
+
+Whiteboard working is stored as the strokes you drew — the shape of your handwriting —
+against the question and session it belongs to. It is never read, transcribed or marked;
+it is kept so you can see your own working again when you review a mistake, and it is
+included in the JSON export and in every deletion option below.
+
+Installing ESAT Atlas, or simply visiting it, stores a copy of the application and of the
+question images you open in your browser's cache so that it works without a connection.
+That copy is on your device only. Clearing this device in Settings, removing the stored
+question images from the offline panel, or clearing site data in your browser removes it.
 
 ## Purpose, services and retention
 

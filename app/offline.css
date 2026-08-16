@@ -1,0 +1,77 @@
+/* Installation, connection and offline-library surfaces. */
+
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.connection-synced { color: var(--green); border-color: color-mix(in srgb, var(--green) 30%, var(--line)); background: color-mix(in srgb, var(--green-soft) 55%, var(--surface)); }
+.connection-offline { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 34%, var(--line)); background: color-mix(in srgb, var(--amber-soft) 60%, var(--surface)); }
+.connection-pending { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 28%, var(--line)); background: color-mix(in srgb, var(--blue-soft) 62%, var(--surface)); }
+
+/* The connection state is also carried by the wording inside the pill, so the icon
+   animation is decoration and stops entirely for a reduced-motion preference. */
+.connection-status .spin { animation: connection-spin 1.4s linear infinite; }
+@keyframes connection-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .connection-status .spin { animation: none; } }
+
+/* Narrow screens keep the icon, which is the part that reads at a glance. */
+@media (max-width: 720px) { .connection-status span:last-child { display: none; } .connection-status { padding: 0 8px; } }
+
+.update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 220;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 13px 13px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  font-size: 13px;
+}
+.update-banner > svg { color: var(--green); flex: none; }
+.update-banner span { display: block; }
+.update-banner > span { min-width: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.update-banner strong { display: block; color: var(--ink); font-size: 13px; margin-bottom: 2px; }
+.update-banner .button { flex: none; }
+.update-banner .icon-button.ghost { width: 30px; height: 30px; border-color: transparent; background: transparent; color: var(--muted); }
+
+.offline-rows { display: grid; gap: 2px; margin-top: 18px; }
+.offline-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 13px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.offline-row:first-child { border-top: 0; padding-top: 4px; }
+.offline-row > svg { margin-top: 2px; color: var(--green); }
+.offline-row strong { display: block; font-size: 13px; }
+.offline-row small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.offline-row-actions { display: flex; align-items: center; gap: 7px; }
+.offline-warning { display: inline-flex; align-items: center; gap: 6px; color: var(--amber); }
+
+.offline-meter { height: 7px; margin-top: 9px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+.offline-meter i { display: block; height: 100%; border-radius: inherit; background: var(--green); transition: width var(--duration-normal) var(--ease-out); }
+
+@media (max-width: 640px) {
+  .offline-row { grid-template-columns: 20px minmax(0, 1fr); }
+  .offline-row-actions { grid-column: 2; }
+}

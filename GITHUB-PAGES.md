@@ -30,10 +30,23 @@ Every push to `main` runs the **Deploy ESAT Atlas to GitHub Pages** workflow, wh
 **Actions** tab.
 
 The build output contains `index.html`, a `404.html` fallback, compiled CSS/JavaScript,
-a compact runtime projection of the validated question bank, the original mocks and every
-runtime question image. Internal QA/provenance manifests are deliberately excluded. All paths
-are relative, so `https://your-name.github.io/your-repo/` works without extra
-configuration.
+a compact runtime projection of the validated question bank, the original mocks, every
+runtime question image, the web app manifest, the application icons and `sw.js`. Internal
+QA/provenance manifests are deliberately excluded. All paths are relative, so
+`https://your-name.github.io/your-repo/` works without extra configuration.
+
+## The installed application
+
+Pages serves over HTTPS, which is what the service worker needs, so ESAT Atlas is
+installable from a Pages deployment with no extra configuration. The worker registers at
+`./sw.js`, so its scope is the repository sub-path and it can never claim pages belonging
+to another project on the same `github.io` hostname.
+
+A deployment does not disturb anyone mid-session. The new worker installs in the
+background and waits; the application offers a reload, and only then does the new bundle
+take over and the previous shell cache get removed. The 33 MB question-image cache is keyed
+by the question bank rather than by the build, so a routine redeploy does not make anyone
+download the archive again.
 
 ## Hosting the built folder somewhere else
 

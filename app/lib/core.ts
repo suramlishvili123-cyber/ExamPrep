@@ -1,3 +1,7 @@
+import { SCRATCH_COLOURS, type ScratchColour, type ScratchSize } from "./scratch";
+
+const SCRATCH_COLOUR_KEYS = Object.keys(SCRATCH_COLOURS) as ScratchColour[];
+
 export type ModuleId = "maths1" | "physics" | "maths2";
 export type AttemptMode = "exam" | "practice" | "historic" | "retry" | "original";
 
@@ -179,6 +183,37 @@ export interface Settings {
   pacingAid: boolean;
   /** Show the estimated 1.0-9.0 conversion alongside every raw mark. */
   showScoreEstimate: boolean;
+  /**
+   * Whether the working whiteboard is offered during a session at all. Off hides the
+   * toggle entirely; a candidate who works on paper never sees the feature.
+   */
+  scratchpadEnabled: boolean;
+  /** Where the board opens: beside the question, or over it for annotating a figure. */
+  scratchpadLayout: "split" | "overlay";
+  /**
+   * How much of the room beside the answer panel the board takes. "full" hands it the
+   * whole width and folds the question away, for a question that needs a page of algebra.
+   * The answer options stay on screen at every width.
+   */
+  scratchpadWidth: "half" | "wide" | "full";
+  /** Ignore finger and mouse input on the board, so only a stylus writes. */
+  scratchpadStylusOnly: boolean;
+  scratchpadColour: ScratchColour;
+  scratchpadSize: ScratchSize;
+  /**
+   * Magnification of the question while the whiteboard is open. Sharing the width with a
+   * board leaves the printed crop small, and a scanned 2016 paper at half size is not
+   * readable — so it is scaled up and the frame scrolls.
+   */
+  questionZoom: number;
+  /**
+   * Hide the printed option list at the foot of the question crop. The same options are in
+   * the answer panel, in typeset form, so on a shared screen the crop is showing them twice
+   * and spending the room on the part that matters least.
+   */
+  questionHideOptions: boolean;
+  /** How much of the crop's height the option list occupies, as a fraction. */
+  questionOptionTrim: number;
 }
 
 export type SyncSection = "settings" | "targets" | "notes";
@@ -273,6 +308,19 @@ export function defaultState(): StoredState {
       adaptivePlanMinutes: 45,
       pacingAid: false,
       showScoreEstimate: true,
+      scratchpadEnabled: true,
+      scratchpadLayout: "split",
+      // An even share by default: the board needs room to write, and the question needs to
+      // stay readable. The width control moves it either way in one tap.
+      scratchpadWidth: "half",
+      // Off by default: a candidate on a laptop has no stylus, and the board detects a pen
+      // by itself the first time one is used.
+      scratchpadStylusOnly: false,
+      scratchpadColour: "ink",
+      scratchpadSize: 2,
+      questionZoom: 1.4,
+      questionHideOptions: false,
+      questionOptionTrim: 0.3,
     },
     notes: {},
     syncMetadata: normalizeSyncMetadata(null),
@@ -351,6 +399,25 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     ) * 15,
     pacingAid: booleanOr(storedSettings.pacingAid, base.settings.pacingAid),
     showScoreEstimate: booleanOr(storedSettings.showScoreEstimate, base.settings.showScoreEstimate),
+    scratchpadEnabled: booleanOr(storedSettings.scratchpadEnabled, base.settings.scratchpadEnabled),
+    scratchpadLayout: storedSettings.scratchpadLayout === "overlay" ? "overlay" : "split",
+    scratchpadWidth: (["half", "wide", "full"] as string[]).includes(String(storedSettings.scratchpadWidth))
+      ? storedSettings.scratchpadWidth as Settings["scratchpadWidth"]
+      : base.settings.scratchpadWidth,
+    scratchpadStylusOnly: booleanOr(storedSettings.scratchpadStylusOnly, base.settings.scratchpadStylusOnly),
+    scratchpadColour: SCRATCH_COLOUR_KEYS.includes(storedSettings.scratchpadColour as ScratchColour)
+      ? storedSettings.scratchpadColour as ScratchColour
+      : base.settings.scratchpadColour,
+    scratchpadSize: ([1, 2, 3] as number[]).includes(Number(storedSettings.scratchpadSize))
+      ? Number(storedSettings.scratchpadSize) as ScratchSize
+      : base.settings.scratchpadSize,
+    // Snapped to the quarter steps the zoom control offers, so a hand-edited or older value
+    // cannot leave the question at a magnification the buttons can never return from.
+    questionZoom: Math.round(boundedNumber(storedSettings.questionZoom, 1, 3, base.settings.questionZoom) * 4) / 4,
+    questionHideOptions: booleanOr(storedSettings.questionHideOptions, base.settings.questionHideOptions),
+    questionOptionTrim: Math.round(
+      boundedNumber(storedSettings.questionOptionTrim, 0.1, 0.6, base.settings.questionOptionTrim) * 20,
+    ) / 20,
   };
 
   const storedTargets = asRecord(value.targets);

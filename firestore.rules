@@ -30,6 +30,21 @@ service cloud.firestore {
       match /mistakeQueue/{questionId} {
         allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
       }
+      // Whiteboard working, one document per (attempt, question). A page is capped well
+      // below the 1 MiB document limit so a runaway client cannot fill the quota, and the
+      // stored fields are pinned so nothing else can be smuggled into the collection.
+      match /scratchpads/{pageId} {
+        allow read, delete: if signedIn() && request.auth.uid == userId;
+        allow create, update: if signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.keys().hasOnly(["attemptId", "questionId", "page", "height", "strokeCount", "updatedAt"])
+          && request.resource.data.attemptId is string
+          && request.resource.data.questionId is string
+          && request.resource.data.page is string
+          && request.resource.data.page.size() <= 700000
+          && request.resource.data.height is number
+          && request.resource.data.strokeCount is int;
+      }
     }
 
     match /questions/{document=**} {

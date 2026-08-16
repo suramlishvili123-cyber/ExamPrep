@@ -1,0 +1,253 @@
+/* The whiteboard.
+
+   The board is a sheet of paper and is white in both themes, like the question crops it
+   sits beside. Its chrome follows the exam player's own light palette rather than the
+   application tokens, because the player is a fixed light surface by design. */
+
+.scratchpad {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #dbe0df;
+  border-radius: 10px;
+  background: white;
+  overflow: hidden;
+}
+
+.scratch-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid #e4e9e7;
+  background: #f7f9f8;
+}
+
+.scratch-tool-group { display: flex; align-items: center; gap: 4px; }
+.scratch-tool-group + .scratch-tool-group { padding-left: 6px; border-left: 1px solid #e0e6e4; }
+.scratch-extras { margin-left: auto; padding-left: 6px; }
+
+.scratch-tools button {
+  min-height: 34px;
+  min-width: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid #dbe0df;
+  border-radius: 8px;
+  background: white;
+  color: #3d4b47;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+.scratch-tools button:hover:not(:disabled) { border-color: #b7c4bf; }
+.scratch-tools button:disabled { opacity: .42; cursor: default; }
+.scratch-tools button.selected { color: #0f604f; background: #eaf5f1; border-color: #0f604f; }
+.scratch-history button, .scratch-sizes button { padding: 0; }
+
+/* Below a tablet the tool names are dropped; the icons carry the meaning and the labels
+   remain available to assistive technology through `title` and `aria-label`. */
+@media (max-width: 900px) {
+  .scratch-tools button span { display: none; }
+  .scratch-tools button { padding: 0 8px; }
+}
+
+.scratch-swatch { position: relative; width: 30px; min-width: 30px; padding: 0; }
+.scratch-swatch::after {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border-radius: 99px;
+  background: var(--swatch);
+  box-shadow: 0 0 0 1px rgba(20, 33, 30, .16) inset;
+}
+.scratch-swatch.selected { border-color: var(--swatch); background: white; box-shadow: 0 0 0 2px color-mix(in srgb, var(--swatch) 22%, transparent); }
+
+.scratch-sizes i { display: block; border-radius: 99px; background: #3d4b47; }
+.scratch-sizes button.selected i { background: #0f604f; }
+
+.scratch-surface {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  /* Squared paper: it makes graphs and columns of arithmetic far easier to keep straight,
+     and it is what the printed answer sheet a candidate is used to looks like. */
+  background-color: white;
+  background-image:
+    linear-gradient(to right, #eaf0ee 1px, transparent 1px),
+    linear-gradient(to bottom, #eaf0ee 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.scratch-layer { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+/* The live layer is the one that receives pointers. `touch-action: none` is what makes a
+   stylus draw instead of scrolling the page under it. */
+.scratch-layer-live { touch-action: none; overscroll-behavior: contain; cursor: crosshair; }
+.scratch-surface[data-tool="eraser"] .scratch-layer-live { cursor: cell; }
+
+.scratch-surface-loading { display: grid; place-items: center; padding: 24px; }
+.scratch-surface-loading p { margin: 0; color: #68746f; font-size: 13px; }
+
+.scratch-fill-warning {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid #e5c878;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: #82500a;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ exam layouts -- */
+
+/* Split: the board is a column of its own next to the question. On a tablet in landscape
+   this is the whole point of the feature — question on the left, working on the right.
+
+   The answer panel keeps its own column at every width. Whatever room the board takes, it
+   takes from the question and never from the options a candidate has to reach to answer. */
+/* The player is capped at 1180px when it is a question and a list of options. With a board
+   in the row that cap wastes the width a tablet in landscape actually has. */
+.exam-content.workspace-split, .exam-content.workspace-overlay { width: min(1640px, 100%); }
+.exam-content.workspace-split { grid-template-columns: minmax(0, var(--question-share, 1fr)) minmax(0, var(--board-share, 1fr)) 282px; }
+.exam-content.workspace-split[data-board="wide"] { --question-share: .68fr; --board-share: 1.32fr; }
+/* Full: the board takes the whole width beside the answers and the question folds away.
+   One tap on the width control brings it straight back. */
+.exam-content.workspace-split[data-board="full"] { grid-template-columns: minmax(0, 1fr) 282px; }
+.exam-content.workspace-split[data-board="full"] > .question-stage { display: none; }
+
+.exam-content.workspace-split .question-image-frame { min-height: calc(100vh - 210px); }
+/* Pinned to the viewport, like the answer panel beside it. A board taller than the screen
+   would put the bottom of your own working below the fold, so writing near the foot of the
+   page would mean scrolling the question away to see what you had just written. */
+.exam-content.workspace-split .scratchpad {
+  position: sticky;
+  top: 94px;
+  align-self: start;
+  height: calc(100dvh - 185px);
+  min-height: 320px;
+}
+
+/* Between a small laptop and a tablet there is not room for three columns, so the board
+   takes a full-width row beneath the question and keeps a usable writing height. */
+/* A tablet in landscape is the device this feature exists for, and it is 1024–1366 px wide.
+   Three columns still fit there once the answer rail is narrowed, which keeps the options
+   where they belong — on the right, one tap away — instead of below a scroll. */
+@media (max-width: 1365px) {
+  .exam-content.workspace-split { grid-template-columns: minmax(0, var(--question-share, 1fr)) minmax(0, var(--board-share, 1fr)) 232px; }
+  .exam-content.workspace-split[data-board="wide"] { --question-share: .58fr; --board-share: 1.42fr; }
+  .exam-content.workspace-split[data-board="full"] { grid-template-columns: minmax(0, 1fr) 232px; }
+  .exam-content.workspace-split .answer-panel { padding: 14px; }
+  .exam-content.workspace-split .answer-options button { min-height: 40px; }
+}
+
+/* Below a tablet there is no room beside the question, so everything stacks and the board
+   is no longer pinned: pinning it here would trap the question permanently off screen. */
+@media (max-width: 919px) {
+  .exam-content.workspace-split,
+  .exam-content.workspace-split[data-board="wide"],
+  .exam-content.workspace-split[data-board="full"] { grid-template-columns: minmax(0, 1fr); }
+  .exam-content.workspace-split .scratchpad { grid-column: auto; position: static; height: auto; min-height: 62dvh; }
+  .exam-content.workspace-split .question-image-frame { min-height: 40dvh; }
+  .exam-content.workspace-split .answer-panel { position: static; }
+}
+
+/* ------------------------------------------------------------- the question itself -- */
+
+/* The crop is magnified rather than fitted while the board shares the width, so the frame
+   scrolls in both directions instead of shrinking a scanned paper into illegibility. */
+.exam-content.workspace-split .question-image-frame,
+.exam-content.workspace-overlay .question-image-frame { align-items: flex-start; justify-content: flex-start; overflow: auto; overscroll-behavior: contain; padding: 12px; }
+.exam-content.workspace-split .authored-frame, .exam-content.workspace-overlay .authored-frame { padding: clamp(14px, 2vw, 28px); }
+/* Authored items are typeset rather than scanned, so they take the same magnification
+   through their own font size and stay sharp at any zoom. */
+.exam-content.workspace-split .authored-question p,
+.exam-content.workspace-overlay .authored-question p { font-size: calc(clamp(17px, 1.5vw, 21px) * var(--question-zoom, 1)); }
+.exam-content.workspace-split .authored-question,
+.exam-content.workspace-overlay .authored-question { width: 100%; min-height: 0; padding: clamp(18px, 3vw, 34px); }
+
+.question-crop { position: relative; width: 100%; overflow: hidden; }
+.question-crop img { display: block; height: auto; }
+.question-crop-note {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 5px 9px;
+  background: linear-gradient(to top, rgba(255, 255, 255, .97) 62%, rgba(255, 255, 255, 0));
+  color: #68746f;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+  pointer-events: none;
+}
+
+.question-zoom { display: inline-flex; align-items: center; gap: 2px; border: 1px solid #dbe0df; border-radius: 7px; background: white; }
+.question-zoom button { min-height: 28px; width: 28px; display: grid; place-items: center; border: 0; background: transparent; color: #3d4b47; cursor: pointer; }
+.question-zoom button:disabled { opacity: .35; cursor: default; }
+.question-zoom b { min-width: 40px; text-align: center; font-size: 11px; font-weight: 750; color: #52625e; font-variant-numeric: tabular-nums; }
+
+.board-width-switch { display: inline-flex; border: 1px solid #dbe0df; border-radius: 8px; overflow: hidden; }
+.board-width-switch button { min-height: 34px; min-width: 40px; border: 0; border-right: 1px solid #e4e9e7; border-radius: 0; padding: 0 9px; }
+.board-width-switch button:last-child { border-right: 0; }
+
+/* Overlay: the board sits on the question itself, for annotating a diagram. The question
+   stage becomes the positioning context and the board loses its own background. */
+.exam-content.workspace-overlay .question-stage { position: relative; }
+.scratchpad-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  pointer-events: none;
+}
+.scratchpad-overlay .scratch-tools {
+  pointer-events: auto;
+  margin: 8px;
+  border: 1px solid #dbe0df;
+  border-radius: 9px;
+  background: color-mix(in srgb, white 92%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 20px rgba(16, 63, 54, .1);
+}
+.scratchpad-overlay .scratch-surface {
+  pointer-events: auto;
+  background-image: none;
+  background-color: transparent;
+}
+
+/* ------------------------------------------------------------- review and history -- */
+
+.scratch-preview { margin: 14px 0 0; }
+.scratch-preview figcaption { margin-bottom: 7px; color: #68746f; font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .08em; }
+.scratch-preview canvas {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(to right, #eef3f1 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(to bottom, #eef3f1 1px, transparent 1px) 0 0 / 28px 28px,
+    white;
+}
+
+/* The board toggle in the question toolbar. */
+.board-button { min-height: 30px; border: 1px solid #dbe0df; background: white; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; font-size: 12px; font-weight: 700; color: #3d4b47; cursor: pointer; }
+.board-button:hover { border-color: #b7c4bf; }
+.board-button.active { color: #0f604f; background: #eaf5f1; border-color: #0f604f; }
+
+.board-layout-switch { display: inline-flex; border: 1px solid #dbe0df; border-radius: 8px; overflow: hidden; }
+.board-layout-switch button { min-height: 34px; border: 0; border-right: 1px solid #e4e9e7; border-radius: 0; }
+.board-layout-switch button:last-child { border-right: 0; }

@@ -2,11 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `viewport-fit=cover` keeps the exam footer clear of the home indicator when the
+         installed application runs full-bleed on a tablet. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#103f36" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#103f36" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b1614" />
     <!-- Every asset is resolved against this base so repository sub-path URLs work. -->
     <meta name="esat-asset-base" content="./" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <!-- iOS reads none of the manifest for the home screen, so its own tags are required
+         for an installed session to open standalone with the right icon. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ESAT Atlas" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <meta name="description" content="Independent ESAT practice with past-paper sessions, original mocks, exact raw results, adaptive study planning and clearly labelled score estimates." />
     <meta property="og:title" content="ESAT Atlas" />
     <meta property="og:description" content="Past papers by year. Section-level analysis. Honest evidence." />
@@ -16,6 +27,7 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./icons/icon-192.png" sizes="192x192" type="image/png" />
     <link rel="preconnect" href="https://firestore.googleapis.com" />
     <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
     <title>ESAT Atlas | Cambridge Engineering Preparation</title>

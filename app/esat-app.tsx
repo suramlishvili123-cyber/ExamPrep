@@ -13,7 +13,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  CloudOff,
   Download,
+  Eye,
+  EyeOff,
   FileCheck2,
   Filter,
   Flag,
@@ -24,7 +27,9 @@ import {
   LogOut,
   Menu,
   Moon,
+  NotebookPen,
   Pause,
+  PencilRuler,
   Play,
   RotateCcw,
   Search,
@@ -39,6 +44,8 @@ import {
   UserRound,
   X,
   Zap,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import type { User } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -115,18 +122,42 @@ import {
   type TechniqueGuide,
 } from "./lib/learning";
 import { MathText } from "./math-text";
+import { publicAsset } from "./lib/assets";
 import { mathToPlainText } from "./lib/math-markup";
+import {
+  decodePage,
+  encodePage,
+  pageIsEmpty,
+  type ScratchPage,
+} from "./lib/scratch";
+import {
+  Scratchpad,
+  ScratchpadPreview,
+  type ScratchLayout,
+  type ScratchPreferences,
+} from "./scratchpad";
+import {
+  ConnectionStatus,
+  OfflinePanel,
+  UpdateBanner,
+  useOfflineRuntime,
+  type OfflineRuntime,
+  type SyncState,
+} from "./offline";
 import {
   deleteAccountAndData,
   deleteActiveAttemptCloud,
   deleteAttemptCloud,
+  deleteScratchPagesCloud,
   deleteUserStateCloud,
   firebaseConfigured,
   loadActiveAttemptCloud,
+  loadScratchPagesCloud,
   loadUserStateCloud,
   observeUser,
   saveActiveAttemptCloud,
   saveAttemptOutcomeCloud,
+  saveScratchPageCloud,
   saveUserProfileCloud,
   saveUserStateCloud,
   signInWithGoogle,
@@ -175,19 +206,6 @@ const CAMBRIDGE_BENCHMARKS = [
   { cohort: "International applicants", maths1: 5.51, physics: 5.19, maths2: 5.38 },
   { cohort: "International offer holders", maths1: 7.41, physics: 7.2, maths2: 7.21 },
 ];
-
-let cachedAssetBase: string | null = null;
-
-function publicAsset(path: string): string {
-  if (/^(?:[a-z]+:)?\/\//i.test(path) || path.startsWith("data:")) return path;
-  if (cachedAssetBase === null) {
-    const configured = typeof document === "undefined"
-      ? "/"
-      : document.querySelector<HTMLMetaElement>('meta[name="esat-asset-base"]')?.content ?? "/";
-    cachedAssetBase = configured.endsWith("/") ? configured : `${configured}/`;
-  }
-  return `${cachedAssetBase}${path.replace(/^\/+/, "")}`;
-}
 
 function mergeAttempts(remote: Attempt[] = [], local: Attempt[] = []): Attempt[] {
   const attempts = new Map<string, Attempt>();
@@ -464,7 +482,7 @@ function SectionTable({ rows, caption }: { rows: SectionRow[]; caption?: string 
   );
 }
 
-function LoginScreen({ busy, error, onSignIn }: { busy: boolean; error: string | null; onSignIn: () => void }) {
+function LoginScreen({ busy, error, online, onSignIn }: { busy: boolean; error: string | null; online: boolean; onSignIn: () => void }) {
   return (
     <main className="auth-shell">
       <section className="auth-story">
@@ -491,10 +509,19 @@ function LoginScreen({ busy, error, onSignIn }: { busy: boolean; error: string |
           <h2>Sign in to ESAT Atlas</h2>
           <p>Use Google through Firebase Authentication. Your progress will load automatically and stay synced to your private account.</p>
           {!firebaseConfigured() ? <div className="auth-error"><TriangleAlert size={17} /><span>Firebase has not been configured for this deployment.</span></div> : null}
+          {/* Signing in is the one thing that genuinely needs a connection: Google issues the
+              token. Once signed in the session is remembered on the device and everything —
+              papers, mocks, the whiteboard, the plan — works with no network at all. */}
+          {!online ? (
+            <div className="auth-error" role="status">
+              <CloudOff size={17} />
+              <span>You are offline. Signing in for the first time needs a connection; after that ESAT Atlas opens and runs offline on this device.</span>
+            </div>
+          ) : null}
           {error ? <div className="auth-error" role="alert"><TriangleAlert size={17} /><span>{error}</span></div> : null}
-          <button className="google-button" onClick={onSignIn} disabled={busy || !firebaseConfigured()}>
+          <button className="google-button" onClick={onSignIn} disabled={busy || !firebaseConfigured() || !online}>
             <span className="google-g" aria-hidden="true">G</span>
-            <span>{busy ? "Connecting securely…" : "Continue with Google"}</span>
+            <span>{busy ? "Connecting securely…" : online ? "Continue with Google" : "Waiting for a connection…"}</span>
             {busy ? <i className="auth-spinner" /> : <ChevronRight size={17} />}
           </button>
           <div className="auth-trust"><ShieldCheck size={15} /><span>Authentication is handled by Google and Firebase. ESAT Atlas never receives your Google password.</span></div>
@@ -534,6 +561,23 @@ export default function EsatApp() {
   const [paperYear, setPaperYear] = useState<number | null>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [openAttemptId, setOpenAttemptId] = useState<string | null>(null);
+  const offline = useOfflineRuntime();
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  /** Cloud writes that have not been acknowledged; while offline, every one of them. */
+  const [pendingWrites, setPendingWrites] = useState(0);
+  /**
+   * The working for the session in progress, held outside React state on purpose: a stroke
+   * must not re-render the exam player, and the pages are far too bulky for the bounded
+   * device cache in `lib/persistence.ts`. Firestore's own IndexedDB cache is their local
+   * copy, which is also what makes an offline page survive a reload.
+   */
+  const scratchPagesRef = useRef(new Map<string, ScratchPage>());
+  const scratchAttemptRef = useRef<string | null>(null);
+  const scratchDirtyRef = useRef(new Set<string>());
+  const scratchTimerRef = useRef<number | null>(null);
+  const [scratchLoadedFor, setScratchLoadedFor] = useState<string | null>(null);
+  /** Pages of a finished attempt, loaded on demand for the review screens. */
+  const [reviewScratch, setReviewScratch] = useState<{ attemptId: string; pages: Record<string, ScratchPage> } | null>(null);
   const timedOutRef = useRef(false);
   /** When the review list was opened, or null while a question is on screen. */
   const reviewOpenedAtRef = useRef<number | null>(null);
@@ -603,6 +647,18 @@ export default function EsatApp() {
     activeAttemptRef.current = state.activeAttempt;
   }, [state]);
 
+  /**
+   * Count a cloud write until it is acknowledged.
+   *
+   * Offline, a Firestore write is durably queued and its promise simply does not settle
+   * until the connection returns — so an outstanding count is exactly "work that has not
+   * reached the account yet", with no separate outbox to keep correct.
+   */
+  const trackWrite = useCallback(<T,>(promise: Promise<T>): Promise<T> => {
+    setPendingWrites((count) => count + 1);
+    return promise.finally(() => setPendingWrites((count) => Math.max(0, count - 1)));
+  }, []);
+
   useEffect(() => {
     if (!authReady || !user || syncedUserRef.current === user.uid) return;
     const generation = authGenerationRef.current;
@@ -625,7 +681,7 @@ export default function EsatApp() {
       // autosave that can be rebuilt by starting a new session.
       loadActiveAttemptCloud(user.uid).catch(() => null),
     ])
-      .then(async ([remoteState, remoteActiveAttempt]) => {
+      .then(([remoteState, remoteActiveAttempt]) => {
         if (generation !== authGenerationRef.current) return;
         const localActiveAttempt = localState.activeAttempt;
         const activeAttempt = !localActiveAttempt
@@ -639,13 +695,17 @@ export default function EsatApp() {
         stateRef.current = merged;
         setState(merged);
         setHydrated(true);
-        await saveUserStateCloud(user.uid, merged);
-        if (activeAttempt) await saveActiveAttemptCloud(user.uid, activeAttempt);
-        if (generation !== authGenerationRef.current) return;
+        // Deliberately not awaited. Offline, this write is queued durably by Firestore and
+        // its promise does not settle until the connection returns; awaiting it would leave
+        // the account menu disabled and profile syncing switched off for the whole session.
+        trackWrite(saveUserStateCloud(user.uid, merged)).catch(() => undefined);
+        if (activeAttempt) trackWrite(saveActiveAttemptCloud(user.uid, activeAttempt)).catch(() => undefined);
         cloudSettingsReadyUserRef.current = user.uid;
         setToast(localReadFailed
           ? "Signed in. This account's local copy was unreadable, so its private cloud copy was used."
-          : "Signed in. Your private Firebase progress is up to date.");
+          : navigator.onLine === false
+            ? "Signed in offline. Everything stored on this device is available, and your work syncs when you reconnect."
+            : "Signed in. Your private Firebase progress is up to date.");
       })
       .catch((error: unknown) => {
         syncedUserRef.current = null;
@@ -655,7 +715,7 @@ export default function EsatApp() {
       .finally(() => {
         if (generation === authGenerationRef.current) setAuthBusy(false);
       });
-  }, [authReady, user]);
+  }, [authReady, trackWrite, user]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = state.settings.theme;
@@ -770,6 +830,99 @@ export default function EsatApp() {
     return () => window.clearInterval(interval);
   }, [user, activeAttemptId]);
 
+  /* ------------------------------------------------------ whiteboard persistence -- */
+
+  /**
+   * Write every page that has changed since the last flush.
+   *
+   * Called on a short debounce, whenever the question changes, and when the page is hidden
+   * or the session ends. Writing on every stroke would be one document write per pen
+   * movement; writing only at the end would lose a session to a closed lid.
+   */
+  const flushScratch = useCallback(() => {
+    if (scratchTimerRef.current !== null) {
+      window.clearTimeout(scratchTimerRef.current);
+      scratchTimerRef.current = null;
+    }
+    const attemptId = scratchAttemptRef.current;
+    const dirty = [...scratchDirtyRef.current];
+    scratchDirtyRef.current.clear();
+    if (!user || !attemptId || !dirty.length || destructiveCloudActionRef.current) return;
+    for (const questionId of dirty) {
+      const page = scratchPagesRef.current.get(questionId);
+      const empty = pageIsEmpty(page);
+      trackWrite(saveScratchPageCloud(user.uid, {
+        attemptId,
+        questionId,
+        page: empty || !page ? "" : encodePage(page),
+        height: page?.height ?? 0,
+        strokeCount: page?.strokes.length ?? 0,
+        updatedAt: Date.now(),
+      })).catch(() => setToast("Your working is safe on this device; it will sync to your account shortly."));
+    }
+  }, [trackWrite, user]);
+
+  const recordScratchPage = useCallback((questionId: string, page: ScratchPage) => {
+    scratchPagesRef.current.set(questionId, page);
+    scratchDirtyRef.current.add(questionId);
+    if (scratchTimerRef.current !== null) window.clearTimeout(scratchTimerRef.current);
+    scratchTimerRef.current = window.setTimeout(flushScratch, 2_500);
+  }, [flushScratch]);
+
+  const scratchPageFor = useCallback(
+    (questionId: string): ScratchPage | null => scratchPagesRef.current.get(questionId) ?? null,
+    [],
+  );
+
+  // The working for a resumed session, read back before the board is shown so a candidate
+  // never sees a blank page where their own writing should be.
+  useEffect(() => {
+    if (!user || !activeAttemptId) {
+      scratchAttemptRef.current = null;
+      scratchPagesRef.current = new Map();
+      scratchDirtyRef.current.clear();
+      // `scratchLoadedFor` is deliberately left as it was. It is only ever compared against
+      // the attempt currently on screen, so a stale identifier reads as "not this one" —
+      // which is the answer — without a synchronous state write from an effect.
+      return;
+    }
+    if (scratchAttemptRef.current === activeAttemptId) return;
+    let cancelled = false;
+    scratchAttemptRef.current = activeAttemptId;
+    scratchPagesRef.current = new Map();
+    scratchDirtyRef.current.clear();
+    loadScratchPagesCloud(user.uid, activeAttemptId)
+      .then((records) => {
+        if (cancelled) return;
+        for (const [questionId, record] of Object.entries(records)) {
+          scratchPagesRef.current.set(questionId, decodePage(record.page));
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setScratchLoadedFor(activeAttemptId);
+      });
+    return () => { cancelled = true; };
+  }, [user, activeAttemptId]);
+
+  // A closed lid, a swipe away from the browser or a crash must not cost the last strokes.
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === "hidden") flushScratch(); };
+    window.addEventListener("pagehide", flushScratch);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("pagehide", flushScratch);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [flushScratch]);
+
+  // Mount-scoped, so a debounce still in flight cannot fire against a signed-out account
+  // after teardown. It is deliberately not tied to `flushScratch`, whose identity changes
+  // with the signed-in user — cancelling on that would drop a save that is about to run.
+  useEffect(() => () => {
+    if (scratchTimerRef.current !== null) window.clearTimeout(scratchTimerRef.current);
+  }, []);
+
   useEffect(() => {
     if (!activeAttemptId || typeof BroadcastChannel === "undefined") return;
     // Identifies this tab so its own broadcast is not mistaken for a competing one.
@@ -822,16 +975,19 @@ export default function EsatApp() {
       reviewOpenedAtRef.current = null;
       setReviewOpen(false);
       timedOutRef.current = false;
+      // The board's last strokes belong to this attempt and have to be written before the
+      // review screen offers to show them back.
+      flushScratch();
       if (user) {
-        Promise.all([
+        trackWrite(Promise.all([
           saveAttemptOutcomeCloud(user.uid, finalized, next),
           deleteActiveAttemptCloud(user.uid, finalized.attemptId),
-        ]).catch(() =>
+        ])).catch(() =>
           setToast("Saved locally; cloud sync will be retried later."),
         );
       }
     },
-    [questionMap, user],
+    [flushScratch, questionMap, trackWrite, user],
   );
 
   // An attempt restored from a previous session may already have run out of time. This
@@ -962,9 +1118,20 @@ export default function EsatApp() {
       });
       reviewOpenedAtRef.current = null;
       setReviewOpen(false);
+      // Leaving a question is the natural moment to store what was written on it, rather
+      // than waiting for the debounce and risking the session ending first.
+      flushScratch();
     },
-    [updateActive],
+    [flushScratch, updateActive],
   );
+
+  const toggleBoardLayout = useCallback((layout: ScratchLayout) => {
+    if (layout === "off") {
+      updateSettings({ scratchpadEnabled: false });
+      return;
+    }
+    updateSettings({ scratchpadEnabled: true, scratchpadLayout: layout });
+  }, [updateSettings]);
 
   const toggleFlag = useCallback(() => {
     updateActive((attempt) => {
@@ -996,12 +1163,15 @@ export default function EsatApp() {
       else if (event.key === "Backspace" || event.key === "Delete") clearOption();
       else if (key === "F") toggleFlag();
       else if (key === "R") openOrCloseReview(true);
+      // W opens and closes the whiteboard. It is never an answer letter, and it is within
+      // reach of the hand that is not holding the stylus.
+      else if (key === "W") toggleBoardLayout(state.settings.scratchpadEnabled ? "off" : state.settings.scratchpadLayout);
       else handled = false;
       if (handled) event.preventDefault();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [active, clearOption, navigateQuestion, openOrCloseReview, questionMap, reviewOpen, selectOption, state.settings.keyboardShortcuts, toggleFlag]);
+  }, [active, clearOption, navigateQuestion, openOrCloseReview, questionMap, reviewOpen, selectOption, state.settings.keyboardShortcuts, state.settings.scratchpadEnabled, state.settings.scratchpadLayout, toggleBoardLayout, toggleFlag]);
 
   function beginQuestionList(
     pool: Question[],
@@ -1179,18 +1349,27 @@ export default function EsatApp() {
     setResult(null);
     setView("dashboard");
     timedOutRef.current = false;
+    // Nothing about a discarded attempt is kept, so its working goes with it. The pending
+    // debounce is dropped first so it cannot write a page back after the delete.
+    scratchDirtyRef.current.clear();
+    if (scratchTimerRef.current !== null) window.clearTimeout(scratchTimerRef.current);
+    scratchTimerRef.current = null;
     if (user) {
       deleteActiveAttemptCloud(user.uid, discarded.attemptId).catch(() =>
         setToast("The session was discarded locally, but its cloud autosave could not be removed."),
       );
+      deleteScratchPagesCloud(user.uid, discarded.attemptId).catch(() => undefined);
     }
   }
 
   function deleteAttempt(attemptId: string): void {
     setState((current) => ({ ...current, attempts: current.attempts.filter((attempt) => attempt.attemptId !== attemptId) }));
     setOpenAttemptId(null);
-    setToast("That result was removed from your history. Question progress and the retrieval queue were left untouched.");
-    if (user) deleteAttemptCloud(user.uid, attemptId).catch(() => undefined);
+    setToast("That result was removed from your history, along with any working you wrote on its whiteboard. Question progress and the retrieval queue were left untouched.");
+    if (user) {
+      deleteAttemptCloud(user.uid, attemptId).catch(() => undefined);
+      deleteScratchPagesCloud(user.uid, attemptId).catch(() => undefined);
+    }
   }
 
   /**
@@ -1327,6 +1506,55 @@ export default function EsatApp() {
   const dueCount = adaptivePlan.dueCount;
   const studyMs = adaptivePlan.completedMinutesThisWeek * 60_000;
 
+  // The review screens read the working back for the attempt being examined. It is loaded
+  // on demand rather than with the profile: most attempts are never reopened, and pages are
+  // by far the bulkiest thing the account stores.
+  const reviewAttemptId = result?.attemptId ?? openAttemptId ?? null;
+  useEffect(() => {
+    if (!user || !reviewAttemptId) return;
+    if (reviewScratch?.attemptId === reviewAttemptId) return;
+    let cancelled = false;
+    loadScratchPagesCloud(user.uid, reviewAttemptId)
+      .then((records) => {
+        if (cancelled) return;
+        setReviewScratch({
+          attemptId: reviewAttemptId,
+          pages: Object.fromEntries(
+            Object.entries(records).map(([questionId, record]) => [questionId, decodePage(record.page)]),
+          ),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setReviewScratch({ attemptId: reviewAttemptId, pages: {} });
+      });
+    return () => { cancelled = true; };
+  }, [reviewAttemptId, reviewScratch, user]);
+
+  const reviewPages = reviewScratch?.attemptId === reviewAttemptId ? reviewScratch.pages : {};
+
+  const syncState: SyncState = !offline.online
+    ? "offline"
+    : pendingWrites > 0
+      ? "pending"
+      : "synced";
+
+  // Memoised because the exam clock re-renders the player twice a second while a countdown
+  // is on screen. The board is memoised in turn, and a fresh preferences object on every
+  // tick would defeat that and re-render the toolbar under the candidate's hand.
+  const scratchPreferences = useMemo<ScratchPreferences>(() => ({
+    colour: state.settings.scratchpadColour,
+    size: state.settings.scratchpadSize,
+    stylusOnly: state.settings.scratchpadStylusOnly,
+  }), [state.settings.scratchpadColour, state.settings.scratchpadSize, state.settings.scratchpadStylusOnly]);
+
+  const updateScratchPreferences = useCallback((patch: Partial<ScratchPreferences>) => updateSettings({
+    ...(patch.colour ? { scratchpadColour: patch.colour } : {}),
+    ...(patch.size ? { scratchpadSize: patch.size } : {}),
+    ...(patch.stylusOnly === undefined ? {} : { scratchpadStylusOnly: patch.stylusOnly }),
+  }), [updateSettings]);
+
+  const boardLayout: ScratchLayout = state.settings.scratchpadEnabled ? state.settings.scratchpadLayout : "off";
+
   if (!hydrated || !authReady) {
     return (
       <main className="loading-screen">
@@ -1339,7 +1567,7 @@ export default function EsatApp() {
     );
   }
 
-  if (!user) return <LoginScreen busy={authBusy} error={authError} onSignIn={handleSignIn} />;
+  if (!user) return <LoginScreen busy={authBusy} error={authError} online={offline.online} onSignIn={handleSignIn} />;
 
   if (bankError) {
     return (
@@ -1402,6 +1630,20 @@ export default function EsatApp() {
         pacingAid={state.settings.pacingAid}
         multiTabWarning={multiTabWarning}
         dismissMultiTab={() => setMultiTabWarning(false)}
+        boardLayout={boardLayout}
+        onBoardLayoutChange={toggleBoardLayout}
+        boardWidth={state.settings.scratchpadWidth}
+        onBoardWidthChange={(width) => updateSettings({ scratchpadWidth: width })}
+        questionZoom={state.settings.questionZoom}
+        questionHideOptions={state.settings.questionHideOptions}
+        questionOptionTrim={state.settings.questionOptionTrim}
+        onQuestionViewChange={updateSettings}
+        boardReady={scratchLoadedFor === active.attemptId}
+        scratchPageFor={scratchPageFor}
+        onScratchChange={recordScratchPage}
+        scratchPreferences={scratchPreferences}
+        onScratchPreferencesChange={updateScratchPreferences}
+        onNotice={setToast}
       />
     );
   }
@@ -1414,6 +1656,7 @@ export default function EsatApp() {
         showScoreEstimate={state.settings.showScoreEstimate}
         returnLabel={result.planSessionId ? "Continue today’s plan" : "Back to dashboard"}
         previous={previousComparableAttempt(state.attempts, result)}
+        scratchPages={reviewPages}
         onClose={() => { setResult(null); setView(result.planSessionId ? "plan" : "dashboard"); }}
         onContinue={() => continueSequence(result)}
         onRetryMissed={() => {
@@ -1482,6 +1725,7 @@ export default function EsatApp() {
             <Pill tone="good"><CheckCircle2 size={13} /> Source bank validated</Pill>
           </div>
           <div className="topbar-actions">
+            <ConnectionStatus state={syncState} />
             <button className="icon-button" onClick={() => updateSettings({ theme: state.settings.theme === "light" ? "dark" : "light" })} aria-label={`Switch to ${state.settings.theme === "light" ? "dark" : "light"} theme`}>
               {state.settings.theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
@@ -1500,6 +1744,7 @@ export default function EsatApp() {
               questionMap={questionMap}
               attempts={state.attempts}
               showScoreEstimate={state.settings.showScoreEstimate}
+              scratchPages={reviewPages}
               onBack={() => setOpenAttemptId(null)}
               onDelete={() => {
                 if (window.confirm("Remove this result from your history? Question progress and the retrieval queue are not affected.")) deleteAttempt(openAttempt.attemptId);
@@ -1645,6 +1890,8 @@ export default function EsatApp() {
                 <SettingsView
                   state={state}
                   busy={authBusy}
+                  offline={offline}
+                  onToast={setToast}
                   onSettingsChange={updateSettings}
                   onTargetChange={updateTarget}
                   onEraseCloudData={handleEraseCloudData}
@@ -1694,6 +1941,9 @@ export default function EsatApp() {
           <span>{toast}</span>
           <button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={15} /></button>
         </div>
+      ) : null}
+      {offline.updateReady && !updateDismissed ? (
+        <UpdateBanner onApply={offline.applyUpdate} onDismiss={() => setUpdateDismissed(true)} />
       ) : null}
     </div>
   );
@@ -3282,11 +3532,13 @@ function QuestionLearningSupport({ question }: { question: Question }) {
   );
 }
 
-export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, onBack, onDelete, onResit }: {
+export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, scratchPages = {}, onBack, onDelete, onResit }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   attempts: Attempt[];
   showScoreEstimate: boolean;
+  /** The working written during this attempt, keyed by question. */
+  scratchPages?: Record<string, ScratchPage>;
   onBack: () => void;
   onDelete: () => void;
   onResit: () => void;
@@ -3432,6 +3684,9 @@ export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEst
                         </span>
                       ))}
                     </div>
+                    {!pageIsEmpty(scratchPages[id])
+                      ? <ScratchpadPreview page={scratchPages[id]} label="Your working on this question" />
+                      : null}
                     <QuestionLearningSupport question={question} />
                   </div>
                 ) : null}
@@ -3544,9 +3799,11 @@ export function NumberSetting({ id, value, min, max, step, decimals = 0, onCommi
   );
 }
 
-export function SettingsView({ state, busy, onSettingsChange, onTargetChange, onExportJson, onExportCsv, onReset, onEraseCloudData, onDeleteAccount }: {
+export function SettingsView({ state, busy, offline, onToast, onSettingsChange, onTargetChange, onExportJson, onExportCsv, onReset, onEraseCloudData, onDeleteAccount }: {
   state: StoredState;
   busy: boolean;
+  offline?: OfflineRuntime;
+  onToast?: (message: string) => void;
   onSettingsChange: (patch: Partial<Settings>) => void;
   onTargetChange: (module: ModuleId, value: number) => void;
   onExportJson: () => void;
@@ -3588,10 +3845,83 @@ export function SettingsView({ state, busy, onSettingsChange, onTargetChange, on
         </article>
         <article className="panel">
           <div className="panel-heading"><div><span className="eyebrow">Player and reporting</span><h2>Interaction</h2></div></div>
-          <label className="toggle-row"><span>Keyboard shortcuts<small>A–H, 1–8, arrows, backspace, F and R</small></span><input type="checkbox" checked={state.settings.keyboardShortcuts} onChange={(event) => onSettingsChange({ keyboardShortcuts: event.target.checked })} /></label>
+          <label className="toggle-row"><span>Keyboard shortcuts<small>A–H, 1–8, arrows, backspace, F, R and W</small></span><input type="checkbox" checked={state.settings.keyboardShortcuts} onChange={(event) => onSettingsChange({ keyboardShortcuts: event.target.checked })} /></label>
           <label className="toggle-row"><span>Strict-mode pacing aid<small>Optional; hidden by default</small></span><input type="checkbox" checked={state.settings.pacingAid} onChange={(event) => onSettingsChange({ pacingAid: event.target.checked })} /></label>
           <label className="toggle-row"><span>Show estimated 1.0–9.0 score<small>Turn off to work from raw marks only</small></span><input type="checkbox" checked={state.settings.showScoreEstimate} onChange={(event) => onSettingsChange({ showScoreEstimate: event.target.checked })} /></label>
         </article>
+        <article className="panel">
+          <div className="panel-heading"><div><span className="eyebrow">Working whiteboard</span><h2>Write your working on screen</h2></div><NotebookPen size={18} /></div>
+          <p className="panel-copy">A squared writing surface inside the exam player, so a paper can be sat on a tablet with a stylus and nothing else on the desk. Each question keeps its own page, and the working is stored with the attempt for the review afterwards.</p>
+          <label className="toggle-row">
+            <span>Offer the whiteboard<small>Also toggled during a session with the board button, or the W key</small></span>
+            <input type="checkbox" checked={state.settings.scratchpadEnabled} onChange={(event) => onSettingsChange({ scratchpadEnabled: event.target.checked })} />
+          </label>
+          <label className="setting-row">
+            <span>Where it opens<small>Beside the question, or over it to annotate a figure</small></span>
+            <select
+              value={state.settings.scratchpadLayout}
+              disabled={!state.settings.scratchpadEnabled}
+              onChange={(event) => onSettingsChange({ scratchpadLayout: event.target.value === "overlay" ? "overlay" : "split" })}
+            >
+              <option value="split">Beside the question</option>
+              <option value="overlay">Over the question</option>
+            </select>
+          </label>
+          <label className="setting-row">
+            <span>How much room it takes<small>The answer options stay on screen at every width</small></span>
+            <select
+              value={state.settings.scratchpadWidth}
+              disabled={!state.settings.scratchpadEnabled || state.settings.scratchpadLayout !== "split"}
+              onChange={(event) => onSettingsChange({ scratchpadWidth: event.target.value as Settings["scratchpadWidth"] })}
+            >
+              <option value="half">Half the space</option>
+              <option value="wide">Most of the space</option>
+              <option value="full">Full width, question folded away</option>
+            </select>
+          </label>
+          <label className="toggle-row">
+            <span>Stylus only<small>Ignore finger and mouse input. The board also rejects touch by itself once a stylus is used.</small></span>
+            <input
+              type="checkbox"
+              checked={state.settings.scratchpadStylusOnly}
+              disabled={!state.settings.scratchpadEnabled}
+              onChange={(event) => onSettingsChange({ scratchpadStylusOnly: event.target.checked })}
+            />
+          </label>
+          <label className="setting-row">
+            <span>Question size on a shared screen<small>Applies only while the board is open; the frame scrolls</small></span>
+            <select
+              value={state.settings.questionZoom}
+              disabled={!state.settings.scratchpadEnabled}
+              onChange={(event) => onSettingsChange({ questionZoom: Number(event.target.value) })}
+            >
+              {QUESTION_ZOOM_STEPS.map((step) => <option key={step} value={step}>{Math.round(step * 100)}%</option>)}
+            </select>
+          </label>
+          <label className="toggle-row">
+            <span>Hide the printed options on the question<small>The answer panel lists them anyway, so the crop can spend its room on the question</small></span>
+            <input
+              type="checkbox"
+              checked={state.settings.questionHideOptions}
+              disabled={!state.settings.scratchpadEnabled}
+              onChange={(event) => onSettingsChange({ questionHideOptions: event.target.checked })}
+            />
+          </label>
+          <label className="setting-row">
+            <span>How much of the crop to hide<small>Papers place their option list differently; adjust if too much or too little is cut</small></span>
+            <select
+              value={state.settings.questionOptionTrim}
+              disabled={!state.settings.scratchpadEnabled || !state.settings.questionHideOptions}
+              onChange={(event) => onSettingsChange({ questionOptionTrim: Number(event.target.value) })}
+            >
+              {[0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6].map((value) => (
+                <option key={value} value={value}>Bottom {Math.round(value * 100)}%</option>
+              ))}
+            </select>
+          </label>
+          <p className="panel-footnote">The real ESAT is sat with paper for working. The board is a convenience for practice on a tablet, not a simulation of exam conditions.</p>
+        </article>
+        {offline ? <OfflinePanel runtime={offline} onToast={onToast ?? (() => undefined)} /> : null}
         <article className="panel">
           <div className="panel-heading"><div><span className="eyebrow">Data portability</span><h2>Own your revision record</h2></div></div>
           <p className="panel-copy">Export attempts, responses, progress, mistakes, timing, targets and notes at any time.</p>
@@ -3617,7 +3947,145 @@ export function SettingsView({ state, busy, onSettingsChange, onTargetChange, on
   );
 }
 
-export function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpen, onSelect, onClear, onNavigate, onFlag, onConfidence, onFinish, onExit, onPause, pacingAid, multiTabWarning, dismissMultiTab }: {
+const BOARD_WIDTHS: Array<{ id: Settings["scratchpadWidth"]; label: string; title: string }> = [
+  { id: "half", label: "½", title: "Share the space evenly with the question" },
+  { id: "wide", label: "⅔", title: "Give the board most of the space" },
+  { id: "full", label: "Full", title: "Fold the question away and use the whole width" },
+];
+
+/**
+ * The board's own controls: where it sits, how much room it takes, and putting it away.
+ *
+ * The width control never touches the answer panel's column, so however large the board is
+ * made the options stay on screen and one tap away.
+ */
+function BoardControls({ layout, width, onChange, onWidthChange }: {
+  layout: ScratchLayout;
+  width: Settings["scratchpadWidth"];
+  onChange?: (layout: ScratchLayout) => void;
+  onWidthChange?: (width: Settings["scratchpadWidth"]) => void;
+}) {
+  // Each control appears only if the host can act on it, independently of the others.
+  return (
+    <>
+      {layout === "split" && onWidthChange ? (
+        <span className="board-width-switch" role="group" aria-label="Whiteboard width">
+          {BOARD_WIDTHS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={width === option.id ? "selected" : ""}
+              aria-pressed={width === option.id}
+              title={option.title}
+              onClick={() => onWidthChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </span>
+      ) : null}
+      {onChange ? (
+        <>
+          <span className="board-layout-switch" role="group" aria-label="Whiteboard position">
+            <button type="button" className={layout === "split" ? "selected" : ""} aria-pressed={layout === "split"} onClick={() => onChange("split")} title="Show the board beside the question">Beside</button>
+            <button type="button" className={layout === "overlay" ? "selected" : ""} aria-pressed={layout === "overlay"} onClick={() => onChange("overlay")} title="Write over the question itself">On question</button>
+          </span>
+          <button type="button" onClick={() => onChange("off")} title="Hide the whiteboard (W)" aria-label="Hide the whiteboard"><X size={16} /></button>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+export const QUESTION_ZOOM_STEPS = [1, 1.2, 1.4, 1.7, 2, 2.5, 3] as const;
+
+/**
+ * The question crop, magnified and optionally trimmed.
+ *
+ * Sharing the width with a whiteboard leaves a printed A4 question rendered at a few hundred
+ * pixels, which for a scanned 2016 paper is not readable. The crop is therefore scaled up
+ * and its frame scrolls, rather than being shrunk to fit whatever room is left.
+ *
+ * The trim hides the printed option list at the foot of the crop. The height it occupies is
+ * not recorded anywhere — these are page crops, not structured documents — so it is a
+ * fraction the candidate sets once and adjusts if a paper sits differently. Nothing is
+ * destroyed: the toggle brings it straight back, and the answer panel has always shown the
+ * same options in typeset form.
+ */
+export function QuestionCrop({ source, alt, zoom, trim }: {
+  source: string;
+  alt: string;
+  zoom: number;
+  trim: number;
+}) {
+  const [renderedHeight, setRenderedHeight] = useState(0);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+
+  // Measured from the load event and from a resize observation — both callbacks — so the
+  // visible height below is derived during render rather than written from an effect.
+  const measure = useCallback(() => {
+    const height = imageRef.current?.getBoundingClientRect().height ?? 0;
+    setRenderedHeight((current) => (Math.abs(current - height) > 0.5 ? height : current));
+  }, []);
+
+  useEffect(() => {
+    const image = imageRef.current;
+    if (!image || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(image);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  const visibleHeight = trim > 0 && renderedHeight > 0
+    ? Math.max(120, Math.round(renderedHeight * (1 - trim)))
+    : undefined;
+
+  return (
+    <div className="question-crop" style={visibleHeight ? { height: `${visibleHeight}px` } : undefined}>
+      <img
+        ref={imageRef}
+        src={publicAsset(source)}
+        alt={alt}
+        onLoad={measure}
+        style={{ width: `${Math.round(zoom * 100)}%`, maxWidth: "none" }}
+      />
+      {visibleHeight ? <span className="question-crop-note">Printed options hidden — they are listed on the right</span> : null}
+    </div>
+  );
+}
+
+export function ExamPlayer({
+  attempt,
+  questionMap,
+  now,
+  reviewOpen,
+  setReviewOpen,
+  onSelect,
+  onClear,
+  onNavigate,
+  onFlag,
+  onConfidence,
+  onFinish,
+  onExit,
+  onPause,
+  pacingAid,
+  multiTabWarning,
+  dismissMultiTab,
+  boardLayout = "off",
+  onBoardLayoutChange,
+  boardWidth = "half",
+  onBoardWidthChange,
+  questionZoom = 1,
+  questionHideOptions = false,
+  questionOptionTrim = 0.3,
+  onQuestionViewChange,
+  boardReady = false,
+  scratchPageFor,
+  onScratchChange,
+  scratchPreferences,
+  onScratchPreferencesChange,
+  onNotice,
+}: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   now: number;
@@ -3634,6 +4102,23 @@ export function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpe
   pacingAid: boolean;
   multiTabWarning: boolean;
   dismissMultiTab: () => void;
+  /** "off" hides the whiteboard entirely, including its toggle. */
+  boardLayout?: ScratchLayout;
+  onBoardLayoutChange?: (layout: ScratchLayout) => void;
+  boardWidth?: Settings["scratchpadWidth"];
+  onBoardWidthChange?: (width: Settings["scratchpadWidth"]) => void;
+  /** How the question itself is shown while the board shares its width. */
+  questionZoom?: number;
+  questionHideOptions?: boolean;
+  questionOptionTrim?: number;
+  onQuestionViewChange?: (patch: Partial<Settings>) => void;
+  /** False until this attempt's stored working has been read back. */
+  boardReady?: boolean;
+  scratchPageFor?: (questionId: string) => ScratchPage | null;
+  onScratchChange?: (questionId: string, page: ScratchPage) => void;
+  scratchPreferences?: ScratchPreferences;
+  onScratchPreferencesChange?: (patch: Partial<ScratchPreferences>) => void;
+  onNotice?: (message: string) => void;
 }) {
   const questionId = attempt.questionIds[attempt.currentIndex];
   const question = questionMap[questionId];
@@ -3645,6 +4130,29 @@ export function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpe
   const actualElapsed = now - attempt.startedAt - attempt.totalPausedDuration;
   const paceDifference = expectedElapsed - actualElapsed;
   const displayedSource = sourceLabelForAttempt(question, attempt);
+  const boardOn = boardLayout !== "off";
+  const boardVisible = boardOn && Boolean(scratchPageFor) && Boolean(onScratchChange) && Boolean(scratchPreferences) && boardReady;
+  // Magnification applies only where the question is a column of its own. Under an overlay
+  // the ink is fixed to the stage, so a question that could be scrolled beneath it would
+  // slide out from under its own annotations.
+  const effectiveZoom = boardOn && boardLayout === "split" ? questionZoom : 1;
+  // The nearest offered step, so a stored value from an older build still lands on the ramp.
+  const zoomIndex = QUESTION_ZOOM_STEPS.reduce(
+    (best, step, index) => (Math.abs(step - questionZoom) < Math.abs(QUESTION_ZOOM_STEPS[best] - questionZoom) ? index : best),
+    0,
+  );
+  const handleScratchChange = useCallback(
+    (page: ScratchPage) => onScratchChange?.(questionId, page),
+    [onScratchChange, questionId],
+  );
+  // Read once per question. The board is uncontrolled and keyed by the question, so a later
+  // identity change on this value would be ignored anyway — but a stable value keeps the
+  // memoised board from re-rendering on every tick of the exam clock.
+  const initialPage = useMemo(
+    () => (boardVisible && scratchPageFor ? scratchPageFor(questionId) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [questionId, boardVisible],
+  );
 
   if (!question || !response) {
     return (
@@ -3693,21 +4201,119 @@ export function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpe
           </div>
         </main>
       ) : (
-        <main className="exam-content" inert={Boolean(attempt.pausedAt)}>
+        <main
+          className={`exam-content ${boardOn ? `workspace-${boardLayout}` : ""}`}
+          data-board={boardOn && boardLayout === "split" ? boardWidth : undefined}
+          inert={Boolean(attempt.pausedAt)}
+        >
           <section className="question-stage">
             <div className="question-toolbar">
               <div><Pill tone="neutral">{displayedSource}</Pill>{!attempt.strictTimed ? <Pill tone="blue">{question.esatTopic}</Pill> : null}</div>
               <div>
                 {pacingAid && attempt.strictTimed ? <span className={paceDifference >= 0 ? "pace-ahead" : "pace-behind"}>{formatDuration(Math.abs(paceDifference))} {paceDifference >= 0 ? "ahead" : "behind"}</span> : null}
+                {/* Only while the board shares the width: the unshared player already shows
+                    the question at full width, and the strict simulation stays uncluttered.
+                    Magnifying is offered beside the question but not over it — a scrollable
+                    question under fixed ink would drift away from the annotations on it. */}
+                {boardOn && onQuestionViewChange ? (
+                  <>
+                    {boardLayout === "split" ? (
+                    <span className="question-zoom" role="group" aria-label="Question size">
+                      <button
+                        type="button"
+                        aria-label="Show the question smaller"
+                        title="Show the question smaller"
+                        disabled={zoomIndex <= 0}
+                        onClick={() => onQuestionViewChange({ questionZoom: QUESTION_ZOOM_STEPS[Math.max(0, zoomIndex - 1)] })}
+                      >
+                        <ZoomOut size={15} />
+                      </button>
+                      <b>{Math.round(questionZoom * 100)}%</b>
+                      <button
+                        type="button"
+                        aria-label="Show the question larger"
+                        title="Show the question larger"
+                        disabled={zoomIndex >= QUESTION_ZOOM_STEPS.length - 1}
+                        onClick={() => onQuestionViewChange({ questionZoom: QUESTION_ZOOM_STEPS[Math.min(QUESTION_ZOOM_STEPS.length - 1, zoomIndex + 1)] })}
+                      >
+                        <ZoomIn size={15} />
+                      </button>
+                    </span>
+                    ) : null}
+                    {question.questionImage ? (
+                      <button
+                        type="button"
+                        className={questionHideOptions ? "board-button active" : "board-button"}
+                        aria-pressed={questionHideOptions}
+                        title={questionHideOptions
+                          ? "Show the printed option list on the question again"
+                          : "Hide the printed option list; the options stay in the answer panel"}
+                        onClick={() => onQuestionViewChange({ questionHideOptions: !questionHideOptions })}
+                      >
+                        {questionHideOptions ? <EyeOff size={16} /> : <Eye size={16} />} Options
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+                {onBoardLayoutChange ? (
+                  <button
+                    type="button"
+                    className={boardOn ? "board-button active" : "board-button"}
+                    aria-pressed={boardOn}
+                    title={boardOn ? "Hide the working whiteboard (W)" : "Show the working whiteboard (W)"}
+                    onClick={() => onBoardLayoutChange(boardOn ? "off" : "split")}
+                  >
+                    <PencilRuler size={16} /> {boardOn ? "Whiteboard on" : "Whiteboard"}
+                  </button>
+                ) : null}
                 <button className={response.flagged ? "flag-button flagged" : "flag-button"} onClick={onFlag} aria-pressed={response.flagged}><Flag size={16} /> {response.flagged ? "Flagged" : "Flag for review"}</button>
               </div>
             </div>
-            <div className={`question-image-frame ${question.authored ? "authored-frame" : ""}`}>
+            <div
+              className={`question-image-frame ${question.authored ? "authored-frame" : ""}`}
+              style={boardOn ? { ["--question-zoom" as string]: effectiveZoom } as React.CSSProperties : undefined}
+            >
               {question.questionImage
-                ? <img src={publicAsset(question.questionImage)} alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`} />
+                ? (
+                  <QuestionCrop
+                    source={question.questionImage}
+                    alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`}
+                    zoom={effectiveZoom}
+                    trim={boardOn && questionHideOptions ? questionOptionTrim : 0}
+                  />
+                )
                 : <div className="authored-question"><span>Question {attempt.currentIndex + 1}</span><p><MathText>{question.questionText}</MathText></p><QuestionFigure question={question} /><small>Original ESAT Atlas challenge item</small></div>}
             </div>
+            {boardVisible && boardLayout === "overlay" && scratchPreferences ? (
+              <Scratchpad
+                key={`${attempt.attemptId}:${questionId}`}
+                layout="overlay"
+                initialPage={initialPage}
+                onChange={handleScratchChange}
+                preferences={scratchPreferences}
+                onPreferencesChange={onScratchPreferencesChange ?? (() => undefined)}
+                onNotice={onNotice}
+                toolbarExtras={<BoardControls layout={boardLayout} width={boardWidth} onChange={onBoardLayoutChange} onWidthChange={onBoardWidthChange} />}
+              />
+            ) : null}
           </section>
+          {boardVisible && boardLayout === "split" && scratchPreferences ? (
+            <Scratchpad
+              key={`${attempt.attemptId}:${questionId}`}
+              layout="split"
+              initialPage={initialPage}
+              onChange={handleScratchChange}
+              preferences={scratchPreferences}
+              onPreferencesChange={onScratchPreferencesChange ?? (() => undefined)}
+              onNotice={onNotice}
+              toolbarExtras={<BoardControls layout={boardLayout} width={boardWidth} onChange={onBoardLayoutChange} onWidthChange={onBoardWidthChange} />}
+            />
+          ) : null}
+          {boardOn && !boardVisible ? (
+            <section className="scratchpad scratchpad-split" aria-label="Working whiteboard">
+              <div className="scratch-surface scratch-surface-loading"><p>Restoring the working you wrote on this question…</p></div>
+            </section>
+          ) : null}
           <aside className="answer-panel">
             <span className="eyebrow">Select one answer</span>
             <div className="answer-options" role="radiogroup" aria-label="Answer options">
@@ -3745,12 +4351,14 @@ export function ExamPlayer({ attempt, questionMap, now, reviewOpen, setReviewOpe
   );
 }
 
-export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, previous, onClose, onContinue, onRetryMissed, onTag }: {
+export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, previous, scratchPages = {}, onClose, onContinue, onRetryMissed, onTag }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   showScoreEstimate: boolean;
   returnLabel: string;
   previous: Attempt | null;
+  /** The working written during this attempt, keyed by question. */
+  scratchPages?: Record<string, ScratchPage>;
   onClose: () => void;
   onContinue: () => void;
   onRetryMissed: () => void;
@@ -3847,6 +4455,11 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
                   <div>
                     <p>Select every cause that genuinely applied.</p>
                     <div className="tag-picker">{ERROR_TAGS.map((tag) => <button className={response.errorClassifications.includes(tag) ? "selected" : ""} key={tag} onClick={() => onTag(response.questionId, tag)}>{tag}</button>)}</div>
+                    {/* Seeing the working back is what turns "I got it wrong" into "I know
+                        where it went wrong", which is the whole point of the diagnosis. */}
+                    {!pageIsEmpty(scratchPages[response.questionId])
+                      ? <ScratchpadPreview page={scratchPages[response.questionId]} label="Your working on this question" />
+                      : null}
                   </div>
                   {question ? <div className="error-learning"><QuestionLearningSupport question={question} /></div> : null}
                 </div>

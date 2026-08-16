@@ -27,4 +27,12 @@ export default defineConfig([
       "jsx-a11y/alt-text": ["error", { img: ["img"] }],
     },
   },
+  {
+    // The service worker runs in its own global scope: `clients`, `skipWaiting` and
+    // `registration` do not exist on a window, and `window` does not exist here.
+    files: ["app/service-worker.js"],
+    languageOptions: {
+      globals: { ...globals.serviceworker, ...globals.browser },
+    },
+  },
 ]);

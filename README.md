@@ -5,7 +5,8 @@ year, take harder-than-exam original mocks, and get a section-level breakdown wi
 estimated 1.0–9.0 score only when a result is sufficiently representative.
 
 It is a **single static site** with **Firebase (Google) authentication** and per-user
-Firestore storage. There is no server to run and no other authentication path.
+Firestore storage. There is no server to run and no other authentication path. It installs
+as an application and, after one signed-in visit, runs entirely offline.
 
 ## What is included
 
@@ -49,6 +50,26 @@ Firestore storage. There is no server to run and no other authentication path.
   retrieval, missing baselines, first-exposure topic weakness, fresh coverage, exam
   phase and available study time. Every recommendation shows its rationale, launches
   the exact selected questions and keeps retakes separate from readiness evidence.
+- **Installable, and fully offline.** Add ESAT Atlas to a home screen or desktop and it
+  opens standalone, with no browser controls. A service worker precaches the application
+  shell, the question bank and the original mocks on first visit; question images are kept
+  as they are opened, and Settings offers the whole 33 MB archive as one deliberate
+  download with live progress, a stop button and a way to remove it again. Sign in once
+  while connected and everything afterwards — papers, mocks, the retrieval queue, the study
+  plan, notes and the whiteboard — works with no connection at all. Work done offline is
+  queued durably and syncs the moment you reconnect; a status pill in the header says
+  which of those is true right now. A new deployment never takes over mid-session: it waits
+  and offers a reload.
+- **A working whiteboard.** An optional squared writing surface inside the exam player, so
+  a paper can be sat on a tablet with a stylus and nothing else on the desk. Pen,
+  highlighter and a splitting eraser; four inks and three nib widths; pressure-varying
+  strokes, undo, redo and clear. It sits beside the question or directly over it for
+  annotating a figure, and its width is adjustable from half the room to the full width
+  with the question folded away — the answer options stay on screen and one tap away at
+  every setting. Once a stylus is used, a resting palm stops drawing. Each question keeps
+  its own page, pages survive a reload and follow the account to another device, and the
+  working is shown back beside every mistake in the post-session review. The whole feature
+  is switched on and off from the toolbar, the W key, or Settings.
 - **Data portability and control.** JSON and CSV export of every attempt, response and
   note; clearing this device (which signs out and leaves the cloud copy intact); and
   permanent erasure of either the account's stored revision data or the account itself.
@@ -93,8 +114,24 @@ image. QA contact sheets, OCR, crop coordinates and internal provenance manifest
 local and are not published. All paths are relative, so it works from a repository
 sub-path. Source maps are not published.
 
+`scripts/prepare_dist.mjs` also finishes the installable application. It writes
+`data/offline-library.json` (the inventory and exact byte size of every question image),
+then copies `app/service-worker.js` to `dist/sw.js` with the shell precache list, a build
+identity derived from the shell's own bytes, and a library-cache version derived from the
+question bank. An unchanged rebuild therefore produces an unchanged worker, and installed
+clients are never told to reload for nothing.
+
 Do not open `dist/index.html` over a `file://` URL: browsers block module and Firebase
-requests there. Serve it over HTTP(S) — `npm run preview` does this locally.
+requests there. Serve it over HTTP(S) — `npm run preview` does this locally. The service
+worker needs a secure context, so it registers on HTTPS and on localhost but not over
+plain HTTP; where it cannot register the application says so and works online as normal.
+There is deliberately no service worker under `npm run dev`.
+
+Regenerating the application icons needs Python and is not part of a normal build:
+
+```bash
+python scripts/build_pwa_icons.py
+```
 
 ## Publish with GitHub Pages
 
@@ -123,9 +160,19 @@ Pearson VUE, Cambridge or Imperial.
 npm test
 ```
 
-That runs, in order: question-bank validation, TypeScript, ESLint, unit tests, the
-production build, and assertions against the built output. Individual steps are available
-as `validate:bank`, `typecheck`, `lint`, `test:unit` and `test:build`.
+That runs, in order: question-bank validation, TypeScript, ESLint, unit tests, component
+tests, the production build, and assertions against the built output. Individual steps are
+available as `validate:bank`, `typecheck`, `lint`, `test:unit`, `test:components` and
+`test:build`.
+
+The whiteboard's stroke model is covered by property-style round-trip, simplification and
+erase tests, including the case that matters most in practice: erasing the middle of a
+straight rule splits it rather than deleting the whole line. The built-output checks assert
+that the manifest and every icon it names are published with relative paths, that the
+service worker's placeholders were substituted, that the shell it precaches is complete
+enough to sit a paper offline, that it looks up cache entries with `ignoreVary` — without
+which a host sending `Vary: Origin` leaves the page loading offline but not its own
+bundle — and that the advertised offline download size is the real size on disk.
 
 `validate:bank` independently checks shipped images and answers against the supplied
 official keys and worked solutions, source/year/module totals, duplicate policy, file
@@ -168,8 +215,11 @@ assets and finishes by restoring the module-specific ESAT topic taxonomy.
 
 ```
 app/          application code (esat-app.tsx, lib/core.ts, lib/scoring.ts, lib/firebase.ts)
+              scratchpad.tsx + lib/scratch.ts   the whiteboard and its stroke model
+              offline.tsx + lib/offline.ts      installation, connection and offline library
+              service-worker.js                 precache, offline serving and bulk download
 static/       the single HTML entry point and its React root
-public/       question bank, original mocks, question images, QA contact sheets
-scripts/      Python builders and the independent bank validator
+public/       question bank, original mocks, question images, icons, manifest, QA sheets
+scripts/      Python builders, the icon generator and the independent bank validator
 tests/        unit tests and built-output assertions
 ```
