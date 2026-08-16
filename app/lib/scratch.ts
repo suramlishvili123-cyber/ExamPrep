@@ -31,7 +31,8 @@ const POSITION_SCALE = 2;
 /** Pressure is stored in 16 levels, which is finer than a nib width can show. */
 const PRESSURE_LEVELS = 15;
 
-export type ScratchTool = "pen" | "highlighter" | "eraser";
+/** "pan" writes nothing: it hands every pointer back so the question can be moved. */
+export type ScratchTool = "pen" | "highlighter" | "eraser" | "pan";
 export type MarkingTool = "pen" | "highlighter";
 export type ScratchColour = "ink" | "red" | "blue" | "green";
 export type ScratchSize = 1 | 2 | 3;

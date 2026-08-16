@@ -10,12 +10,12 @@ UAT-UK, Pearson VUE, the University of Cambridge or Imperial College London.
 Google and Firebase Authentication process the account identity needed to sign you in.
 ESAT Atlas stores your Google user ID and, within that private account, your revision
 attempts, answers, timing, confidence and error tags, question progress, mistake queue,
-targets, settings, personal notes and the working you write on the whiteboard. Your
+targets, settings, personal notes and the working you write on the question. Your
 browser also keeps an account-scoped local copy so an interrupted session can be
 recovered. The application does not receive your Google password and does not use
 advertising or analytics cookies.
 
-Whiteboard working is stored as the strokes you drew — the shape of your handwriting —
+Writing on a question is stored as the strokes you drew — the shape of your handwriting —
 against the question and session it belongs to. It is never read, transcribed or marked;
 it is kept so you can see your own working again when you review a mistake, and it is
 included in the JSON export and in every deletion option below.

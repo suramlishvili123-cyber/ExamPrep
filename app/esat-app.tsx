@@ -25,6 +25,7 @@ import {
   LibraryBig,
   Lightbulb,
   LogOut,
+  Maximize2,
   Menu,
   Moon,
   NotebookPen,
@@ -75,6 +76,8 @@ import {
   settleCurrentVisit,
   storageKeyForUser,
   touchSyncSection,
+  MAX_QUESTION_ZOOM,
+  MIN_QUESTION_ZOOM,
   type Attempt,
   type AttemptMode,
   type BankPayload,
@@ -125,15 +128,20 @@ import { MathText } from "./math-text";
 import { publicAsset } from "./lib/assets";
 import { mathToPlainText } from "./lib/math-markup";
 import {
+  BOARD_WIDTH,
   decodePage,
   encodePage,
   pageIsEmpty,
   type ScratchPage,
+  type ScratchTool,
 } from "./lib/scratch";
 import {
-  Scratchpad,
+  AnnotationToolbar,
+  EMPTY_ANNOTATION_STATUS,
+  QuestionAnnotator,
   ScratchpadPreview,
-  type ScratchLayout,
+  type AnnotationStatus,
+  type AnnotatorHandle,
   type ScratchPreferences,
 } from "./scratchpad";
 import {
@@ -1125,12 +1133,8 @@ export default function EsatApp() {
     [flushScratch, updateActive],
   );
 
-  const toggleBoardLayout = useCallback((layout: ScratchLayout) => {
-    if (layout === "off") {
-      updateSettings({ scratchpadEnabled: false });
-      return;
-    }
-    updateSettings({ scratchpadEnabled: true, scratchpadLayout: layout });
+  const toggleWriting = useCallback((enabled: boolean) => {
+    updateSettings({ scratchpadEnabled: enabled });
   }, [updateSettings]);
 
   const toggleFlag = useCallback(() => {
@@ -1163,15 +1167,15 @@ export default function EsatApp() {
       else if (event.key === "Backspace" || event.key === "Delete") clearOption();
       else if (key === "F") toggleFlag();
       else if (key === "R") openOrCloseReview(true);
-      // W opens and closes the whiteboard. It is never an answer letter, and it is within
-      // reach of the hand that is not holding the stylus.
-      else if (key === "W") toggleBoardLayout(state.settings.scratchpadEnabled ? "off" : state.settings.scratchpadLayout);
+      // W starts and stops writing on the question. It is never an answer letter, and it is
+      // within reach of the hand that is not holding the stylus.
+      else if (key === "W") toggleWriting(!state.settings.scratchpadEnabled);
       else handled = false;
       if (handled) event.preventDefault();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [active, clearOption, navigateQuestion, openOrCloseReview, questionMap, reviewOpen, selectOption, state.settings.keyboardShortcuts, state.settings.scratchpadEnabled, state.settings.scratchpadLayout, toggleBoardLayout, toggleFlag]);
+  }, [active, clearOption, navigateQuestion, openOrCloseReview, questionMap, reviewOpen, selectOption, state.settings.keyboardShortcuts, state.settings.scratchpadEnabled, toggleWriting, toggleFlag]);
 
   function beginQuestionList(
     pool: Question[],
@@ -1553,7 +1557,6 @@ export default function EsatApp() {
     ...(patch.stylusOnly === undefined ? {} : { scratchpadStylusOnly: patch.stylusOnly }),
   }), [updateSettings]);
 
-  const boardLayout: ScratchLayout = state.settings.scratchpadEnabled ? state.settings.scratchpadLayout : "off";
 
   if (!hydrated || !authReady) {
     return (
@@ -1630,15 +1633,13 @@ export default function EsatApp() {
         pacingAid={state.settings.pacingAid}
         multiTabWarning={multiTabWarning}
         dismissMultiTab={() => setMultiTabWarning(false)}
-        boardLayout={boardLayout}
-        onBoardLayoutChange={toggleBoardLayout}
-        boardWidth={state.settings.scratchpadWidth}
-        onBoardWidthChange={(width) => updateSettings({ scratchpadWidth: width })}
+        writingEnabled={state.settings.scratchpadEnabled}
+        onWritingChange={toggleWriting}
         questionZoom={state.settings.questionZoom}
         questionHideOptions={state.settings.questionHideOptions}
         questionOptionTrim={state.settings.questionOptionTrim}
         onQuestionViewChange={updateSettings}
-        boardReady={scratchLoadedFor === active.attemptId}
+        writingReady={scratchLoadedFor === active.attemptId}
         scratchPageFor={scratchPageFor}
         onScratchChange={recordScratchPage}
         scratchPreferences={scratchPreferences}
@@ -3483,51 +3484,110 @@ export function PaperHistoryView({ state, paperSets, filter, setFilter, showScor
 
 function QuestionLearningSupport({ question }: { question: Question }) {
   const guide = techniqueForQuestion(question);
-  if (!guide) {
-    return <p className="panel-footnote">The verified answer is {question.correctAnswer}. A technique guide for this topic is being reviewed.</p>;
-  }
+  const [showOfficialImage, setShowOfficialImage] = useState(false);
 
-  const hasExactAuthoredSolution = Boolean(question.authored && question.explanation);
+  const hasWorkedSolution = Boolean(question.explanation);
   const hasOfficialSolution = Boolean(question.workedSolutionImage);
+  const hasFastMethod = Boolean(question.methodFast);
+  const hasKeyConcept = Boolean(question.keyConcept);
 
   return (
     <div className="question-learning">
       <div className="question-learning-head">
-        <div><Lightbulb size={18} /><span><strong>Solution and fastest route</strong><small>{guide.topic} · {guide.title}</small></span></div>
-        <Pill tone={hasOfficialSolution ? "good" : hasExactAuthoredSolution ? "blue" : "neutral"}>
-          {hasOfficialSolution ? "Official worked solution" : hasExactAuthoredSolution ? "Checked authored solution" : "Verified key + matched example"}
+        <div>
+          <Lightbulb size={18} />
+          <span>
+            <strong>Worked Solution & Fastest Method</strong>
+            <small>{question.esatTopic} · {question.esatSubtopic || guide?.title || "Step-by-step breakdown"}</small>
+          </span>
+        </div>
+        <Pill tone={hasOfficialSolution ? "good" : hasWorkedSolution ? "blue" : "neutral"}>
+          {hasOfficialSolution ? "Official worked solution" : hasWorkedSolution ? "Checked worked solution" : "Verified answer key"}
         </Pill>
       </div>
 
-      {hasOfficialSolution ? (
-        <div className="exact-solution">
-          <div className="solution-label"><ShieldCheck size={15} /><span><strong>{question.workedSolutionSource}</strong><small>Rendered from the supplied publisher PDF; answer cross-checked independently.</small></span></div>
-          <img src={publicAsset(question.workedSolutionImage ?? "")} alt={`${question.workedSolutionSource}, question ${question.originalQuestionNumber}`} loading="lazy" />
+      {hasKeyConcept ? (
+        <div className="solution-concept-card">
+          <BookOpen size={16} />
+          <div>
+            <strong>Key Principle & Governing Formula</strong>
+            <p><MathText>{question.keyConcept}</MathText></p>
+          </div>
         </div>
-      ) : hasExactAuthoredSolution ? (
-        <div className="exact-solution authored-exact">
-          <div className="solution-label"><ShieldCheck size={15} /><span><strong>Worked solution for this question</strong><small>The option text and derivation are pinned by the reviewed answer-key tests.</small></span></div>
-          <p><MathText>{question.explanation}</MathText></p>
+      ) : null}
+
+      {hasWorkedSolution ? (
+        <div className="exact-solution worked-solution-rich">
+          <div className="solution-label">
+            <ShieldCheck size={15} />
+            <span>
+              <strong>Worked solution for this question · Verified answer: option {question.correctAnswer}</strong>
+              <small>Step-by-step derivation</small>
+            </span>
+          </div>
+          <div className="solution-text-body">
+            <MathText>{question.explanation}</MathText>
+          </div>
         </div>
-      ) : (
+      ) : hasOfficialSolution ? null : (
         <div className="answer-key-note">
           <ShieldCheck size={16} />
-          <span><strong>Verified answer: option {question.correctAnswer}</strong>The source publishes an answer key rather than a worked derivation. The example below teaches the same specification skill without pretending to be an official solution to this item.</span>
+          <span><strong>Verified answer: option {question.correctAnswer}</strong>The source publishes an answer key rather than a worked derivation.</span>
         </div>
       )}
 
-      <div className="review-method-grid">
-        <div>
-          <span className="review-method-title"><ShieldCheck size={15} /> Best method</span>
-          <ol>{guide.bestMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ol>
+      {hasFastMethod ? (
+        <div className="solution-fast-card">
+          <div className="fast-header">
+            <Zap size={15} />
+            <strong>Fast Multiple-Choice Route / Alternative Method</strong>
+          </div>
+          <div className="fast-text-body">
+            <MathText>{question.methodFast}</MathText>
+          </div>
         </div>
-        <div>
-          <span className="review-method-title"><Zap size={15} /> Fastest valid route</span>
-          <ul>{guide.fastMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ul>
+      ) : null}
+
+      {hasOfficialSolution ? (
+        <div className="official-solution-toggle-block">
+          <button
+            type="button"
+            className="text-button official-toggle-btn"
+            onClick={() => setShowOfficialImage(!showOfficialImage)}
+          >
+            {showOfficialImage ? <EyeOff size={15} /> : <Eye size={15} />}
+            {showOfficialImage ? "Hide official publisher PDF page" : `View official publisher PDF page (${question.workedSolutionSource || "TMUA"})`}
+          </button>
+          {showOfficialImage ? (
+            <div className="exact-solution official-img-block">
+              <img
+                src={publicAsset(question.workedSolutionImage ?? "")}
+                alt={`${question.workedSolutionSource}, question ${question.originalQuestionNumber}`}
+                loading="lazy"
+              />
+            </div>
+          ) : null}
         </div>
-      </div>
-      <GuideWorkedExample guide={guide} />
-      <p className="review-trap"><TriangleAlert size={14} /><span><strong>Watch for:</strong> {guide.traps.join(" · ")}</span></p>
+      ) : null}
+
+      {guide ? (
+        <>
+          <div className="review-method-grid">
+            <div>
+              <span className="review-method-title"><ShieldCheck size={15} /> Topic Best Method</span>
+              <ol>{guide.bestMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ol>
+            </div>
+            <div>
+              <span className="review-method-title"><Zap size={15} /> Topic Fastest Valid Route</span>
+              <ul>{guide.fastMethod.map((step) => <li key={step}><MathText>{step}</MathText></li>)}</ul>
+            </div>
+          </div>
+          <p className="review-trap">
+            <TriangleAlert size={14} />
+            <span><strong>Watch for:</strong> {(question.commonTraps && question.commonTraps.length ? question.commonTraps : guide.traps).join(" · ")}</span>
+          </p>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -3543,7 +3603,7 @@ export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEst
   onDelete: () => void;
   onResit: () => void;
 }) {
-  const [logFilter, setLogFilter] = useState<"all" | "missed" | "flagged">("all");
+  const [logFilter, setLogFilter] = useState<"all" | "correct" | "missed" | "flagged">("all");
   const responses = attempt.questionIds.map((id) => attempt.responses[id]).filter(Boolean);
   const report = scoreReportForAttempt(attempt);
   const estimate = report.estimate;
@@ -3642,7 +3702,7 @@ export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEst
         <div className="panel-heading">
           <div><span className="eyebrow">Question by question</span><h2>Open any question to see it again</h2></div>
           <div className="log-filters">
-            {([["all", "All"], ["missed", "Missed only"], ["flagged", "Flagged"]] as const).map(([id, label]) => (
+            {([["all", "All"], ["correct", "Correct only"], ["missed", "Missed only"], ["flagged", "Flagged"]] as const).map(([id, label]) => (
               <button key={id} className={logFilter === id ? "selected" : ""} onClick={() => setLogFilter(id)}>{label}</button>
             ))}
           </div>
@@ -3652,6 +3712,7 @@ export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEst
           const response = attempt.responses[id];
           const question = questionMap[id];
           if (!response) return null;
+          if (logFilter === "correct" && !response.correct) return null;
           if (logFilter === "missed" && response.correct) return null;
           if (logFilter === "flagged" && !response.flagged) return null;
           return (
@@ -3850,37 +3911,14 @@ export function SettingsView({ state, busy, offline, onToast, onSettingsChange, 
           <label className="toggle-row"><span>Show estimated 1.0–9.0 score<small>Turn off to work from raw marks only</small></span><input type="checkbox" checked={state.settings.showScoreEstimate} onChange={(event) => onSettingsChange({ showScoreEstimate: event.target.checked })} /></label>
         </article>
         <article className="panel">
-          <div className="panel-heading"><div><span className="eyebrow">Working whiteboard</span><h2>Write your working on screen</h2></div><NotebookPen size={18} /></div>
-          <p className="panel-copy">A squared writing surface inside the exam player, so a paper can be sat on a tablet with a stylus and nothing else on the desk. Each question keeps its own page, and the working is stored with the attempt for the review afterwards.</p>
+          <div className="panel-heading"><div><span className="eyebrow">Writing on the question</span><h2>Work on the paper itself</h2></div><NotebookPen size={18} /></div>
+          <p className="panel-copy">Write your working straight onto the question, as you would on a printed paper — beside the diagram it belongs to, under the line it follows from. Each question keeps its own writing, and it is stored with the attempt so you can see it again in the review afterwards.</p>
           <label className="toggle-row">
-            <span>Offer the whiteboard<small>Also toggled during a session with the board button, or the W key</small></span>
+            <span>Offer writing on the question<small>Also started and stopped during a session with the Write button, or the W key</small></span>
             <input type="checkbox" checked={state.settings.scratchpadEnabled} onChange={(event) => onSettingsChange({ scratchpadEnabled: event.target.checked })} />
           </label>
-          <label className="setting-row">
-            <span>Where it opens<small>Beside the question, or over it to annotate a figure</small></span>
-            <select
-              value={state.settings.scratchpadLayout}
-              disabled={!state.settings.scratchpadEnabled}
-              onChange={(event) => onSettingsChange({ scratchpadLayout: event.target.value === "overlay" ? "overlay" : "split" })}
-            >
-              <option value="split">Beside the question</option>
-              <option value="overlay">Over the question</option>
-            </select>
-          </label>
-          <label className="setting-row">
-            <span>How much room it takes<small>The answer options stay on screen at every width</small></span>
-            <select
-              value={state.settings.scratchpadWidth}
-              disabled={!state.settings.scratchpadEnabled || state.settings.scratchpadLayout !== "split"}
-              onChange={(event) => onSettingsChange({ scratchpadWidth: event.target.value as Settings["scratchpadWidth"] })}
-            >
-              <option value="half">Half the space</option>
-              <option value="wide">Most of the space</option>
-              <option value="full">Full width, question folded away</option>
-            </select>
-          </label>
           <label className="toggle-row">
-            <span>Stylus only<small>Ignore finger and mouse input. The board also rejects touch by itself once a stylus is used.</small></span>
+            <span>Stylus only<small>Ignore finger and mouse input. Touch is rejected by itself once a stylus is used, and moves the question instead.</small></span>
             <input
               type="checkbox"
               checked={state.settings.scratchpadStylusOnly}
@@ -3889,21 +3927,16 @@ export function SettingsView({ state, busy, offline, onToast, onSettingsChange, 
             />
           </label>
           <label className="setting-row">
-            <span>Question size on a shared screen<small>Applies only while the board is open; the frame scrolls</small></span>
-            <select
-              value={state.settings.questionZoom}
-              disabled={!state.settings.scratchpadEnabled}
-              onChange={(event) => onSettingsChange({ questionZoom: Number(event.target.value) })}
-            >
+            <span>Question size<small>100% fits the width; below that the whole page is visible, above it the frame scrolls</small></span>
+            <select value={state.settings.questionZoom} onChange={(event) => onSettingsChange({ questionZoom: Number(event.target.value) })}>
               {QUESTION_ZOOM_STEPS.map((step) => <option key={step} value={step}>{Math.round(step * 100)}%</option>)}
             </select>
           </label>
           <label className="toggle-row">
-            <span>Hide the printed options on the question<small>The answer panel lists them anyway, so the crop can spend its room on the question</small></span>
+            <span>Hide the printed options on the question<small>The answer panel lists them anyway, so the page can spend its room on the question</small></span>
             <input
               type="checkbox"
               checked={state.settings.questionHideOptions}
-              disabled={!state.settings.scratchpadEnabled}
               onChange={(event) => onSettingsChange({ questionHideOptions: event.target.checked })}
             />
           </label>
@@ -3911,7 +3944,7 @@ export function SettingsView({ state, busy, offline, onToast, onSettingsChange, 
             <span>How much of the crop to hide<small>Papers place their option list differently; adjust if too much or too little is cut</small></span>
             <select
               value={state.settings.questionOptionTrim}
-              disabled={!state.settings.scratchpadEnabled || !state.settings.questionHideOptions}
+              disabled={!state.settings.questionHideOptions}
               onChange={(event) => onSettingsChange({ questionOptionTrim: Number(event.target.value) })}
             >
               {[0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6].map((value) => (
@@ -3919,7 +3952,7 @@ export function SettingsView({ state, busy, offline, onToast, onSettingsChange, 
               ))}
             </select>
           </label>
-          <p className="panel-footnote">The real ESAT is sat with paper for working. The board is a convenience for practice on a tablet, not a simulation of exam conditions.</p>
+          <p className="panel-footnote">The real ESAT is sat with paper for working. Writing on screen is a convenience for practice on a tablet, not a simulation of exam conditions.</p>
         </article>
         {offline ? <OfflinePanel runtime={offline} onToast={onToast ?? (() => undefined)} /> : null}
         <article className="panel">
@@ -3947,109 +3980,180 @@ export function SettingsView({ state, busy, offline, onToast, onSettingsChange, 
   );
 }
 
-const BOARD_WIDTHS: Array<{ id: Settings["scratchpadWidth"]; label: string; title: string }> = [
-  { id: "half", label: "½", title: "Share the space evenly with the question" },
-  { id: "wide", label: "⅔", title: "Give the board most of the space" },
-  { id: "full", label: "Full", title: "Fold the question away and use the whole width" },
-];
+export const QUESTION_ZOOM_STEPS = [0.4, 0.5, 0.6, 0.75, 0.9, 1, 1.25, 1.5, 2, 2.5, 3] as const;
 
 /**
- * The board's own controls: where it sits, how much room it takes, and putting it away.
+ * The width an authored question is composed at before magnification.
  *
- * The width control never touches the answer panel's column, so however large the board is
- * made the options stay on screen and one tap away.
+ * Typeset items have no intrinsic size the way a scan does, so one is imposed. Without it the
+ * text would reflow with the window, the page would change shape, and writing put beside a
+ * line of algebra would no longer be beside it on the next device.
  */
-function BoardControls({ layout, width, onChange, onWidthChange }: {
-  layout: ScratchLayout;
-  width: Settings["scratchpadWidth"];
-  onChange?: (layout: ScratchLayout) => void;
-  onWidthChange?: (width: Settings["scratchpadWidth"]) => void;
-}) {
-  // Each control appears only if the host can act on it, independently of the others.
-  return (
-    <>
-      {layout === "split" && onWidthChange ? (
-        <span className="board-width-switch" role="group" aria-label="Whiteboard width">
-          {BOARD_WIDTHS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={width === option.id ? "selected" : ""}
-              aria-pressed={width === option.id}
-              title={option.title}
-              onClick={() => onWidthChange(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </span>
-      ) : null}
-      {onChange ? (
-        <>
-          <span className="board-layout-switch" role="group" aria-label="Whiteboard position">
-            <button type="button" className={layout === "split" ? "selected" : ""} aria-pressed={layout === "split"} onClick={() => onChange("split")} title="Show the board beside the question">Beside</button>
-            <button type="button" className={layout === "overlay" ? "selected" : ""} aria-pressed={layout === "overlay"} onClick={() => onChange("overlay")} title="Write over the question itself">On question</button>
-          </span>
-          <button type="button" onClick={() => onChange("off")} title="Hide the whiteboard (W)" aria-label="Hide the whiteboard"><X size={16} /></button>
-        </>
-      ) : null}
-    </>
+const AUTHORED_BASE_WIDTH = 900;
+
+/** Fallback shape for a crop whose dimensions are not known yet; roughly A5 landscape. */
+const DEFAULT_QUESTION_ASPECT = 0.68;
+
+/** The nearest offered step to an arbitrary zoom, so a stored value lands on the ramp. */
+export function nearestZoomStep(zoom: number): number {
+  return QUESTION_ZOOM_STEPS.reduce(
+    (best, step) => (Math.abs(step - zoom) < Math.abs(best - zoom) ? step : best),
+    QUESTION_ZOOM_STEPS[0],
   );
 }
 
-export const QUESTION_ZOOM_STEPS = [1, 1.2, 1.4, 1.7, 2, 2.5, 3] as const;
+/**
+ * The magnification at which the whole of a question of this shape fits inside the frame.
+ *
+ * Capped at 1, because 1 already means "as wide as the frame": a short, wide question whose
+ * height would allow more would then be pushed off the sides, and "fit" has to mean the
+ * whole page is visible in both directions, not one of them.
+ */
+export function fitPageZoom(frameWidth: number, frameHeight: number, aspect: number): number {
+  if (frameWidth <= 0 || frameHeight <= 0 || aspect <= 0) return 1;
+  const exact = Math.min(1, frameHeight / (frameWidth * aspect));
+  return Math.min(MAX_QUESTION_ZOOM, Math.max(MIN_QUESTION_ZOOM, Math.round(exact * 20) / 20));
+}
 
 /**
- * The question crop, magnified and optionally trimmed.
+ * The question, at whatever size the candidate has chosen, with the writing layer on top.
  *
- * Sharing the width with a whiteboard leaves a printed A4 question rendered at a few hundred
- * pixels, which for a scanned 2016 paper is not readable. The crop is therefore scaled up
- * and its frame scrolls, rather than being shrunk to fit whatever room is left.
+ * Everything is derived from two numbers: the frame's width and the question's aspect ratio.
+ * The page is rendered `frameWidth * zoom` wide, so zoom 1 always means "the full width of
+ * the question", whatever the screen; below 1 the whole of a tall paper is visible at once,
+ * and above it the frame scrolls. Because the ink layer is a sibling sized to the same box,
+ * annotation is magnified and moved with the paper rather than floating over it.
  *
- * The trim hides the printed option list at the foot of the crop. The height it occupies is
- * not recorded anywhere — these are page crops, not structured documents — so it is a
- * fraction the candidate sets once and adjusts if a paper sits differently. Nothing is
- * destroyed: the toggle brings it straight back, and the answer panel has always shown the
- * same options in typeset form.
+ * The trim hides the printed option list at the foot of a crop. Where that list starts is not
+ * recorded anywhere — these are page scans, not structured documents — so it is a fraction
+ * the candidate sets once. Nothing is destroyed: the toggle brings it straight back, and the
+ * answer panel has always listed the same options in typeset form.
  */
-export function QuestionCrop({ source, alt, zoom, trim }: {
-  source: string;
-  alt: string;
+export function QuestionSurface({
+  question,
+  index,
+  zoom,
+  trim,
+  onAspectChange,
+  onFrameChange,
+  onZoomGesture,
+  children,
+}: {
+  question: Question;
+  index: number;
   zoom: number;
   trim: number;
+  onAspectChange: (aspect: number) => void;
+  onFrameChange: (size: { width: number; height: number }) => void;
+  onZoomGesture?: (direction: 1 | -1) => void;
+  /** The writing layer, sized by this component to the question's own box. */
+  children?: React.ReactNode;
 }) {
-  const [renderedHeight, setRenderedHeight] = useState(0);
-  const imageRef = useRef<HTMLImageElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const authoredRef = useRef<HTMLDivElement | null>(null);
+  const [frame, setFrame] = useState({ width: 0, height: 0 });
+  const [aspect, setAspect] = useState(0);
 
-  // Measured from the load event and from a resize observation — both callbacks — so the
-  // visible height below is derived during render rather than written from an effect.
-  const measure = useCallback(() => {
-    const height = imageRef.current?.getBoundingClientRect().height ?? 0;
-    setRenderedHeight((current) => (Math.abs(current - height) > 0.5 ? height : current));
-  }, []);
+  const publishAspect = useCallback((value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return;
+    setAspect((current) => (Math.abs(current - value) < 0.0005 ? current : value));
+    onAspectChange(value);
+  }, [onAspectChange]);
+
+  // The content box, not the border box: the page is laid out inside the frame's padding,
+  // so sizing it from the outer width would leave every question a scrollbar wider than the
+  // window at the magnification that is supposed to fit exactly.
+  // This is an observer or event callback, never a synchronous write from an effect.
+  const measureFrame = useCallback(() => {
+    const node = frameRef.current;
+    if (!node) return;
+    const style = window.getComputedStyle(node);
+    const horizontal = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const vertical = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const next = {
+      width: Math.max(1, Math.round(node.clientWidth - horizontal)),
+      height: Math.max(1, Math.round(node.clientHeight - vertical)),
+    };
+    setFrame((current) => (current.width === next.width && current.height === next.height ? current : next));
+    onFrameChange(next);
+  }, [onFrameChange]);
 
   useEffect(() => {
-    const image = imageRef.current;
-    if (!image || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(image);
+    const node = frameRef.current;
+    if (!node) return;
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measureFrame);
+      return () => window.removeEventListener("resize", measureFrame);
+    }
+    const observer = new ResizeObserver(measureFrame);
+    observer.observe(node);
     return () => observer.disconnect();
-  }, [measure]);
+  }, [measureFrame]);
 
-  const visibleHeight = trim > 0 && renderedHeight > 0
-    ? Math.max(120, Math.round(renderedHeight * (1 - trim)))
-    : undefined;
+  // An authored item has no intrinsic size, so its shape is measured at a fixed composition
+  // width and then scaled — which is also what keeps it from reflowing.
+  //
+  // `offsetHeight`, not the bounding rectangle: the element it measures is inside the
+  // element being scaled, so its rectangle is the scaled height. Deriving the shape from
+  // that would make the shape depend on the magnification, which then changes the scale —
+  // a loop that settles on whatever fixed point it happens to find rather than on the
+  // question's real proportions. The offset height is the untransformed layout box.
+  useEffect(() => {
+    const node = authoredRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (node.offsetHeight > 0) publishAspect(node.offsetHeight / AUTHORED_BASE_WIDTH);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [publishAspect]);
+
+  const effectiveAspect = aspect > 0 ? aspect : DEFAULT_QUESTION_ASPECT;
+  const pageWidth = Math.max(1, Math.round(frame.width * zoom));
+  const pageHeight = Math.max(1, Math.round(pageWidth * effectiveAspect));
+  const visibleHeight = trim > 0 ? Math.max(120, Math.round(pageHeight * (1 - trim))) : pageHeight;
 
   return (
-    <div className="question-crop" style={visibleHeight ? { height: `${visibleHeight}px` } : undefined}>
-      <img
-        ref={imageRef}
-        src={publicAsset(source)}
-        alt={alt}
-        onLoad={measure}
-        style={{ width: `${Math.round(zoom * 100)}%`, maxWidth: "none" }}
-      />
-      {visibleHeight ? <span className="question-crop-note">Printed options hidden — they are listed on the right</span> : null}
+    <div
+      className={`question-frame ${question.authored ? "authored-frame" : ""}`}
+      ref={frameRef}
+      onWheel={(event) => {
+        // Ctrl or ⌘ with the wheel is the zoom gesture every document viewer uses, and it
+        // is what a trackpad pinch arrives as.
+        if (!onZoomGesture || !(event.ctrlKey || event.metaKey)) return;
+        event.preventDefault();
+        onZoomGesture(event.deltaY < 0 ? 1 : -1);
+      }}
+    >
+      <div className="question-page" style={{ width: `${pageWidth}px`, height: `${visibleHeight}px` }}>
+        <div className="question-page-inner" style={{ width: `${pageWidth}px`, height: `${pageHeight}px` }}>
+          {question.questionImage ? (
+            <img
+              className="question-page-image"
+              src={publicAsset(question.questionImage)}
+              alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`}
+              onLoad={(event) => {
+                const image = event.currentTarget;
+                if (image.naturalWidth > 0) publishAspect(image.naturalHeight / image.naturalWidth);
+              }}
+            />
+          ) : (
+            <div
+              className="question-page-authored"
+              style={{ width: `${AUTHORED_BASE_WIDTH}px`, transform: `scale(${pageWidth / AUTHORED_BASE_WIDTH})` }}
+            >
+              <div className="authored-question" ref={authoredRef}>
+                <span>Question {index + 1}</span>
+                <p><MathText>{question.questionText}</MathText></p>
+                <QuestionFigure question={question} />
+                <small>Original ESAT Atlas challenge item</small>
+              </div>
+            </div>
+          )}
+          {children}
+        </div>
+        {trim > 0 ? <span className="question-trim-note">Printed options hidden — they are listed in the answer panel</span> : null}
+      </div>
     </div>
   );
 }
@@ -4071,15 +4175,13 @@ export function ExamPlayer({
   pacingAid,
   multiTabWarning,
   dismissMultiTab,
-  boardLayout = "off",
-  onBoardLayoutChange,
-  boardWidth = "half",
-  onBoardWidthChange,
+  writingEnabled = false,
+  onWritingChange,
   questionZoom = 1,
   questionHideOptions = false,
   questionOptionTrim = 0.3,
   onQuestionViewChange,
-  boardReady = false,
+  writingReady = false,
   scratchPageFor,
   onScratchChange,
   scratchPreferences,
@@ -4102,18 +4204,16 @@ export function ExamPlayer({
   pacingAid: boolean;
   multiTabWarning: boolean;
   dismissMultiTab: () => void;
-  /** "off" hides the whiteboard entirely, including its toggle. */
-  boardLayout?: ScratchLayout;
-  onBoardLayoutChange?: (layout: ScratchLayout) => void;
-  boardWidth?: Settings["scratchpadWidth"];
-  onBoardWidthChange?: (width: Settings["scratchpadWidth"]) => void;
-  /** How the question itself is shown while the board shares its width. */
+  /** Whether writing on the question is offered at all; false hides even the toggle. */
+  writingEnabled?: boolean;
+  onWritingChange?: (enabled: boolean) => void;
+  /** How the question itself is shown. */
   questionZoom?: number;
   questionHideOptions?: boolean;
   questionOptionTrim?: number;
   onQuestionViewChange?: (patch: Partial<Settings>) => void;
-  /** False until this attempt's stored working has been read back. */
-  boardReady?: boolean;
+  /** False until this attempt's stored writing has been read back. */
+  writingReady?: boolean;
   scratchPageFor?: (questionId: string) => ScratchPage | null;
   onScratchChange?: (questionId: string, page: ScratchPage) => void;
   scratchPreferences?: ScratchPreferences;
@@ -4130,28 +4230,43 @@ export function ExamPlayer({
   const actualElapsed = now - attempt.startedAt - attempt.totalPausedDuration;
   const paceDifference = expectedElapsed - actualElapsed;
   const displayedSource = sourceLabelForAttempt(question, attempt);
-  const boardOn = boardLayout !== "off";
-  const boardVisible = boardOn && Boolean(scratchPageFor) && Boolean(onScratchChange) && Boolean(scratchPreferences) && boardReady;
-  // Magnification applies only where the question is a column of its own. Under an overlay
-  // the ink is fixed to the stage, so a question that could be scrolled beneath it would
-  // slide out from under its own annotations.
-  const effectiveZoom = boardOn && boardLayout === "split" ? questionZoom : 1;
-  // The nearest offered step, so a stored value from an older build still lands on the ramp.
-  const zoomIndex = QUESTION_ZOOM_STEPS.reduce(
-    (best, step, index) => (Math.abs(step - questionZoom) < Math.abs(QUESTION_ZOOM_STEPS[best] - questionZoom) ? index : best),
-    0,
+  const writingOffered = writingEnabled && Boolean(scratchPageFor) && Boolean(onScratchChange) && Boolean(scratchPreferences);
+  const writingVisible = writingOffered && writingReady;
+  const zoomIndex = QUESTION_ZOOM_STEPS.indexOf(nearestZoomStep(questionZoom) as typeof QUESTION_ZOOM_STEPS[number]);
+  const [tool, setTool] = useState<ScratchTool>("pen");
+  // Keyed by question rather than reset in an effect: a status left over from the previous
+  // question would briefly enable Undo against writing that is no longer on screen.
+  const [reportedStatus, setReportedStatus] = useState<{ questionId: string; status: AnnotationStatus }>(
+    { questionId, status: EMPTY_ANNOTATION_STATUS },
   );
+  const writingStatus = reportedStatus.questionId === questionId ? reportedStatus.status : EMPTY_ANNOTATION_STATUS;
+  const handleStatusChange = useCallback(
+    (status: AnnotationStatus) => setReportedStatus({ questionId, status }),
+    [questionId],
+  );
+  const annotatorRef = useRef<AnnotatorHandle | null>(null);
+  // The question's shape, reported by the surface once it knows it, and the frame it is
+  // drawn into. Both are needed to work out the magnification that fits a whole page.
+  const [aspect, setAspect] = useState(0);
+  const [frame, setFrame] = useState({ width: 0, height: 0 });
+
   const handleScratchChange = useCallback(
     (page: ScratchPage) => onScratchChange?.(questionId, page),
     [onScratchChange, questionId],
   );
-  // Read once per question. The board is uncontrolled and keyed by the question, so a later
-  // identity change on this value would be ignored anyway — but a stable value keeps the
-  // memoised board from re-rendering on every tick of the exam clock.
+
+  const stepZoom = useCallback((direction: 1 | -1) => {
+    const next = QUESTION_ZOOM_STEPS[Math.min(QUESTION_ZOOM_STEPS.length - 1, Math.max(0, zoomIndex + direction))];
+    if (next !== questionZoom) onQuestionViewChange?.({ questionZoom: next });
+  }, [onQuestionViewChange, questionZoom, zoomIndex]);
+
+  // Read once per question. The layer is uncontrolled and keyed by the question, so a later
+  // identity change would be ignored anyway — but a stable value keeps the memoised layer
+  // from re-rendering on every tick of the exam clock.
   const initialPage = useMemo(
-    () => (boardVisible && scratchPageFor ? scratchPageFor(questionId) : null),
+    () => (writingVisible && scratchPageFor ? scratchPageFor(questionId) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [questionId, boardVisible],
+    [questionId, writingVisible],
   );
 
   if (!question || !response) {
@@ -4201,30 +4316,21 @@ export function ExamPlayer({
           </div>
         </main>
       ) : (
-        <main
-          className={`exam-content ${boardOn ? `workspace-${boardLayout}` : ""}`}
-          data-board={boardOn && boardLayout === "split" ? boardWidth : undefined}
-          inert={Boolean(attempt.pausedAt)}
-        >
+        <main className="exam-content" inert={Boolean(attempt.pausedAt)}>
           <section className="question-stage">
             <div className="question-toolbar">
               <div><Pill tone="neutral">{displayedSource}</Pill>{!attempt.strictTimed ? <Pill tone="blue">{question.esatTopic}</Pill> : null}</div>
               <div>
                 {pacingAid && attempt.strictTimed ? <span className={paceDifference >= 0 ? "pace-ahead" : "pace-behind"}>{formatDuration(Math.abs(paceDifference))} {paceDifference >= 0 ? "ahead" : "behind"}</span> : null}
-                {/* Only while the board shares the width: the unshared player already shows
-                    the question at full width, and the strict simulation stays uncluttered.
-                    Magnifying is offered beside the question but not over it — a scrollable
-                    question under fixed ink would drift away from the annotations on it. */}
-                {boardOn && onQuestionViewChange ? (
+                {onQuestionViewChange ? (
                   <>
-                    {boardLayout === "split" ? (
                     <span className="question-zoom" role="group" aria-label="Question size">
                       <button
                         type="button"
                         aria-label="Show the question smaller"
                         title="Show the question smaller"
                         disabled={zoomIndex <= 0}
-                        onClick={() => onQuestionViewChange({ questionZoom: QUESTION_ZOOM_STEPS[Math.max(0, zoomIndex - 1)] })}
+                        onClick={() => stepZoom(-1)}
                       >
                         <ZoomOut size={15} />
                       </button>
@@ -4234,12 +4340,20 @@ export function ExamPlayer({
                         aria-label="Show the question larger"
                         title="Show the question larger"
                         disabled={zoomIndex >= QUESTION_ZOOM_STEPS.length - 1}
-                        onClick={() => onQuestionViewChange({ questionZoom: QUESTION_ZOOM_STEPS[Math.min(QUESTION_ZOOM_STEPS.length - 1, zoomIndex + 1)] })}
+                        onClick={() => stepZoom(1)}
                       >
                         <ZoomIn size={15} />
                       </button>
+                      <button
+                        type="button"
+                        className="question-zoom-fit"
+                        aria-label="Fit the whole question on screen"
+                        title="Fit the whole question on screen"
+                        onClick={() => onQuestionViewChange({ questionZoom: fitPageZoom(frame.width, frame.height, aspect) })}
+                      >
+                        <Maximize2 size={14} /> Fit
+                      </button>
                     </span>
-                    ) : null}
                     {question.questionImage ? (
                       <button
                         type="button"
@@ -4255,65 +4369,67 @@ export function ExamPlayer({
                     ) : null}
                   </>
                 ) : null}
-                {onBoardLayoutChange ? (
+                {onWritingChange ? (
                   <button
                     type="button"
-                    className={boardOn ? "board-button active" : "board-button"}
-                    aria-pressed={boardOn}
-                    title={boardOn ? "Hide the working whiteboard (W)" : "Show the working whiteboard (W)"}
-                    onClick={() => onBoardLayoutChange(boardOn ? "off" : "split")}
+                    className={writingEnabled ? "board-button active" : "board-button"}
+                    aria-pressed={writingEnabled}
+                    title={writingEnabled ? "Stop writing on the question (W)" : "Write on the question (W)"}
+                    onClick={() => onWritingChange(!writingEnabled)}
                   >
-                    <PencilRuler size={16} /> {boardOn ? "Whiteboard on" : "Whiteboard"}
+                    <PencilRuler size={16} /> {writingEnabled ? "Writing on" : "Write"}
                   </button>
                 ) : null}
                 <button className={response.flagged ? "flag-button flagged" : "flag-button"} onClick={onFlag} aria-pressed={response.flagged}><Flag size={16} /> {response.flagged ? "Flagged" : "Flag for review"}</button>
               </div>
             </div>
-            <div
-              className={`question-image-frame ${question.authored ? "authored-frame" : ""}`}
-              style={boardOn ? { ["--question-zoom" as string]: effectiveZoom } as React.CSSProperties : undefined}
-            >
-              {question.questionImage
-                ? (
-                  <QuestionCrop
-                    source={question.questionImage}
-                    alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`}
-                    zoom={effectiveZoom}
-                    trim={boardOn && questionHideOptions ? questionOptionTrim : 0}
-                  />
-                )
-                : <div className="authored-question"><span>Question {attempt.currentIndex + 1}</span><p><MathText>{question.questionText}</MathText></p><QuestionFigure question={question} /><small>Original ESAT Atlas challenge item</small></div>}
-            </div>
-            {boardVisible && boardLayout === "overlay" && scratchPreferences ? (
-              <Scratchpad
-                key={`${attempt.attemptId}:${questionId}`}
-                layout="overlay"
-                initialPage={initialPage}
-                onChange={handleScratchChange}
+
+            {writingVisible && scratchPreferences ? (
+              <AnnotationToolbar
+                tool={tool}
+                onToolChange={setTool}
                 preferences={scratchPreferences}
                 onPreferencesChange={onScratchPreferencesChange ?? (() => undefined)}
-                onNotice={onNotice}
-                toolbarExtras={<BoardControls layout={boardLayout} width={boardWidth} onChange={onBoardLayoutChange} onWidthChange={onBoardWidthChange} />}
+                status={writingStatus}
+                onUndo={() => annotatorRef.current?.undo()}
+                onRedo={() => annotatorRef.current?.redo()}
+                onClear={() => annotatorRef.current?.clear()}
+                onClose={onWritingChange ? () => onWritingChange(false) : undefined}
               />
             ) : null}
+            {writingOffered && !writingVisible ? (
+              <p className="annotation-restoring" role="status">Restoring what you wrote on this question…</p>
+            ) : null}
+
+            <QuestionSurface
+              question={question}
+              index={attempt.currentIndex}
+              zoom={questionZoom}
+              trim={questionHideOptions && question.questionImage ? questionOptionTrim : 0}
+              onAspectChange={setAspect}
+              onFrameChange={setFrame}
+              onZoomGesture={onQuestionViewChange ? stepZoom : undefined}
+            >
+              {writingVisible && scratchPreferences ? (
+                <QuestionAnnotator
+                  key={`${attempt.attemptId}:${questionId}`}
+                  ref={annotatorRef}
+                  initialPage={initialPage}
+                  onChange={handleScratchChange}
+                  pageHeight={BOARD_WIDTH * (aspect > 0 ? aspect : 1)}
+                  tool={tool}
+                  preferences={scratchPreferences}
+                  onStatusChange={handleStatusChange}
+                  onNotice={onNotice}
+                />
+              ) : null}
+            </QuestionSurface>
+            {writingStatus.fill >= 0.8 ? (
+              <p className="annotation-full-warning" role="status">
+                This question is {Math.min(100, Math.round(writingStatus.fill * 100))}% full of writing. Erase what you no longer need.
+              </p>
+            ) : null}
           </section>
-          {boardVisible && boardLayout === "split" && scratchPreferences ? (
-            <Scratchpad
-              key={`${attempt.attemptId}:${questionId}`}
-              layout="split"
-              initialPage={initialPage}
-              onChange={handleScratchChange}
-              preferences={scratchPreferences}
-              onPreferencesChange={onScratchPreferencesChange ?? (() => undefined)}
-              onNotice={onNotice}
-              toolbarExtras={<BoardControls layout={boardLayout} width={boardWidth} onChange={onBoardLayoutChange} onWidthChange={onBoardWidthChange} />}
-            />
-          ) : null}
-          {boardOn && !boardVisible ? (
-            <section className="scratchpad scratchpad-split" aria-label="Working whiteboard">
-              <div className="scratch-surface scratch-surface-loading"><p>Restoring the working you wrote on this question…</p></div>
-            </section>
-          ) : null}
           <aside className="answer-panel">
             <span className="eyebrow">Select one answer</span>
             <div className="answer-options" role="radiogroup" aria-label="Answer options">
@@ -4377,6 +4493,15 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
   const pacing = pacingSummary(responses, attempt.questionIds.length, attempt.durationMs ?? 0);
   const delta = accuracyDelta(attempt, previous);
 
+  const [reviewFilter, setReviewFilter] = useState<"all" | "correct" | "missed" | "flagged">("all");
+  const flaggedCount = responses.filter((r) => r.flagged).length;
+  const filteredResponses = responses.filter((response) => {
+    if (reviewFilter === "correct") return response.correct;
+    if (reviewFilter === "missed") return !response.correct || response.unanswered;
+    if (reviewFilter === "flagged") return response.flagged;
+    return true;
+  });
+
   return (
     <main className="result-screen">
       <header className="result-header">
@@ -4436,27 +4561,62 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
 
       <QuestionTimingPanel attempt={attempt} questionMap={questionMap} />
 
-      {missed.length ? (
-        <section className="panel review-errors">
-          <div className="panel-heading"><div><span className="eyebrow">Mistake diagnosis</span><h2>Confirm why each mark was lost</h2></div></div>
-          {missed.map((response) => {
+      <section className="panel review-errors">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">Question review & solutions</span>
+            <h2>Review questions, worked solutions, and methods</h2>
+          </div>
+          <div className="log-filters">
+            {([
+              ["all", `All (${responses.length})`],
+              ["correct", `Correct (${correct})`],
+              ["missed", `Missed (${missed.length})`],
+              ["flagged", `Flagged (${flaggedCount})`],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                className={reviewFilter === id ? "selected" : ""}
+                onClick={() => setReviewFilter(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {filteredResponses.length === 0 ? (
+          <p className="panel-footnote">No questions match the current filter.</p>
+        ) : (
+          filteredResponses.map((response) => {
             const question = questionMap[response.questionId];
+            const isCorrect = Boolean(response.correct);
             return (
-              <details key={response.questionId}>
-                <summary>
-                  <span>{sourceLabelForAttempt(question, attempt)} · {question?.esatTopic ?? "—"}</span>
-                  <strong>{response.unanswered ? "Unanswered" : `Your answer ${response.finalAnswer}`} · Correct {question?.correctAnswer ?? "—"}</strong>
-                  <ChevronRight size={16} />
+              <details key={response.questionId} className="result-question-detail">
+                <summary className="result-question-summary">
+                  <span>
+                    <strong>#{attempt.questionIds.indexOf(response.questionId) + 1}</strong> · {sourceLabelForAttempt(question, attempt)} · {question?.esatTopic ?? "—"}
+                  </span>
+                  <div className="result-summary-right">
+                    <span className="result-summary-answers">
+                      {response.unanswered ? "Unanswered" : `Yours: ${response.finalAnswer}`} · Correct: <strong>{question?.correctAnswer ?? "—"}</strong>
+                    </span>
+                    <Pill tone={isCorrect ? "good" : response.unanswered ? "neutral" : "bad"}>
+                      {isCorrect ? "Correct" : response.unanswered ? "Blank" : "Wrong"}
+                    </Pill>
+                    <ChevronRight size={16} />
+                  </div>
                 </summary>
                 <div className="error-review-body">
                   {question?.questionImage
                     ? <img src={publicAsset(question.questionImage)} alt={`Review question ${question.id}`} loading="lazy" />
                     : <div className="authored-review"><p><MathText>{question?.questionText}</MathText></p><QuestionFigure question={question} /></div>}
                   <div>
-                    <p>Select every cause that genuinely applied.</p>
-                    <div className="tag-picker">{ERROR_TAGS.map((tag) => <button className={response.errorClassifications.includes(tag) ? "selected" : ""} key={tag} onClick={() => onTag(response.questionId, tag)}>{tag}</button>)}</div>
-                    {/* Seeing the working back is what turns "I got it wrong" into "I know
-                        where it went wrong", which is the whole point of the diagnosis. */}
+                    {!isCorrect ? (
+                      <>
+                        <p><strong>Mistake diagnosis:</strong> Select every cause that genuinely applied.</p>
+                        <div className="tag-picker">{ERROR_TAGS.map((tag) => <button className={response.errorClassifications.includes(tag) ? "selected" : ""} key={tag} onClick={() => onTag(response.questionId, tag)}>{tag}</button>)}</div>
+                      </>
+                    ) : null}
                     {!pageIsEmpty(scratchPages[response.questionId])
                       ? <ScratchpadPreview page={scratchPages[response.questionId]} label="Your working on this question" />
                       : null}
@@ -4465,9 +4625,9 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
                 </div>
               </details>
             );
-          })}
-        </section>
-      ) : null}
+          })
+        )}
+      </section>
 
       <footer className="result-actions">
         {attempt.sequenceRemaining?.length

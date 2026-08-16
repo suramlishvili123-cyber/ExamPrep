@@ -285,3 +285,24 @@ test("a timed-out attempt with no answers at all still reviews cleanly", () => {
   assertClean("timed-out ResultScreen");
   unmount();
 });
+
+test("ResultScreen and AttemptDetailView offer filtering for correct questions", () => {
+  // Test ResultScreen filter buttons
+  const { container: resultContainer, unmount: unmountResult } = render(
+    <ResultScreen attempt={completedAttempt} questionMap={questionMap} showScoreEstimate returnLabel="Back" previous={null} onClose={noop} onContinue={noop} onRetryMissed={noop} onTag={noop} />,
+  );
+  assert.ok(resultContainer.textContent?.includes("Correct ("));
+  assert.ok(resultContainer.textContent?.includes("Missed ("));
+  assert.ok(resultContainer.textContent?.includes("All ("));
+  assertClean("ResultScreen filters");
+  unmountResult();
+
+  // Test AttemptDetailView filter buttons
+  const { container: detailContainer, unmount: unmountDetail } = render(
+    <AttemptDetailView attempt={completedAttempt} questionMap={questionMap} attempts={populated.attempts} showScoreEstimate onBack={noop} onDelete={noop} onResit={noop} />,
+  );
+  assert.ok(detailContainer.textContent?.includes("Correct only"));
+  assert.ok(detailContainer.textContent?.includes("Missed only"));
+  assertClean("AttemptDetailView filters");
+  unmountDetail();
+});

@@ -28,6 +28,12 @@ export interface Question {
   questionDiagramAlt?: string;
   optionText?: Record<string, string>;
   explanation?: string;
+  /** Fastest alternative method or shortcut for multiple-choice speed. */
+  methodFast?: string;
+  /** Governing scientific or mathematical principle / formula. */
+  keyConcept?: string;
+  /** Specific candidate traps and common misconceptions for this question. */
+  commonTraps?: string[];
   /** A rendered worked solution supplied by the source publisher. */
   workedSolutionImage?: string;
   /** Human-readable provenance for workedSolutionImage. */
@@ -184,26 +190,18 @@ export interface Settings {
   /** Show the estimated 1.0-9.0 conversion alongside every raw mark. */
   showScoreEstimate: boolean;
   /**
-   * Whether the working whiteboard is offered during a session at all. Off hides the
+   * Whether writing on the question is offered during a session at all. Off hides the
    * toggle entirely; a candidate who works on paper never sees the feature.
    */
   scratchpadEnabled: boolean;
-  /** Where the board opens: beside the question, or over it for annotating a figure. */
-  scratchpadLayout: "split" | "overlay";
-  /**
-   * How much of the room beside the answer panel the board takes. "full" hands it the
-   * whole width and folds the question away, for a question that needs a page of algebra.
-   * The answer options stay on screen at every width.
-   */
-  scratchpadWidth: "half" | "wide" | "full";
-  /** Ignore finger and mouse input on the board, so only a stylus writes. */
+  /** Ignore finger and mouse input, so only a stylus writes. */
   scratchpadStylusOnly: boolean;
   scratchpadColour: ScratchColour;
   scratchpadSize: ScratchSize;
   /**
-   * Magnification of the question while the whiteboard is open. Sharing the width with a
-   * board leaves the printed crop small, and a scanned 2016 paper at half size is not
-   * readable — so it is scaled up and the frame scrolls.
+   * Magnification of the question, as a multiple of the width that fits the frame. Below 1
+   * the whole of a tall question is visible at once; above it a scanned 2016 paper becomes
+   * readable and the frame scrolls.
    */
   questionZoom: number;
   /**
@@ -215,6 +213,14 @@ export interface Settings {
   /** How much of the crop's height the option list occupies, as a fraction. */
   questionOptionTrim: number;
 }
+
+/**
+ * Question magnification is expressed as a multiple of the width that fits the frame, so
+ * 1 always means "the whole width of the question, whatever the screen". Below 1 exists so
+ * a tall crop can be seen end to end; above it, so a 2016 scan can be read.
+ */
+export const MIN_QUESTION_ZOOM = 0.4;
+export const MAX_QUESTION_ZOOM = 3;
 
 export type SyncSection = "settings" | "targets" | "notes";
 
@@ -309,16 +315,12 @@ export function defaultState(): StoredState {
       pacingAid: false,
       showScoreEstimate: true,
       scratchpadEnabled: true,
-      scratchpadLayout: "split",
-      // An even share by default: the board needs room to write, and the question needs to
-      // stay readable. The width control moves it either way in one tap.
-      scratchpadWidth: "half",
       // Off by default: a candidate on a laptop has no stylus, and the board detects a pen
       // by itself the first time one is used.
       scratchpadStylusOnly: false,
       scratchpadColour: "ink",
       scratchpadSize: 2,
-      questionZoom: 1.4,
+      questionZoom: 1,
       questionHideOptions: false,
       questionOptionTrim: 0.3,
     },
@@ -400,10 +402,6 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     pacingAid: booleanOr(storedSettings.pacingAid, base.settings.pacingAid),
     showScoreEstimate: booleanOr(storedSettings.showScoreEstimate, base.settings.showScoreEstimate),
     scratchpadEnabled: booleanOr(storedSettings.scratchpadEnabled, base.settings.scratchpadEnabled),
-    scratchpadLayout: storedSettings.scratchpadLayout === "overlay" ? "overlay" : "split",
-    scratchpadWidth: (["half", "wide", "full"] as string[]).includes(String(storedSettings.scratchpadWidth))
-      ? storedSettings.scratchpadWidth as Settings["scratchpadWidth"]
-      : base.settings.scratchpadWidth,
     scratchpadStylusOnly: booleanOr(storedSettings.scratchpadStylusOnly, base.settings.scratchpadStylusOnly),
     scratchpadColour: SCRATCH_COLOUR_KEYS.includes(storedSettings.scratchpadColour as ScratchColour)
       ? storedSettings.scratchpadColour as ScratchColour
@@ -411,9 +409,9 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     scratchpadSize: ([1, 2, 3] as number[]).includes(Number(storedSettings.scratchpadSize))
       ? Number(storedSettings.scratchpadSize) as ScratchSize
       : base.settings.scratchpadSize,
-    // Snapped to the quarter steps the zoom control offers, so a hand-edited or older value
-    // cannot leave the question at a magnification the buttons can never return from.
-    questionZoom: Math.round(boundedNumber(storedSettings.questionZoom, 1, 3, base.settings.questionZoom) * 4) / 4,
+    // Rounded to a twentieth, and bounded to what the control can reach, so a hand-edited
+    // or older value cannot leave the question at a magnification nothing can return from.
+    questionZoom: Math.round(boundedNumber(storedSettings.questionZoom, MIN_QUESTION_ZOOM, MAX_QUESTION_ZOOM, base.settings.questionZoom) * 20) / 20,
     questionHideOptions: booleanOr(storedSettings.questionHideOptions, base.settings.questionHideOptions),
     questionOptionTrim: Math.round(
       boundedNumber(storedSettings.questionOptionTrim, 0.1, 0.6, base.settings.questionOptionTrim) * 20,

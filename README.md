@@ -56,20 +56,25 @@ as an application and, after one signed-in visit, runs entirely offline.
   as they are opened, and Settings offers the whole 33 MB archive as one deliberate
   download with live progress, a stop button and a way to remove it again. Sign in once
   while connected and everything afterwards — papers, mocks, the retrieval queue, the study
-  plan, notes and the whiteboard — works with no connection at all. Work done offline is
+  plan, notes and writing on questions — works with no connection at all. Work done offline is
   queued durably and syncs the moment you reconnect; a status pill in the header says
   which of those is true right now. A new deployment never takes over mid-session: it waits
   and offers a reload.
-- **A working whiteboard.** An optional squared writing surface inside the exam player, so
-  a paper can be sat on a tablet with a stylus and nothing else on the desk. Pen,
-  highlighter and a splitting eraser; four inks and three nib widths; pressure-varying
-  strokes, undo, redo and clear. It sits beside the question or directly over it for
-  annotating a figure, and its width is adjustable from half the room to the full width
-  with the question folded away — the answer options stay on screen and one tap away at
-  every setting. Once a stylus is used, a resting palm stops drawing. Each question keeps
-  its own page, pages survive a reload and follow the account to another device, and the
-  working is shown back beside every mistake in the post-session review. The whole feature
+- **Write on the question.** An optional writing layer on the question itself, so a paper
+  can be sat on a tablet with a stylus and nothing else on the desk — working goes beside
+  the diagram it belongs to and under the line it follows from, exactly as it would on
+  print. Pen, highlighter, an eraser that splits a stroke rather than deleting it, and a
+  Move tool; four inks, three nib widths, pressure-varying strokes, undo, redo and clear.
+  Once a stylus is used a resting palm stops drawing and a finger scrolls the question
+  instead. The ink is anchored to the paper rather than the screen, so it stays exactly
+  where it was put through any magnification and lands in the same place when the page is
+  read back on another device. Each question keeps its own writing, it survives a reload,
+  and it is shown back beside every mistake in the post-session review. The whole feature
   is switched on and off from the toolbar, the W key, or Settings.
+- **A question you can actually read.** The question is magnified from 40% to 300% of the
+  width that fits, with a Fit control that brings a whole tall paper onto one screen and
+  ⌘/Ctrl-scroll to zoom. The printed option list at the foot of a scan can be hidden, since
+  the answer panel lists the same options in typeset form.
 - **Data portability and control.** JSON and CSV export of every attempt, response and
   note; clearing this device (which signs out and leaves the cloud copy intact); and
   permanent erasure of either the account's stored revision data or the account itself.
@@ -165,8 +170,8 @@ tests, the production build, and assertions against the built output. Individual
 available as `validate:bank`, `typecheck`, `lint`, `test:unit`, `test:components` and
 `test:build`.
 
-The whiteboard's stroke model is covered by property-style round-trip, simplification and
-erase tests, including the case that matters most in practice: erasing the middle of a
+The writing layer's stroke model is covered by property-style round-trip, simplification
+and erase tests, including the case that matters most in practice: erasing the middle of a
 straight rule splits it rather than deleting the whole line. The built-output checks assert
 that the manifest and every icon it names are published with relative paths, that the
 service worker's placeholders were substituted, that the shell it precaches is complete
@@ -215,7 +220,7 @@ assets and finishes by restoring the module-specific ESAT topic taxonomy.
 
 ```
 app/          application code (esat-app.tsx, lib/core.ts, lib/scoring.ts, lib/firebase.ts)
-              scratchpad.tsx + lib/scratch.ts   the whiteboard and its stroke model
+              scratchpad.tsx + lib/scratch.ts   writing on the question, and its stroke model
               offline.tsx + lib/offline.ts      installation, connection and offline library
               service-worker.js                 precache, offline serving and bulk download
 static/       the single HTML entry point and its React root

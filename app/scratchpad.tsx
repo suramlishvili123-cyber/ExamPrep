@@ -1,43 +1,62 @@
 "use client";
 
 /**
- * The whiteboard: a writing surface beside — or on top of — the question, so a paper can be
- * worked through on a tablet with nothing else on the desk.
+ * Writing on the question.
+ *
+ * The candidate works directly on the paper, as they would with a printed question: ink goes
+ * beside the diagram it refers to and under the line of algebra it follows from.
  *
  * The data model, the erase operation and the wire format are in `app/lib/scratch.ts`. This
- * file is the surface itself: pointer handling, rendering and the toolbar.
+ * file is the surface: pointer handling, rendering and the tool controls.
+ *
+ * ## Ink is anchored to the question, not to the screen
+ *
+ * The canvas is a sibling of the question inside the same box, and both are sized from the
+ * question's own shape. Board coordinates run 0–1000 across the width of the question itself,
+ * so a stroke is stored relative to the paper. Zooming resizes the box and the ink is
+ * repainted — not rescaled as a bitmap — at the new size; scrolling moves the box and the ink
+ * goes with it. Annotation therefore stays exactly where it was put, at any magnification,
+ * and lands in the same place when the page is read back on a different device.
  *
  * ## Two canvases
  *
- * Committed strokes are painted once onto a base layer; the stroke currently under the nib
- * is painted onto a transparent layer above it. Repainting tens of thousands of points on
- * every pointer move would put visible lag between the stylus and the ink, which is the one
- * thing a writing surface may not do.
+ * Committed strokes are painted once onto a base layer; the stroke under the nib is painted
+ * onto a transparent layer above it. Repainting tens of thousands of points on every pointer
+ * move would put visible lag between the stylus and the ink, which is the one thing a
+ * writing surface may not do.
  *
  * ## Palm rejection
  *
- * Once a stylus has been used, touch stops drawing. Resting a hand on a tablet while writing
- * is not optional, and a palm that draws makes the feature useless. Touch keeps working
- * normally until a pen is seen, so a finger remains a valid way to write for anyone without
- * a stylus.
+ * Once a stylus has been used, touch stops drawing and starts scrolling the question instead.
+ * Resting a hand on a tablet while writing is not optional, and a palm that draws makes the
+ * feature useless. Touch keeps writing until a pen is seen, so a finger remains a valid way
+ * to write for anyone without a stylus — and the Move tool gives them scrolling back.
  *
  * ## Uncontrolled by design
  *
- * The strokes live in refs, not in React state: a controlled board would re-render the
- * exam player on every sample. The component is seeded once from `initialPage` and reports
- * committed changes upwards, so the host **must** give it a `key` that changes with the
- * question. `ExamPlayer` does exactly that.
+ * The strokes live in refs, not in React state: a controlled surface would re-render the exam
+ * player on every sample. The layer is seeded once from `initialPage`, so the host **must**
+ * give it a `key` that changes with the question. `ExamPlayer` does exactly that.
  */
 
 import {
   Eraser,
+  Hand,
   Highlighter,
   PenLine,
   Redo2,
   Trash2,
   Undo2,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import {
   BOARD_WIDTH,
   HIGHLIGHTER_WIDTHS,
@@ -45,7 +64,6 @@ import {
   MAX_STROKES_PER_PAGE,
   PEN_WIDTHS,
   SCRATCH_COLOURS,
-  boardScale,
   eraseAt,
   pagePointCount,
   simplifyStroke,
@@ -72,12 +90,27 @@ const NEUTRAL_PRESSURE = 0.5;
 /** Undo depth. Snapshots share their stroke objects, so each entry is a list of pointers. */
 const HISTORY_DEPTH = 40;
 
-export type ScratchLayout = "off" | "split" | "overlay";
-
 export interface ScratchPreferences {
   colour: ScratchColour;
   size: ScratchSize;
   stylusOnly: boolean;
+}
+
+export interface AnnotationStatus {
+  strokes: number;
+  canUndo: boolean;
+  canRedo: boolean;
+  /** How close this question's page is to the stored-size bound, as a fraction. */
+  fill: number;
+}
+
+export const EMPTY_ANNOTATION_STATUS: AnnotationStatus = { strokes: 0, canUndo: false, canRedo: false, fill: 0 };
+
+/** The controls the toolbar drives, which live with the strokes rather than in React state. */
+export interface AnnotatorHandle {
+  undo: () => void;
+  redo: () => void;
+  clear: () => void;
 }
 
 function strokeWidth(stroke: ScratchStroke, pressure: number): number {
@@ -90,7 +123,7 @@ function strokeWidth(stroke: ScratchStroke, pressure: number): number {
  * of consecutive samples, which is what turns a polyline of pointer positions into
  * handwriting rather than a chain of straight lines.
  */
-function paintStroke(context: CanvasRenderingContext2D, stroke: ScratchStroke, scale: number): void {
+export function paintStroke(context: CanvasRenderingContext2D, stroke: ScratchStroke, scale: number): void {
   const points = stroke.points;
   const count = points.length / 3;
   if (count === 0) return;
@@ -99,10 +132,12 @@ function paintStroke(context: CanvasRenderingContext2D, stroke: ScratchStroke, s
   const palette = SCRATCH_COLOURS[stroke.colour];
 
   if (stroke.tool === "highlighter") {
-    // One translucent pass for the whole stroke: stroking it segment by segment would
-    // double the alpha wherever two segments meet and produce a beaded line.
+    // One translucent pass for the whole stroke: stroking it segment by segment would double
+    // the alpha wherever two segments meet and produce a beaded line. `multiply` keeps the
+    // printed question readable through the highlight rather than washing it out.
     context.save();
-    context.globalAlpha = 0.4;
+    context.globalAlpha = 0.45;
+    context.globalCompositeOperation = "multiply";
     context.strokeStyle = palette.highlight;
     context.lineWidth = HIGHLIGHTER_WIDTHS[stroke.size] * scale;
     context.beginPath();
@@ -143,46 +178,42 @@ function paintStroke(context: CanvasRenderingContext2D, stroke: ScratchStroke, s
   }
 }
 
-const SIZE_LABELS: Record<ScratchSize, string> = { 1: "Fine", 2: "Medium", 3: "Broad" };
-
-interface BoardStatus {
-  strokes: number;
-  points: number;
-  canUndo: boolean;
-  canRedo: boolean;
-}
-
-interface ScratchpadProps {
+interface AnnotatorProps {
   /** Seeded once at mount. The host must key this component by the question. */
   initialPage: ScratchPage | null;
   /** Called after every committed change; the host decides when to persist. */
   onChange: (page: ScratchPage) => void;
-  layout: Exclude<ScratchLayout, "off">;
+  /**
+   * This question's height in board units — 1000 × (height ÷ width) of the question itself.
+   * Fixed by the paper rather than by the window, so the same annotation lands in the same
+   * place on every device.
+   */
+  pageHeight: number;
+  tool: ScratchTool;
   preferences: ScratchPreferences;
-  onPreferencesChange: (patch: Partial<ScratchPreferences>) => void;
+  onStatusChange: (status: AnnotationStatus) => void;
   /** Reported when the page fills up, or a stylus is first detected. */
   onNotice?: (message: string) => void;
-  /** Extra controls the host adds to the toolbar — the layout switch and close button. */
-  toolbarExtras?: React.ReactNode;
+  ref?: Ref<AnnotatorHandle>;
 }
 
-export const Scratchpad = memo(function Scratchpad({
+export const QuestionAnnotator = memo(function QuestionAnnotator({
   initialPage,
   onChange,
-  layout,
+  pageHeight,
+  tool,
   preferences,
-  onPreferencesChange,
+  onStatusChange,
   onNotice,
-  toolbarExtras,
-}: ScratchpadProps) {
-  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  ref,
+}: AnnotatorProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const baseRef = useRef<HTMLCanvasElement | null>(null);
   const liveRef = useRef<HTMLCanvasElement | null>(null);
 
   const strokesRef = useRef<ScratchStroke[]>(initialPage?.strokes ?? []);
   const undoRef = useRef<ScratchStroke[][]>([]);
   const redoRef = useRef<ScratchStroke[][]>([]);
-  const heightRef = useRef(initialPage?.height ?? 0);
   const scaleRef = useRef(0);
   const sizeRef = useRef({ width: 0, height: 0 });
   const drawingRef = useRef<{ pointerId: number; stroke: ScratchStroke } | null>(null);
@@ -190,25 +221,25 @@ export const Scratchpad = memo(function Scratchpad({
   const lastErasePointRef = useRef<[number, number] | null>(null);
   const penSeenRef = useRef(false);
   const fullWarnedRef = useRef(false);
-
-  const [tool, setTool] = useState<ScratchTool>("pen");
-  const [status, setStatus] = useState<BoardStatus>(() => ({
-    strokes: initialPage?.strokes.length ?? 0,
-    points: initialPage ? pagePointCount(initialPage) : 0,
-    canUndo: false,
-    canRedo: false,
-  }));
+  const [penSeen, setPenSeen] = useState(false);
+  // Mirrors the stroke count for the accessible label only. The strokes themselves stay in
+  // a ref; a ref cannot be read during render, and the label has to say something true.
+  const [strokeCount, setStrokeCount] = useState(initialPage?.strokes.length ?? 0);
 
   const { colour, size, stylusOnly } = preferences;
 
-  const syncStatus = useCallback(() => {
-    setStatus({
+  const publishStatus = useCallback(() => {
+    setStrokeCount(strokesRef.current.length);
+    onStatusChange({
       strokes: strokesRef.current.length,
-      points: pagePointCount({ height: heightRef.current, strokes: strokesRef.current }),
       canUndo: undoRef.current.length > 0,
       canRedo: redoRef.current.length > 0,
+      fill: Math.max(
+        strokesRef.current.length / MAX_STROKES_PER_PAGE,
+        pagePointCount({ height: pageHeight, strokes: strokesRef.current }) / MAX_POINTS_PER_PAGE,
+      ),
     });
-  }, []);
+  }, [onStatusChange, pageHeight]);
 
   const paintAll = useCallback(() => {
     const canvas = baseRef.current;
@@ -221,16 +252,23 @@ export const Scratchpad = memo(function Scratchpad({
     for (const stroke of strokesRef.current) paintStroke(context, stroke, scaleRef.current);
   }, []);
 
-  /** Match the backing stores to the surface, then repaint at the new scale. */
+  /**
+   * Match the backing stores to the question's rendered box, then repaint.
+   *
+   * The scale is the question's width in pixels over its width in board units, so ink is
+   * redrawn at whatever magnification the question is shown at — sharp, rather than a bitmap
+   * stretched to fit.
+   */
   const measure = useCallback(() => {
-    const surface = surfaceRef.current;
-    if (!surface) return;
-    const rect = surface.getBoundingClientRect();
+    const host = hostRef.current;
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
     const width = Math.max(1, Math.round(rect.width));
     const height = Math.max(1, Math.round(rect.height));
+    if (width === sizeRef.current.width && height === sizeRef.current.height) return;
     sizeRef.current = { width, height };
-    // Capped: a device pixel ratio of 3 on a large tablet costs a great deal of fill rate
-    // for a difference nobody can see on a 2 px line.
+    // Capped: a device pixel ratio of 3 on a large tablet costs a great deal of fill rate for
+    // a difference nobody can see on a 2 px line.
     const ratio = Math.min(2.5, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
     for (const canvas of [baseRef.current, liveRef.current]) {
       if (!canvas) continue;
@@ -239,30 +277,32 @@ export const Scratchpad = memo(function Scratchpad({
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
     }
-    // The board is as tall as the tallest surface it has ever been written on, so a page
-    // started on a large screen is shrunk to fit a small one rather than clipped.
-    heightRef.current = Math.max(heightRef.current, height / (width / BOARD_WIDTH));
-    scaleRef.current = boardScale({ height: heightRef.current, strokes: [] }, width, height);
+    scaleRef.current = width / BOARD_WIDTH;
     paintAll();
   }, [paintAll]);
 
   useEffect(() => {
     measure();
-    const surface = surfaceRef.current;
-    if (typeof ResizeObserver === "undefined" || !surface) {
+    // Report what was restored, so Clear and the fill warning are right before the first
+    // stroke rather than only after one.
+    publishStatus();
+    const host = hostRef.current;
+    if (typeof ResizeObserver === "undefined" || !host) {
       window.addEventListener("resize", measure);
       return () => window.removeEventListener("resize", measure);
     }
     const observer = new ResizeObserver(measure);
-    observer.observe(surface);
+    observer.observe(host);
     return () => observer.disconnect();
+    // Runs once per question: the layer is keyed by it, and `publishStatus` only reports.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measure]);
 
   const commit = useCallback((strokes: ScratchStroke[]) => {
     strokesRef.current = strokes;
-    onChange({ height: heightRef.current, strokes });
-    syncStatus();
-  }, [onChange, syncStatus]);
+    onChange({ height: pageHeight, strokes });
+    publishStatus();
+  }, [onChange, pageHeight, publishStatus]);
 
   const pushUndo = useCallback(() => {
     undoRef.current = [...undoRef.current.slice(-(HISTORY_DEPTH - 1)), strokesRef.current];
@@ -285,12 +325,13 @@ export const Scratchpad = memo(function Scratchpad({
     return [(clientX - rect.left) / scale, (clientY - rect.top) / scale];
   }, []);
 
-  /** Whether this pointer is allowed to write on the board. */
+  /** Whether this pointer is allowed to write. */
   const accepts = useCallback((pointerType: string): boolean => {
     if (pointerType === "pen") {
       if (!penSeenRef.current) {
         penSeenRef.current = true;
-        onNotice?.("Stylus detected. Your palm will no longer draw on the board.");
+        setPenSeen(true);
+        onNotice?.("Stylus detected. Your palm will no longer draw, and a finger now moves the question.");
       }
       return true;
     }
@@ -306,8 +347,8 @@ export const Scratchpad = memo(function Scratchpad({
     const ratio = canvas.width / Math.max(1, sizeRef.current.width);
     context.scale(ratio, ratio);
     // The whole in-progress stroke is repainted rather than only its newest segment: a
-    // translucent highlighter would otherwise darken wherever the passes overlapped, and
-    // one stroke is short enough for this to stay well inside a frame.
+    // translucent highlighter would otherwise darken wherever the passes overlapped, and one
+    // stroke is short enough for this to stay well inside a frame.
     context.clearRect(0, 0, sizeRef.current.width, sizeRef.current.height);
     paintStroke(context, stroke, scaleRef.current);
   }, []);
@@ -337,14 +378,16 @@ export const Scratchpad = memo(function Scratchpad({
   }, [boardPoint, commit, paintAll]);
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!event.isPrimary || !accepts(event.pointerType)) return;
+    // The Move tool exists for a candidate with no stylus, whose finger would otherwise
+    // always draw. It hands every pointer straight back to the browser's own scrolling.
+    if (tool === "pan" || !event.isPrimary || !accepts(event.pointerType)) return;
     // Only after the pointer is accepted: preventing the default on a rejected touch would
     // stop the candidate scrolling the question with a finger.
     event.preventDefault();
     try {
-      // Capture keeps a stroke coming to this canvas when the nib crosses its edge. It
-      // throws if the pointer is no longer active, which is a failed capture rather than a
-      // failed stroke — the stroke still works, it just stops at the boundary.
+      // Capture keeps a stroke coming to this canvas when the nib crosses its edge. It throws
+      // if the pointer is no longer active, which is a failed capture rather than a failed
+      // stroke — the stroke still works, it just stops at the boundary.
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
       // Ignored deliberately; see above.
@@ -356,16 +399,16 @@ export const Scratchpad = memo(function Scratchpad({
       // A fresh sweep starts here, so it must not join up with wherever the last one ended.
       lastErasePointRef.current = null;
       eraseFrom(event.clientX, event.clientY);
-      syncStatus();
+      publishStatus();
       return;
     }
 
     const full = strokesRef.current.length >= MAX_STROKES_PER_PAGE
-      || pagePointCount({ height: heightRef.current, strokes: strokesRef.current }) >= MAX_POINTS_PER_PAGE;
+      || pagePointCount({ height: pageHeight, strokes: strokesRef.current }) >= MAX_POINTS_PER_PAGE;
     if (full) {
       if (!fullWarnedRef.current) {
         fullWarnedRef.current = true;
-        onNotice?.("This board is full. Erase some working, or clear it, to keep writing.");
+        onNotice?.("There is no room left for more writing on this question. Erase some of it to carry on.");
       }
       return;
     }
@@ -380,8 +423,8 @@ export const Scratchpad = memo(function Scratchpad({
     };
     drawingRef.current = { pointerId: event.pointerId, stroke };
     paintLive(stroke);
-    syncStatus();
-  }, [accepts, boardPoint, colour, eraseFrom, onNotice, paintLive, pushUndo, size, syncStatus, tool]);
+    publishStatus();
+  }, [accepts, boardPoint, colour, eraseFrom, onNotice, pageHeight, paintLive, publishStatus, pushUndo, size, tool]);
 
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     if (erasingRef.current === event.pointerId) {
@@ -399,8 +442,8 @@ export const Scratchpad = memo(function Scratchpad({
       if (Math.hypot(x - points[points.length - 3], y - points[points.length - 2]) < 0.25) return;
       points.push(x, y, pressure > 0 ? pressure : NEUTRAL_PRESSURE);
     };
-    // Coalesced events recover the samples the browser batched into one frame, which is
-    // what stops a fast stroke on a high-rate stylus from coming out as a polygon.
+    // Coalesced events recover the samples the browser batched into one frame, which is what
+    // stops a fast stroke on a high-rate stylus from coming out as a polygon.
     const coalesced = typeof event.nativeEvent.getCoalescedEvents === "function"
       ? event.nativeEvent.getCoalescedEvents()
       : [];
@@ -428,129 +471,162 @@ export const Scratchpad = memo(function Scratchpad({
     commit([...strokesRef.current, stroke]);
   }, [clearLive, commit]);
 
-  const undo = useCallback(() => {
-    const previous = undoRef.current.pop();
-    if (!previous) return;
-    redoRef.current = [...redoRef.current.slice(-(HISTORY_DEPTH - 1)), strokesRef.current];
-    commit(previous);
-    paintAll();
-  }, [commit, paintAll]);
+  useImperativeHandle(ref, () => ({
+    undo: () => {
+      const previous = undoRef.current.pop();
+      if (!previous) return;
+      redoRef.current = [...redoRef.current.slice(-(HISTORY_DEPTH - 1)), strokesRef.current];
+      commit(previous);
+      paintAll();
+    },
+    redo: () => {
+      const next = redoRef.current.pop();
+      if (!next) return;
+      undoRef.current = [...undoRef.current.slice(-(HISTORY_DEPTH - 1)), strokesRef.current];
+      commit(next);
+      paintAll();
+    },
+    clear: () => {
+      if (!strokesRef.current.length) return;
+      pushUndo();
+      commit([]);
+      paintAll();
+      clearLive();
+    },
+  }), [clearLive, commit, paintAll, pushUndo]);
 
-  const redo = useCallback(() => {
-    const next = redoRef.current.pop();
-    if (!next) return;
-    undoRef.current = [...undoRef.current.slice(-(HISTORY_DEPTH - 1)), strokesRef.current];
-    commit(next);
-    paintAll();
-  }, [commit, paintAll]);
-
-  const clear = useCallback(() => {
-    if (!strokesRef.current.length) return;
-    pushUndo();
-    commit([]);
-    paintAll();
-    clearLive();
-  }, [clearLive, commit, paintAll, pushUndo]);
-
-  const fill = Math.max(status.strokes / MAX_STROKES_PER_PAGE, status.points / MAX_POINTS_PER_PAGE);
+  // Once a stylus is in use, or the Move tool is chosen, every touch belongs to the browser
+  // so the question can be scrolled and pinched while the ink stays where it was put.
+  const touchAction = tool === "pan" || penSeen || stylusOnly ? "auto" : "none";
 
   return (
-    <section className={`scratchpad scratchpad-${layout}`} aria-label="Working whiteboard">
-      <div className="scratch-tools">
-        <div className="scratch-tool-group" role="group" aria-label="Writing tool">
-          {([
-            { id: "pen", label: "Pen", icon: PenLine },
-            { id: "highlighter", label: "Highlighter", icon: Highlighter },
-            { id: "eraser", label: "Eraser", icon: Eraser },
-          ] as const).map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={tool === item.id ? "selected" : ""}
-                aria-pressed={tool === item.id}
-                title={item.label}
-                onClick={() => setTool(item.id)}
-              >
-                <Icon size={16} /><span>{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="scratch-tool-group scratch-colours" role="group" aria-label="Ink colour">
-          {(Object.keys(SCRATCH_COLOURS) as ScratchColour[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              className={`scratch-swatch ${colour === key ? "selected" : ""}`}
-              style={{ "--swatch": SCRATCH_COLOURS[key].ink } as React.CSSProperties}
-              aria-pressed={colour === key}
-              aria-label={`${SCRATCH_COLOURS[key].label} ink`}
-              title={SCRATCH_COLOURS[key].label}
-              onClick={() => {
-                onPreferencesChange({ colour: key });
-                if (tool === "eraser") setTool("pen");
-              }}
-            />
-          ))}
-        </div>
-
-        <div className="scratch-tool-group scratch-sizes" role="group" aria-label="Nib width">
-          {([1, 2, 3] as ScratchSize[]).map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={size === value ? "selected" : ""}
-              aria-pressed={size === value}
-              aria-label={`${SIZE_LABELS[value]} nib`}
-              title={`${SIZE_LABELS[value]} nib`}
-              onClick={() => onPreferencesChange({ size: value })}
-            >
-              <i style={{ width: `${3 + value * 3}px`, height: `${3 + value * 3}px` }} />
-            </button>
-          ))}
-        </div>
-
-        <div className="scratch-tool-group scratch-history" role="group" aria-label="Board history">
-          <button type="button" onClick={undo} disabled={!status.canUndo} title="Undo" aria-label="Undo"><Undo2 size={16} /></button>
-          <button type="button" onClick={redo} disabled={!status.canRedo} title="Redo" aria-label="Redo"><Redo2 size={16} /></button>
-          <button type="button" onClick={clear} disabled={!status.strokes} title="Clear board" aria-label="Clear board"><Trash2 size={16} /></button>
-        </div>
-
-        {toolbarExtras ? <div className="scratch-tool-group scratch-extras">{toolbarExtras}</div> : null}
-      </div>
-
-      <div className="scratch-surface" ref={surfaceRef} data-tool={tool}>
-        <canvas ref={baseRef} className="scratch-layer" aria-hidden="true" />
-        <canvas
-          ref={liveRef}
-          className="scratch-layer scratch-layer-live"
-          role="img"
-          aria-label={status.strokes
-            ? `Whiteboard holding ${status.strokes} stroke${status.strokes === 1 ? "" : "s"} of your working. Write with a stylus, finger or mouse.`
-            : "Empty whiteboard. Write your working here with a stylus, finger or mouse."}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={finishStroke}
-          onPointerCancel={finishStroke}
-          onLostPointerCapture={finishStroke}
-          onContextMenu={(event) => event.preventDefault()}
-        />
-        {fill >= 0.8 ? (
-          <p className="scratch-fill-warning" role="status">
-            This board is {Math.min(100, Math.round(fill * 100))}% full. Erase working you no longer need.
-          </p>
-        ) : null}
-      </div>
-    </section>
+    <div className="annotation-layer" ref={hostRef}>
+      <canvas ref={baseRef} className="annotation-canvas" aria-hidden="true" />
+      <canvas
+        ref={liveRef}
+        className="annotation-canvas annotation-canvas-live"
+        style={{ touchAction, cursor: tool === "pan" ? "grab" : tool === "eraser" ? "cell" : "crosshair" }}
+        role="img"
+        aria-label={strokeCount
+          ? `Your writing on this question: ${strokeCount} stroke${strokeCount === 1 ? "" : "s"}. Write with a stylus, finger or mouse.`
+          : "Writing layer over the question. Write your working here with a stylus, finger or mouse."}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={finishStroke}
+        onPointerCancel={finishStroke}
+        onLostPointerCapture={finishStroke}
+        onContextMenu={(event) => event.preventDefault()}
+      />
+    </div>
   );
 });
 
+const SIZE_LABELS: Record<ScratchSize, string> = { 1: "Fine", 2: "Medium", 3: "Broad" };
+
+const TOOL_ITEMS = [
+  { id: "pen", label: "Pen", icon: PenLine },
+  { id: "highlighter", label: "Highlighter", icon: Highlighter },
+  { id: "eraser", label: "Eraser", icon: Eraser },
+  { id: "pan", label: "Move", icon: Hand },
+] as const;
+
+/**
+ * The writing controls, rendered in the question's own toolbar rather than floating over the
+ * paper — anything floating would cover the thing being annotated.
+ */
+export function AnnotationToolbar({
+  tool,
+  onToolChange,
+  preferences,
+  onPreferencesChange,
+  status,
+  onUndo,
+  onRedo,
+  onClear,
+  onClose,
+}: {
+  tool: ScratchTool;
+  onToolChange: (tool: ScratchTool) => void;
+  preferences: ScratchPreferences;
+  onPreferencesChange: (patch: Partial<ScratchPreferences>) => void;
+  status: AnnotationStatus;
+  onUndo: () => void;
+  onRedo: () => void;
+  onClear: () => void;
+  onClose?: () => void;
+}) {
+  const { colour, size } = preferences;
+  return (
+    <div className="annotation-tools">
+      <div className="annotation-group" role="group" aria-label="Writing tool">
+        {TOOL_ITEMS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={tool === item.id ? "selected" : ""}
+              aria-pressed={tool === item.id}
+              title={item.id === "pan" ? "Move the question without writing on it" : item.label}
+              onClick={() => onToolChange(item.id)}
+            >
+              <Icon size={16} /><span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="annotation-group annotation-colours" role="group" aria-label="Ink colour">
+        {(Object.keys(SCRATCH_COLOURS) as ScratchColour[]).map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={`annotation-swatch ${colour === key ? "selected" : ""}`}
+            style={{ "--swatch": SCRATCH_COLOURS[key].ink } as React.CSSProperties}
+            aria-pressed={colour === key}
+            aria-label={`${SCRATCH_COLOURS[key].label} ink`}
+            title={SCRATCH_COLOURS[key].label}
+            onClick={() => {
+              onPreferencesChange({ colour: key });
+              // Choosing an ink while erasing or moving means writing is what is wanted.
+              if (tool === "eraser" || tool === "pan") onToolChange("pen");
+            }}
+          />
+        ))}
+      </div>
+
+      <div className="annotation-group annotation-sizes" role="group" aria-label="Nib width">
+        {([1, 2, 3] as ScratchSize[]).map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={size === value ? "selected" : ""}
+            aria-pressed={size === value}
+            aria-label={`${SIZE_LABELS[value]} nib`}
+            title={`${SIZE_LABELS[value]} nib`}
+            onClick={() => onPreferencesChange({ size: value })}
+          >
+            <i style={{ width: `${3 + value * 3}px`, height: `${3 + value * 3}px` }} />
+          </button>
+        ))}
+      </div>
+
+      <div className="annotation-group annotation-history" role="group" aria-label="Writing history">
+        <button type="button" onClick={onUndo} disabled={!status.canUndo} title="Undo" aria-label="Undo"><Undo2 size={16} /></button>
+        <button type="button" onClick={onRedo} disabled={!status.canRedo} title="Redo" aria-label="Redo"><Redo2 size={16} /></button>
+        <button type="button" onClick={onClear} disabled={!status.strokes} title="Erase everything on this question" aria-label="Erase everything on this question"><Trash2 size={16} /></button>
+      </div>
+
+      {onClose ? (
+        <button type="button" className="annotation-close" onClick={onClose} title="Stop writing on the question (W)">Done</button>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * A finished page, drawn once and never edited — the review screens showing what a candidate
- * actually wrote against a question they went on to get wrong.
+ * actually wrote on a question they went on to get wrong.
  */
 export function ScratchpadPreview({ page, label }: { page: ScratchPage; label: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -563,8 +639,8 @@ export function ScratchpadPreview({ page, label }: { page: ScratchPage; label: s
     if (!canvas || !wrap || !context) return;
     const paint = () => {
       const width = Math.max(1, Math.round(wrap.getBoundingClientRect().width));
-      // The preview keeps the page's own aspect ratio rather than a fixed box, so nothing
-      // written near the bottom of the board is cropped out of the review.
+      // The preview keeps the question's own aspect ratio, so nothing written near the foot
+      // of the page is cropped out of the review.
       const height = Math.max(1, Math.round(width * (page.height || BOARD_WIDTH) / BOARD_WIDTH));
       const ratio = Math.min(2, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
       canvas.width = Math.round(width * ratio);
@@ -574,8 +650,7 @@ export function ScratchpadPreview({ page, label }: { page: ScratchPage; label: s
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.scale(ratio, ratio);
-      const scale = boardScale(page, width, height);
-      for (const stroke of page.strokes) paintStroke(context, stroke, scale);
+      for (const stroke of page.strokes) paintStroke(context, stroke, width / BOARD_WIDTH);
     };
     paint();
     if (typeof ResizeObserver === "undefined") return;

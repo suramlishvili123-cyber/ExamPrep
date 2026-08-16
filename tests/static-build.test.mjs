@@ -75,7 +75,7 @@ test("worked-solution assets and the Quick Tricks learning surface ship", async 
   const bundle = await readDist(`assets/${assets.find((name) => name.endsWith(".js"))}`);
   assert.match(bundle, /Quick tricks/);
   assert.match(bundle, /Fastest valid route/);
-  assert.match(bundle, /Verified key \+ matched example/);
+  assert.match(bundle, /Checked worked solution|Verified answer key/);
 });
 
 test("internal QA and provenance manifests are excluded from production", async () => {

@@ -19,14 +19,16 @@
       the results appear in the account once the connection returns
 - [ ] Deploying a new build offers the update banner rather than reloading mid-session, and
       the previous shell cache is removed once it is applied
-- [ ] Whiteboard working written offline syncs on reconnection and is readable in the review
+- [ ] Writing done on a question offline syncs on reconnection and is readable in the review
+- [ ] Stylus, finger and mouse each write; a resting palm does not; a finger scrolls the
+      question once a stylus has been used
 
 ## Firebase gate
 
 - [ ] Production hostname is authorised for Google sign-in
 - [ ] Google provider is enabled and popup/redirect fallback works on desktop and mobile
 - [ ] Current `firestore.rules` are deployed to the configured project, including the
-      `scratchpads` collection added for whiteboard working
+      `scratchpads` collection added for writing on questions
 - [ ] Two-account shared-browser test proves local state is UID-scoped
 - [ ] Cross-device active-session recovery, completion sync, export, cloud deletion and
       account deletion are tested against production Firebase

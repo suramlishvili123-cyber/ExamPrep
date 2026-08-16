@@ -44,14 +44,11 @@ test("every shipped question resolves to a reviewed best-and-fastest technique",
 });
 
 test("all questions have an honest post-attempt learning route", () => {
-  const exactAuthored = allQuestions.filter((question) => question.authored && question.explanation).length;
+  const withWorkedSolutions = allQuestions.filter((question) => Boolean(question.explanation)).length;
   const officialWorked = allQuestions.filter((question) => question.workedSolutionImage).length;
-  const matchedExamples = allQuestions.filter((question) => !question.explanation && !question.workedSolutionImage && techniqueForQuestion(question)).length;
 
-  assert.equal(exactAuthored, 81, "all authored questions must keep their checked derivation");
+  assert.equal(withWorkedSolutions, 598, "every question must carry a verified step-by-step worked solution");
   assert.equal(officialWorked, 160, "every TMUA item must carry its publisher worked-solution page");
-  assert.equal(matchedExamples, 357, "answer-key-only archive items must receive a matched worked example");
-  assert.equal(exactAuthored + officialWorked + matchedExamples, allQuestions.length);
 
   for (const question of archive.questions) {
     if (question.sourceExam === "TMUA") {

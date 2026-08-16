@@ -1,11 +1,11 @@
 /**
- * The whiteboard as a candidate meets it: the toggle, where the board sits, how much room
- * it takes, and what happens to the question beside it.
+ * Writing on the question, as a candidate meets it: the toggle, the tools, the magnification
+ * and what happens to the question underneath.
  *
- * jsdom has no canvas, so no ink is drawn here — the drawing model itself is covered by
- * `tests/scratch.test.ts`. What is covered is everything around it, including the two
- * promises that matter most: the board can always be switched off, and the answer options
- * are reachable however large it is made.
+ * jsdom has no canvas, so no ink is drawn here — the stroke model itself is covered by
+ * `tests/scratch.test.ts`. What is covered is everything around it, including the promises
+ * that matter most: writing can always be switched off, the question can always be made
+ * smaller as well as larger, and the answer options are never taken off the screen.
  */
 
 import "./dom-setup";
@@ -13,10 +13,10 @@ import "./dom-setup";
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { ExamPlayer, QuestionCrop } from "../app/esat-app";
-import { Scratchpad } from "../app/scratchpad";
-import type { ScratchPage } from "../app/lib/scratch";
-import { defaultState, type Attempt, type Question, type ResponseRecord, type Settings } from "../app/lib/core";
+import { ExamPlayer, QUESTION_ZOOM_STEPS, fitPageZoom, nearestZoomStep } from "../app/esat-app";
+import { AnnotationToolbar, EMPTY_ANNOTATION_STATUS, type AnnotationStatus, type ScratchPreferences } from "../app/scratchpad";
+import { MIN_QUESTION_ZOOM, MAX_QUESTION_ZOOM, defaultState, type Attempt, type Question, type ResponseRecord, type Settings } from "../app/lib/core";
+import type { ScratchTool } from "../app/lib/scratch";
 
 afterEach(cleanup);
 
@@ -89,9 +89,8 @@ function playerProps(overrides: Record<string, unknown> = {}) {
     pacingAid: false,
     multiTabWarning: false,
     dismissMultiTab: () => undefined,
-    boardLayout: "split" as const,
-    boardWidth: settings.scratchpadWidth,
-    boardReady: true,
+    writingEnabled: true,
+    writingReady: true,
     questionZoom: settings.questionZoom,
     questionHideOptions: settings.questionHideOptions,
     questionOptionTrim: settings.questionOptionTrim,
@@ -103,199 +102,196 @@ function playerProps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/* ------------------------------------------------------------------- the toggle -- */
+/* --------------------------------------------------------------------- the toggle -- */
 
-test("the whiteboard is absent, and unmentioned, when it is switched off", () => {
-  render(<ExamPlayer {...playerProps({ boardLayout: "off" })} />);
-  assert.equal(screen.queryByLabelText("Working whiteboard"), null);
+test("writing is absent, and unmentioned, when it is switched off", () => {
+  render(<ExamPlayer {...playerProps({ writingEnabled: false })} />);
   assert.equal(screen.queryByRole("group", { name: "Writing tool" }), null);
+  assert.equal(screen.queryByRole("img", { name: /Writing layer/ }), null);
   // With no handler the toggle itself is not offered either, so a host that does not
-  // support the board shows no dead control.
-  assert.equal(screen.queryByRole("button", { name: /Whiteboard/ }), null);
+  // support writing shows no dead control.
+  assert.equal(screen.queryByRole("button", { name: /Write/ }), null);
 });
 
-test("the toggle turns the board off, and the keyboard hint says how to bring it back", () => {
-  const layouts: string[] = [];
-  render(<ExamPlayer {...playerProps({ onBoardLayoutChange: (layout: string) => layouts.push(layout) })} />);
+test("the toggle stops writing, and says which key brings it back", () => {
+  const changes: boolean[] = [];
+  render(<ExamPlayer {...playerProps({ onWritingChange: (value: boolean) => changes.push(value) })} />);
 
-  const toggle = screen.getByRole("button", { name: /Whiteboard on/ });
+  const toggle = screen.getByRole("button", { name: /Writing on/ });
   assert.equal(toggle.getAttribute("aria-pressed"), "true");
   fireEvent.click(toggle);
-  assert.deepEqual(layouts, ["off"]);
+  assert.deepEqual(changes, [false]);
   assert.match(toggle.getAttribute("title") ?? "", /\(W\)/);
+
+  // The toolbar offers the same way out, for a hand that is already on the paper.
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  assert.deepEqual(changes, [false, false]);
 });
 
-test("the board offers its own way out, and both positions", () => {
-  const layouts: string[] = [];
-  render(<ExamPlayer {...playerProps({ onBoardLayoutChange: (layout: string) => layouts.push(layout) })} />);
+test("the writing layer sits on the question, not beside it, and the options stay reachable", () => {
+  const { container } = render(<ExamPlayer {...playerProps()} />);
 
-  fireEvent.click(screen.getByRole("button", { name: "Hide the whiteboard" }));
-  fireEvent.click(screen.getByRole("button", { name: "On question" }));
-  fireEvent.click(screen.getByRole("button", { name: "Beside" }));
-  assert.deepEqual(layouts, ["off", "overlay", "split"]);
+  const page = container.querySelector(".question-page-inner");
+  assert.ok(page, "the question renders as a page");
+  assert.ok(page?.querySelector(".annotation-layer"), "the writing layer is inside the question's own box");
+  // Nothing takes a column from the answers: the player has one question and one panel.
+  assert.equal(container.querySelectorAll(".exam-content > section").length, 1);
+  assert.ok(screen.getByRole("radiogroup", { name: "Answer options" }));
+  assert.equal(screen.getAllByRole("radio").length, 5);
 });
 
-/* -------------------------------------------------------------------- the width -- */
-
-test("the width control never takes the answer options off the screen", () => {
-  const widths: string[] = [];
-  const { container } = render(<ExamPlayer {...playerProps({ onBoardWidthChange: (width: string) => widths.push(width) })} />);
-
-  const group = screen.getByRole("group", { name: "Whiteboard width" });
-  const buttons = [...group.querySelectorAll("button")];
-  assert.deepEqual(buttons.map((button) => button.textContent), ["½", "⅔", "Full"]);
-
-  for (const button of buttons) {
-    fireEvent.click(button);
-    // Whatever width is chosen, the radio group of options is still rendered: the layout
-    // takes its room from the question, never from the answers.
-    assert.ok(screen.getByRole("radiogroup", { name: "Answer options" }));
-    assert.equal(screen.getAllByRole("radio").length, 5);
-  }
-  assert.deepEqual(widths, ["half", "wide", "full"]);
-  assert.equal(container.querySelector(".exam-content")?.getAttribute("data-board"), "half");
+test("the player waits for stored writing rather than showing a blank layer over it", () => {
+  render(<ExamPlayer {...playerProps({ writingReady: false })} />);
+  assert.ok(screen.getByText(/Restoring what you wrote/));
+  assert.equal(screen.queryByRole("group", { name: "Writing tool" }), null);
 });
 
-test("the chosen width is published to the layout, and only in the beside position", () => {
-  const { container, rerender } = render(<ExamPlayer {...playerProps({ boardWidth: "full" })} />);
-  const content = () => container.querySelector(".exam-content");
-  assert.equal(content()?.getAttribute("data-board"), "full");
-  assert.ok(content()?.className.includes("workspace-split"));
+/* ----------------------------------------------------------------------- the zoom -- */
 
-  rerender(<ExamPlayer {...playerProps({ boardLayout: "overlay", boardWidth: "full" })} />);
-  assert.ok(content()?.className.includes("workspace-overlay"));
-  // Overlay covers the question outright, so a width share would mean nothing there.
-  assert.equal(content()?.getAttribute("data-board"), null);
-});
-
-/* ------------------------------------------------------------------ the question -- */
-
-test("the question can be enlarged and shrunk while the board shares the width", () => {
+test("the question can be made smaller as well as larger, and the ramp is bounded", () => {
   const patches: Array<Partial<Settings>> = [];
   const onQuestionViewChange = (patch: Partial<Settings>) => patches.push(patch);
   const { rerender } = render(<ExamPlayer {...playerProps({ onQuestionViewChange })} />);
 
-  // The default is already magnified: a printed paper at half width is otherwise unreadable.
-  assert.ok(screen.getByText("140%"));
-  fireEvent.click(screen.getByRole("button", { name: "Show the question larger" }));
-  assert.deepEqual(patches, [{ questionZoom: 1.7 }]);
+  // 100% is the width that fits, so zooming out from it must be possible.
+  assert.ok(screen.getByText("100%"));
+  fireEvent.click(screen.getByRole("button", { name: "Show the question smaller" }));
+  assert.ok((patches[0].questionZoom ?? 1) < 1, `expected a smaller zoom, got ${patches[0].questionZoom}`);
 
-  rerender(<ExamPlayer {...playerProps({ onQuestionViewChange, questionZoom: 3 })} />);
+  rerender(<ExamPlayer {...playerProps({ onQuestionViewChange, questionZoom: MIN_QUESTION_ZOOM })} />);
+  assert.ok(screen.getByText("40%"));
+  assert.equal((screen.getByRole("button", { name: "Show the question smaller" }) as HTMLButtonElement).disabled, true);
+  assert.equal((screen.getByRole("button", { name: "Show the question larger" }) as HTMLButtonElement).disabled, false);
+
+  rerender(<ExamPlayer {...playerProps({ onQuestionViewChange, questionZoom: MAX_QUESTION_ZOOM })} />);
   assert.ok(screen.getByText("300%"));
   assert.equal((screen.getByRole("button", { name: "Show the question larger" }) as HTMLButtonElement).disabled, true);
-  assert.equal((screen.getByRole("button", { name: "Show the question smaller" }) as HTMLButtonElement).disabled, false);
-
-  rerender(<ExamPlayer {...playerProps({ onQuestionViewChange, questionZoom: 1 })} />);
-  assert.equal((screen.getByRole("button", { name: "Show the question smaller" }) as HTMLButtonElement).disabled, true);
 });
+
+test("the zoom ramp spans out and in, and every step is reachable from a stored value", () => {
+  assert.ok(QUESTION_ZOOM_STEPS[0] <= MIN_QUESTION_ZOOM);
+  assert.equal(QUESTION_ZOOM_STEPS[QUESTION_ZOOM_STEPS.length - 1], MAX_QUESTION_ZOOM);
+  assert.ok(QUESTION_ZOOM_STEPS.includes(1), "fit-to-width must be one of the steps");
+  assert.ok(QUESTION_ZOOM_STEPS.some((step) => step < 1), "there must be steps that zoom out");
+
+  // A value from an older build, or a hand-edited one, snaps onto the ramp.
+  assert.equal(nearestZoomStep(1.4), 1.5);
+  assert.equal(nearestZoomStep(0.01), QUESTION_ZOOM_STEPS[0]);
+  assert.equal(nearestZoomStep(99), MAX_QUESTION_ZOOM);
+  for (const step of QUESTION_ZOOM_STEPS) assert.equal(nearestZoomStep(step), step);
+});
+
+test("fitting the page shows the whole question, in both directions", () => {
+  // A tall question in a short frame has to shrink to fit its height.
+  assert.equal(fitPageZoom(1000, 500, 1), 0.5);
+  // A short, wide one is already limited by the width, so fit never magnifies past 1 —
+  // otherwise "fit" would push the sides of the question off the screen.
+  assert.equal(fitPageZoom(800, 800, 0.5), 1);
+  assert.equal(fitPageZoom(1000, 10_000, 1), 1);
+  // Never below what the control can undo, and never nonsense from a zero-sized frame.
+  assert.equal(fitPageZoom(1000, 10, 1), MIN_QUESTION_ZOOM);
+  assert.equal(fitPageZoom(0, 0, 0), 1);
+});
+
+test("the fit control is offered beside the zoom steps", () => {
+  const patches: Array<Partial<Settings>> = [];
+  render(<ExamPlayer {...playerProps({ onQuestionViewChange: (patch: Partial<Settings>) => patches.push(patch) })} />);
+  fireEvent.click(screen.getByRole("button", { name: "Fit the whole question on screen" }));
+  assert.equal(patches.length, 1);
+  assert.ok(typeof patches[0].questionZoom === "number");
+});
+
+/* ------------------------------------------------------------------ the option list -- */
 
 test("the printed option list can be hidden, and the answer panel still lists the options", () => {
   const patches: Array<Partial<Settings>> = [];
-  const { rerender } = render(<ExamPlayer {...playerProps({ onQuestionViewChange: (patch: Partial<Settings>) => patches.push(patch) })} />);
+  const { container, rerender } = render(
+    <ExamPlayer {...playerProps({ onQuestionViewChange: (patch: Partial<Settings>) => patches.push(patch) })} />,
+  );
 
   const hide = screen.getByRole("button", { name: /Options/ });
   assert.equal(hide.getAttribute("aria-pressed"), "false");
+  assert.equal(container.querySelector(".question-trim-note"), null);
   fireEvent.click(hide);
   assert.deepEqual(patches, [{ questionHideOptions: true }]);
 
   rerender(<ExamPlayer {...playerProps({ questionHideOptions: true, onQuestionViewChange: () => undefined })} />);
   assert.equal(screen.getByRole("button", { name: /Options/ }).getAttribute("aria-pressed"), "true");
+  assert.ok(container.querySelector(".question-trim-note"), "the candidate is told the crop is cut");
   assert.equal(screen.getAllByRole("radio").length, 5, "the options must remain answerable");
 });
 
-test("the question view controls stay out of the way when the board is closed", () => {
-  render(<ExamPlayer {...playerProps({ boardLayout: "off", onQuestionViewChange: () => undefined })} />);
-  assert.equal(screen.queryByRole("group", { name: "Question size" }), null);
+test("an authored question has no printed option list to hide", () => {
+  const authored = question("q1", { questionImage: undefined, questionText: "Solve $x^2=4$.", authored: true });
+  render(<ExamPlayer {...playerProps({ questionMap: { q1: authored }, onQuestionViewChange: () => undefined })} />);
   assert.equal(screen.queryByRole("button", { name: /Options/ }), null);
+  // It is still magnifiable, because a typeset item is composed at a fixed width and scaled.
+  assert.ok(screen.getByRole("group", { name: "Question size" }));
 });
 
-test("a trimmed crop is only cut once its height is known, and says so", () => {
-  const { container, rerender } = render(
-    <QuestionCrop source="questions/2019/q04.webp" alt="NSAA 2019 question 4" zoom={1.4} trim={0.3} />,
-  );
-  const crop = container.querySelector(".question-crop") as HTMLElement;
-  const image = container.querySelector("img") as HTMLImageElement;
-  assert.equal(image.style.width, "140%");
-  // jsdom reports a zero-height image, and cutting 30% off nothing would collapse the
-  // frame — so nothing is cut until a real measurement arrives.
-  assert.equal(crop.style.height, "");
-  assert.equal(container.querySelector(".question-crop-note"), null);
+/* ---------------------------------------------------------------------- the tools -- */
 
-  rerender(<QuestionCrop source="questions/2019/q04.webp" alt="NSAA 2019 question 4" zoom={1} trim={0} />);
-  assert.equal((container.querySelector("img") as HTMLImageElement).style.width, "100%");
-});
+function toolbarProps(overrides: Record<string, unknown> = {}) {
+  return {
+    tool: "pen" as ScratchTool,
+    onToolChange: () => undefined,
+    preferences: { colour: "ink" as const, size: 2 as const, stylusOnly: false },
+    onPreferencesChange: () => undefined,
+    status: EMPTY_ANNOTATION_STATUS,
+    onUndo: () => undefined,
+    onRedo: () => undefined,
+    onClear: () => undefined,
+    ...overrides,
+  };
+}
 
-/* ------------------------------------------------------------------ the surface -- */
+test("the tools include a way to move the question without writing on it", () => {
+  const tools: ScratchTool[] = [];
+  render(<AnnotationToolbar {...toolbarProps({ onToolChange: (tool: ScratchTool) => tools.push(tool) })} />);
 
-test("the board offers its tools, and the history controls start unavailable on a blank page", () => {
-  render(
-    <Scratchpad
-      layout="split"
-      initialPage={null}
-      onChange={() => undefined}
-      preferences={{ colour: "ink", size: 2, stylusOnly: false }}
-      onPreferencesChange={() => undefined}
-    />,
-  );
-
-  for (const name of ["Pen", "Highlighter", "Eraser"]) {
+  for (const name of ["Pen", "Highlighter", "Eraser", "Move"]) {
     assert.ok(screen.getByRole("button", { name }), name);
   }
   assert.equal(screen.getByRole("button", { name: "Pen" }).getAttribute("aria-pressed"), "true");
-  for (const name of ["Undo", "Redo", "Clear board"]) {
+  fireEvent.click(screen.getByRole("button", { name: "Move" }));
+  assert.deepEqual(tools, ["pan"]);
+});
+
+test("history controls start unavailable and follow the reported status", () => {
+  const { rerender } = render(<AnnotationToolbar {...toolbarProps()} />);
+  for (const name of ["Undo", "Redo", "Erase everything on this question"]) {
     assert.equal((screen.getByRole("button", { name }) as HTMLButtonElement).disabled, true, name);
   }
-  // The surface itself is described, because a canvas has nothing else to read.
-  assert.ok(screen.getByRole("img", { name: /Empty whiteboard/ }));
+
+  const status: AnnotationStatus = { strokes: 3, canUndo: true, canRedo: false, fill: 0.1 };
+  rerender(<AnnotationToolbar {...toolbarProps({ status })} />);
+  assert.equal((screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled, false);
+  assert.equal((screen.getByRole("button", { name: "Redo" }) as HTMLButtonElement).disabled, true);
+  assert.equal((screen.getByRole("button", { name: "Erase everything on this question" }) as HTMLButtonElement).disabled, false);
 });
 
-test("switching tool and ink reports the change and never loses the eraser", () => {
-  const patches: Array<Record<string, unknown>> = [];
-  render(
-    <Scratchpad
-      layout="split"
-      initialPage={null}
-      onChange={() => undefined}
-      preferences={{ colour: "ink", size: 2, stylusOnly: false }}
-      onPreferencesChange={(patch) => patches.push(patch)}
-    />,
-  );
+test("choosing an ink while erasing or moving means writing again", () => {
+  const patches: Array<Partial<ScratchPreferences>> = [];
+  const tools: ScratchTool[] = [];
+  const { rerender } = render(<AnnotationToolbar {...toolbarProps({
+    tool: "eraser",
+    onPreferencesChange: (patch: Partial<ScratchPreferences>) => patches.push(patch),
+    onToolChange: (tool: ScratchTool) => tools.push(tool),
+  })} />);
 
-  fireEvent.click(screen.getByRole("button", { name: "Eraser" }));
-  assert.equal(screen.getByRole("button", { name: "Eraser" }).getAttribute("aria-pressed"), "true");
-
-  // Choosing an ink while erasing means the candidate wants to write again.
   fireEvent.click(screen.getByRole("button", { name: "Blue ink" }));
   assert.deepEqual(patches, [{ colour: "blue" }]);
-  assert.equal(screen.getByRole("button", { name: "Pen" }).getAttribute("aria-pressed"), "true");
+  assert.deepEqual(tools, ["pen"]);
+
+  // Choosing an ink while already writing changes nothing but the ink.
+  rerender(<AnnotationToolbar {...toolbarProps({
+    onPreferencesChange: (patch: Partial<ScratchPreferences>) => patches.push(patch),
+    onToolChange: (tool: ScratchTool) => tools.push(tool),
+  })} />);
+  fireEvent.click(screen.getByRole("button", { name: "Red ink" }));
+  assert.deepEqual(patches[1], { colour: "red" });
+  assert.deepEqual(tools, ["pen"]);
 
   fireEvent.click(screen.getByRole("button", { name: "Broad nib" }));
-  assert.deepEqual(patches[1], { size: 3 });
-});
-
-test("a restored page reports the working it holds, so the review knows there is some", () => {
-  const page: ScratchPage = {
-    height: 700,
-    strokes: [
-      { tool: "pen", colour: "ink", size: 2, points: [10, 10, 0.5, 40, 60, 0.6] },
-      { tool: "pen", colour: "red", size: 1, points: [80, 20, 0.4, 120, 90, 0.5] },
-    ],
-  };
-  render(
-    <Scratchpad
-      layout="split"
-      initialPage={page}
-      onChange={() => undefined}
-      preferences={{ colour: "ink", size: 2, stylusOnly: false }}
-      onPreferencesChange={() => undefined}
-    />,
-  );
-  assert.ok(screen.getByRole("img", { name: /2 strokes of your working/ }));
-  assert.equal((screen.getByRole("button", { name: "Clear board" }) as HTMLButtonElement).disabled, false);
-});
-
-test("the player waits for stored working rather than showing a blank page over it", () => {
-  render(<ExamPlayer {...playerProps({ boardReady: false })} />);
-  assert.ok(screen.getByText(/Restoring the working you wrote/));
-  assert.equal(screen.queryByRole("group", { name: "Writing tool" }), null);
+  assert.deepEqual(patches[2], { size: 3 });
 });
