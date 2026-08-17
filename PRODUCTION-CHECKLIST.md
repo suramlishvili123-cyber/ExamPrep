@@ -46,6 +46,8 @@
 - [ ] Every answer-key-only item has an item-specific, independently checked derivation;
       generic topic examples are not represented as worked solutions to that item
 - [ ] Every historic question and official solution has a reviewed accessible transcript
+- [ ] The writing layer is pointer-only by nature; its tools, the option cut line and
+      every other control around it are reachable and operable from the keyboard
 - [ ] Keyboard-only, screen-reader, zoom and contrast checks pass on authenticated flows
 
 ## Operator gate

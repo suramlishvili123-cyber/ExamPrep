@@ -417,7 +417,14 @@ figure.question-figure img { display: block; width: 100%; min-width: 560px; heig
   .exam-header-actions { gap: 8px; }
   .exam-exit span { display: none; }
   .exam-content { padding: 12px 10px 100px; }
-  .question-frame { padding: 7px; min-height: 52dvh; }
+  .question-frame { padding: 7px; }
+  /* The question's own controls keep their icons but drop their words, so the row that
+     carries them stops wrapping into three. */
+  .question-toolbar .board-button span, .question-zoom-fit span, .flag-button span { display: none; }
+  .flag-button { padding: 0 10px; }
+  /* Thumb-sized, matching the writing tools beside them. */
+  .question-zoom button { min-height: 34px; min-width: 34px; }
+  .question-toolbar { gap: 6px; }
   .exam-footer { height: auto; min-height: 76px; padding: 10px; flex-direction: column; align-items: stretch; gap: 7px; }
   .exam-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .review-grid { grid-template-columns: repeat(3, 1fr); }

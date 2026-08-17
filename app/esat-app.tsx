@@ -4506,7 +4506,7 @@ export function ExamPlayer({
                         title="Fit the whole question on screen"
                         onClick={() => onQuestionViewChange({ questionZoom: fitPageZoom(frame.width, frame.height, aspect) })}
                       >
-                        <Maximize2 size={14} /> Fit
+                        <Maximize2 size={14} /> <span>Fit</span>
                       </button>
                     </span>
                     {question.questionImage ? (
@@ -4514,12 +4514,17 @@ export function ExamPlayer({
                         type="button"
                         className={questionHideOptions ? "board-button active" : "board-button"}
                         aria-pressed={questionHideOptions}
+                        // Named explicitly: on a narrow screen the word is hidden to keep the
+                        // row from wrapping, and the label is all that is left to read.
+                        aria-label={questionHideOptions
+                          ? "Show the printed option list on the question"
+                          : "Hide the printed option list on the question"}
                         title={questionHideOptions
                           ? "Show the printed option list on the question again"
                           : "Hide the printed option list; the options stay in the answer panel"}
                         onClick={() => onQuestionViewChange({ questionHideOptions: !questionHideOptions })}
                       >
-                        {questionHideOptions ? <EyeOff size={16} /> : <Eye size={16} />} Options
+                        {questionHideOptions ? <EyeOff size={16} /> : <Eye size={16} />} <span>Options</span>
                       </button>
                     ) : null}
                   </>
@@ -4529,13 +4534,21 @@ export function ExamPlayer({
                     type="button"
                     className={writingEnabled ? "board-button active" : "board-button"}
                     aria-pressed={writingEnabled}
+                    aria-label={writingEnabled ? "Stop writing on the question" : "Write on the question"}
                     title={writingEnabled ? "Stop writing on the question (W)" : "Write on the question (W)"}
                     onClick={() => onWritingChange(!writingEnabled)}
                   >
-                    <PencilRuler size={16} /> {writingEnabled ? "Writing on" : "Write"}
+                    <PencilRuler size={16} /> <span>{writingEnabled ? "Writing on" : "Write"}</span>
                   </button>
                 ) : null}
-                <button className={response.flagged ? "flag-button flagged" : "flag-button"} onClick={onFlag} aria-pressed={response.flagged}><Flag size={16} /> {response.flagged ? "Flagged" : "Flag for review"}</button>
+                <button
+                  className={response.flagged ? "flag-button flagged" : "flag-button"}
+                  onClick={onFlag}
+                  aria-pressed={response.flagged}
+                  aria-label={response.flagged ? "Flagged for review" : "Flag for review"}
+                >
+                  <Flag size={16} /> <span>{response.flagged ? "Flagged" : "Flag for review"}</span>
+                </button>
               </div>
             </div>
 

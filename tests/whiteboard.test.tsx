@@ -13,7 +13,7 @@ import "./dom-setup";
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { ExamPlayer, QUESTION_ZOOM_STEPS, fitPageZoom, nearestZoomStep } from "../app/esat-app";
+import { AttemptDetailView, ExamPlayer, QUESTION_ZOOM_STEPS, ResultScreen, fitPageZoom, nearestZoomStep } from "../app/esat-app";
 import {
   AnnotationToolbar,
   EMPTY_ANNOTATION_STATUS,
@@ -117,14 +117,14 @@ test("writing is absent, and unmentioned, when it is switched off", () => {
   assert.equal(screen.queryByRole("img", { name: /Writing layer/ }), null);
   // With no handler the toggle itself is not offered either, so a host that does not
   // support writing shows no dead control.
-  assert.equal(screen.queryByRole("button", { name: /Write/ }), null);
+  assert.equal(screen.queryByRole("button", { name: /writing on the question/i }), null);
 });
 
 test("the toggle stops writing, and says which key brings it back", () => {
   const changes: boolean[] = [];
   render(<ExamPlayer {...playerProps({ onWritingChange: (value: boolean) => changes.push(value) })} />);
 
-  const toggle = screen.getByRole("button", { name: /Writing on/ });
+  const toggle = screen.getByRole("button", { name: "Stop writing on the question" });
   assert.equal(toggle.getAttribute("aria-pressed"), "true");
   fireEvent.click(toggle);
   assert.deepEqual(changes, [false]);
@@ -218,14 +218,14 @@ test("the printed option list can be hidden, and the answer panel still lists th
   const onQuestionViewChange = (patch: Partial<Settings>) => patches.push(patch);
   const { container, rerender } = render(<ExamPlayer {...playerProps({ onQuestionViewChange })} />);
 
-  const hide = screen.getByRole("button", { name: /Options/ });
+  const hide = screen.getByRole("button", { name: /printed option list/ });
   assert.equal(hide.getAttribute("aria-pressed"), "false");
   assert.equal(container.querySelector(".question-trim-line"), null);
   fireEvent.click(hide);
   assert.deepEqual(patches, [{ questionHideOptions: true }]);
 
   rerender(<ExamPlayer {...playerProps({ questionHideOptions: true, onQuestionViewChange })} />);
-  assert.equal(screen.getByRole("button", { name: /Options/ }).getAttribute("aria-pressed"), "true");
+  assert.equal(screen.getByRole("button", { name: /printed option list/ }).getAttribute("aria-pressed"), "true");
   assert.equal(screen.getAllByRole("radio").length, 5, "the options must remain answerable");
 
   // The cut is a line the candidate can see and move, not a fixed guess: no two papers put
@@ -241,7 +241,7 @@ test("the printed option list can be hidden, and the answer panel still lists th
 test("an authored question has no printed option list to hide", () => {
   const authored = question("q1", { questionImage: undefined, questionText: "Solve $x^2=4$.", authored: true });
   render(<ExamPlayer {...playerProps({ questionMap: { q1: authored }, onQuestionViewChange: () => undefined })} />);
-  assert.equal(screen.queryByRole("button", { name: /Options/ }), null);
+  assert.equal(screen.queryByRole("button", { name: /printed option list/ }), null);
   // It is still magnifiable, because a typeset item is composed at a fixed width and scaled.
   assert.ok(screen.getByRole("group", { name: "Question size" }));
 });
@@ -456,4 +456,83 @@ test("a stylus seen on one question is remembered on the next", () => {
   fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: "pen" });
   // The host was told, and the layer now hands touch to the browser to move the question.
   assert.equal(canvas.style.touchAction, "auto", "after a stylus, a finger moves the page");
+});
+
+
+/* ---------------------------------------------------------------- the review of it -- */
+
+function finished(): Attempt {
+  const done = attempt();
+  return {
+    ...done,
+    endedAt: done.startedAt + 300_000,
+    durationMs: 300_000,
+    completionStatus: "submitted",
+    rawScore: 0,
+    responses: {
+      q1: { ...response("q1"), selectedAnswer: "B", finalAnswer: "B", correct: false, unanswered: false, timeSpentMs: 90_000 },
+    },
+  };
+}
+
+const writtenPage = {
+  height: 900,
+  strokes: [
+    { tool: "pen" as const, colour: "ink" as const, size: 2 as const, points: [40, 60, 0.5, 300, 220, 0.6] },
+    { tool: "pen" as const, colour: "red" as const, size: 1 as const, points: [80, 400, 0.4, 500, 640, 0.5] },
+  ],
+};
+
+test("the working written on a missed question is shown back in the result", () => {
+  const { rerender } = render(
+    <ResultScreen
+      attempt={finished()}
+      questionMap={{ q1: question("q1") }}
+      showScoreEstimate={false}
+      returnLabel="Back"
+      previous={null}
+      scratchPages={{ q1: writtenPage }}
+      onClose={() => undefined}
+      onContinue={() => undefined}
+      onRetryMissed={() => undefined}
+      onTag={() => undefined}
+    />,
+  );
+  assert.ok(screen.getByRole("img", { name: /2 handwritten strokes/ }), "the working is offered back");
+  assert.ok(screen.getByText("Your working on this question"));
+
+  // A question with nothing written on it shows no empty frame.
+  rerender(
+    <ResultScreen
+      attempt={finished()}
+      questionMap={{ q1: question("q1") }}
+      showScoreEstimate={false}
+      returnLabel="Back"
+      previous={null}
+      scratchPages={{}}
+      onClose={() => undefined}
+      onContinue={() => undefined}
+      onRetryMissed={() => undefined}
+      onTag={() => undefined}
+    />,
+  );
+  assert.equal(screen.queryByText("Your working on this question"), null);
+});
+
+test("the working is shown again in an attempt reopened from the history", () => {
+  render(
+    <AttemptDetailView
+      attempt={finished()}
+      questionMap={{ q1: question("q1") }}
+      attempts={[]}
+      showScoreEstimate={false}
+      scratchPages={{ q1: writtenPage }}
+      onBack={() => undefined}
+      onDelete={() => undefined}
+      onResit={() => undefined}
+    />,
+  );
+  assert.ok(screen.getByText("Your working on this question"));
+  // Its shape comes from the page, so nothing written low down is cropped out of the review.
+  assert.ok(screen.getByRole("img", { name: /picture of your own working/ }));
 });

@@ -9,20 +9,40 @@
    the frame's width and the question's aspect ratio, so magnifying redraws rather than
    stretches. `overscroll-behavior` keeps a scroll at the end of the question from dragging
    the page behind it. */
+/**
+ * A window onto the question rather than a box that grows with it: without a bound the
+ * frame simply gets taller, the whole exam page scrolls, the Move tool has nothing to move
+ * and the answer options are pushed off the screen.
+ *
+ * The bound is on the stage, and the frame takes whatever the stage has left. The number of
+ * rows above it changes — the question toolbar always, the writing tools when writing is on,
+ * a restoring line, a page-full warning — and a height calculated for one of those states is
+ * wrong in all the others. Flexing means it is right in every state without knowing any of
+ * them.
+ */
+.question-stage { display: flex; flex-direction: column; min-height: 0; }
+@media (min-width: 981px) {
+  /* Header, the player's own padding and the fixed footer. A few pixels of slack so no
+     state of the toolbars can push the document into a scroll of its own. */
+  .question-stage { max-height: calc(100dvh - 202px); }
+}
+
 .question-frame {
   position: relative;
-  /* A fixed window onto the question rather than a box that grows with it. Without the
-     cap the frame would simply get taller and the whole exam page would scroll, which
-     leaves the Move tool nothing to move and pushes the answer options off the screen. */
-  min-height: calc(100dvh - 232px);
-  max-height: calc(100dvh - 232px);
+  flex: 1 1 auto;
+  /* Never so short that a question cannot be read; below a tablet the page scrolls instead. */
+  min-height: min(58dvh, 420px);
   padding: 12px;
   background: white;
   overflow: auto;
   overscroll-behavior: contain;
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  /* Centred by the page's own auto margins, never by `justify-content`. Centring a flex
+     item that is wider than its scroll container puts the overflow on both sides, and the
+     start edge of it cannot be scrolled to — so the left of a magnified question would be
+     unreachable. Auto margins collapse to zero instead once there is nothing spare. */
+  justify-content: flex-start;
 }
 
 /* While Move is chosen the whole frame is a grab handle. */
@@ -159,6 +179,21 @@
   .annotation-close { padding: 0 10px; }
 }
 
+/* On a phone the tools wrap to three rows and take a third of the screen away from the
+   question. One scrolling row keeps every control at a size a thumb can hit while giving
+   the question its height back. */
+@media (max-width: 700px) {
+  .annotation-tools {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .annotation-tools::-webkit-scrollbar { display: none; }
+  .annotation-group { flex: none; }
+  .annotation-close { margin-left: 6px; }
+}
+
 .annotation-swatch { position: relative; width: 30px; min-width: 30px; padding: 0; }
 .annotation-swatch::after {
   content: "";
@@ -188,5 +223,8 @@
 /* ------------------------------------------------------------- review and history -- */
 
 .scratch-preview { margin: 14px 0 0; }
-.scratch-preview figcaption { margin-bottom: 7px; color: #68746f; font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .08em; }
+/* The review sits in the themed application shell, so its caption follows the theme.
+   The paper itself stays white in both: it is a picture of handwriting in dark ink, shown
+   beside question crops that are black on white for the same reason. */
+.scratch-preview figcaption { margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .08em; }
 .scratch-preview canvas { display: block; width: 100%; border: 1px solid var(--line); border-radius: 8px; background: white; }
