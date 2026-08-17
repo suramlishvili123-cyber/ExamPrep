@@ -67,7 +67,11 @@ as an application and, after one signed-in visit, runs entirely offline.
   Move tool that drags the page; four inks, three nib widths, pressure-varying strokes,
   undo, redo and clear. A pen's own eraser end or barrel button rubs out without going near
   the toolbar. Blank squared paper can be added below the question — half a page up to two
-  pages — for working that needs more room than the crop leaves. Once a stylus is used
+  pages — and as margins each side of it, up to a full page-width per side, which is how a
+  printed paper is actually worked on: the question stays in view and the working goes next
+  to it. The sheet is moved about with a finger, with the Move tool or by dragging, and Fit
+  brings the question back from wherever it has been left. Any width the screen has going
+  spare beside a question becomes paper too, since it is blank either way. Once a stylus is used
   anywhere in the session a resting palm stops drawing and a finger moves the question
   instead; a broad contact patch is treated as a palm whatever else is in use, which is what
   a capacitive stylus needs, since those arrive indistinguishable from a finger. The ink is

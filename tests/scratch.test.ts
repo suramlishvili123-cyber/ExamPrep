@@ -17,6 +17,8 @@ import {
   encodedPageSize,
   eraseAt,
   inkExtent,
+  inkSpread,
+  pageBoardWidth,
   pageIsEmpty,
   pageIsFull,
   pagePointCount,
@@ -81,6 +83,36 @@ test("negative and large coordinates round-trip, so a stroke off the edge is not
   assert.deepEqual(
     decoded.strokes[0].points.map((value) => Math.round(value * 100) / 100),
     [-40.5, -12, 0.53, 1800.5, 990, 1, 0, 0, 0],
+  );
+});
+
+test("the margins survive storage, in both directions of the version skew", () => {
+  const page: ScratchPage = { height: 700, left: 500, right: 500, strokes: [stroke([-320, 44, 0.6, 1240, 44, 0.6])] };
+  const encoded = encodePage(page);
+  const decoded = decodePage(encoded);
+  assert.equal(decoded.left, 500);
+  assert.equal(decoded.right, 500);
+  assert.equal(decoded.height, 700);
+
+  // Backwards: a page stored before margins existed has no fields for them, and comes back
+  // as what it was — a sheet no wider than the question.
+  const body = encoded.split("\n").slice(1).join("\n");
+  const older = decodePage(`1|1400\n${body}`);
+  assert.equal(older.height, 700);
+  assert.deepEqual([older.left, older.right], [0, 0]);
+  assert.equal(older.strokes.length, 1);
+
+  // Forwards, which is the case that matters for an installed app: a device still running an
+  // older shell reads this header positionally and simply does not see the extra fields. It
+  // must lose the margins and nothing else — above all not the writing.
+  const [header] = encoded.split("\n");
+  const [version, height] = header.split("|");
+  assert.equal(version, "1", "the version marker is a gate, so it must not move for an added field");
+  assert.equal(Number(height) / 2, 700, "and the height is still the second field");
+  assert.deepEqual(
+    older.strokes[0].points,
+    decoded.strokes[0].points,
+    "every stroke reads back identically without the margins in the header",
   );
 });
 
@@ -196,4 +228,32 @@ test("a page never records a height that would hide what is written on it", () =
   const questionHeight = 679;
   assert.equal(Math.max(questionHeight, inkExtent([low])), 1444);
   assert.equal(Math.max(questionHeight, inkExtent([stroke([10, 30, 0.5, 20, 60, 0.5])])), questionHeight);
+});
+
+test("a page never records margins that would hide what is written in them", () => {
+  // The question is 0–1000 whatever paper is beside it, so working in the left margin has a
+  // negative x and working in the right one runs past 1000.
+  const beside = stroke([-260, 40, 0.5, -120, 300, 0.5, 1180, 90, 0.5]);
+  assert.deepEqual(inkSpread([beside]), { left: 284, right: 204 }, "each side clears its outermost mark");
+  assert.deepEqual(inkSpread([]), { left: 0, right: 0 }, "an empty page needs no margins");
+  assert.deepEqual(
+    inkSpread([stroke([0, 10, 0.5, 1000, 10, 0.5])]),
+    { left: 0, right: 0 },
+    "ink on the question itself, edge to edge, needs no paper beside it",
+  );
+
+  // As with the height: the margins come from the sheet, and are widened only where the ink
+  // has gone further — so narrowing them, or turning them off, hides nothing.
+  const written = 500;
+  const spread = inkSpread([beside]);
+  assert.equal(Math.max(written, spread.left), 500);
+  assert.equal(Math.max(0, spread.left), 284, "and with the margins since removed, the ink still fits");
+});
+
+test("the sheet a page was written on is as wide as the question and its margins together", () => {
+  assert.equal(pageBoardWidth({ height: 400, strokes: [] }), 1000, "a page with no margins is the question");
+  assert.equal(pageBoardWidth({ height: 400, left: 250, right: 250, strokes: [] }), 1500);
+  // Nonsense from an older schema or a hand-edited document cannot shrink the sheet below
+  // the question, which would fold the review's drawing back on itself.
+  assert.equal(pageBoardWidth({ height: 400, left: -900, right: -900, strokes: [] }), 1000);
 });

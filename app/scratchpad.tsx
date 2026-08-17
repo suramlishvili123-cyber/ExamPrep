@@ -18,6 +18,10 @@
  * goes with it. Annotation therefore stays exactly where it was put, at any magnification,
  * and lands in the same place when the page is read back on a different device.
  *
+ * The canvas is wider than the question when there is blank paper beside it, but the origin
+ * stays on the question's own left edge: writing in the left margin has a negative x. Widening
+ * the margins, narrowing them or removing them therefore moves nothing that was written.
+ *
  * ## Two canvases
  *
  * Committed strokes are painted once onto a base layer; the stroke under the nib is painted
@@ -47,6 +51,8 @@ import {
   Eraser,
   Hand,
   Highlighter,
+  MoveHorizontal,
+  MoveVertical,
   PenLine,
   Redo2,
   Trash2,
@@ -70,6 +76,8 @@ import {
   SCRATCH_COLOURS,
   eraseAt,
   inkExtent,
+  inkSpread,
+  pageBoardWidth,
   pageIsFull,
   pagePointCount,
   simplifyStroke,
@@ -95,6 +103,37 @@ const NEUTRAL_PRESSURE = 0.5;
 
 /** Undo depth. Snapshots share their stroke objects, so each entry is a list of pointers. */
 const HISTORY_DEPTH = 40;
+
+/**
+ * The most device pixels one canvas layer may have.
+ *
+ * There is a hard ceiling in the browser, not a soft one: iOS Safari refuses a canvas whose
+ * area exceeds about this, and what it gives back is *blank* — the candidate's writing simply
+ * vanishes. The sheet is easy to make large, being the question magnified up to three times
+ * with up to a page of paper on each side and two below, so the ceiling has to be respected
+ * deliberately rather than hoped past.
+ *
+ * Sixteen million is a little under the smallest limit in the field, and above anything
+ * ordinary use produces: a full-width question on a high-resolution tablet with margins is
+ * comfortably inside it, so nothing in normal use is softened by this at all.
+ */
+const MAX_CANVAS_PIXELS = 16_000_000;
+
+/**
+ * How many device pixels to give each CSS pixel of the sheet.
+ *
+ * Capped at 2.5 because a device pixel ratio of 3 on a large tablet costs a great deal of
+ * fill rate for a difference nobody can see on a 2 px line, and capped again by area. Where
+ * the area cap bites — a very large question, magnified hard, with paper all round it — the
+ * ink is drawn at less than one device pixel per CSS pixel and is correspondingly soft. That
+ * is the right way to lose: the writing is all still there, still in the right place, and
+ * still sharpens again the moment the magnification comes back down.
+ */
+export function backingRatio(width: number, height: number): number {
+  const device = Math.min(2.5, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+  const area = Math.max(1, width * height);
+  return Math.min(device, Math.sqrt(MAX_CANVAS_PIXELS / area));
+}
 
 /**
  * A touch contact wider or taller than this, in CSS pixels, is taken to be a palm.
@@ -308,6 +347,15 @@ interface AnnotatorProps {
    */
   pageWidth: number;
   pagePixelHeight: number;
+  /**
+   * Board units of blank paper to the left of the question, and to the right of it.
+   *
+   * The canvas covers the whole sheet, but the origin stays on the question: `boardLeft` is
+   * how far the sheet reaches past it on the left, so a mark made in that margin is stored at
+   * a negative x and stays put when the margin is later widened or taken away.
+   */
+  boardLeft: number;
+  boardRight: number;
   tool: ScratchTool;
   preferences: ScratchPreferences;
   /**
@@ -333,6 +381,8 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
   boardHeight,
   pageWidth,
   pagePixelHeight,
+  boardLeft,
+  boardRight,
   tool,
   preferences,
   penSeen,
@@ -349,7 +399,7 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
   const undoRef = useRef<ScratchStroke[][]>([]);
   const redoRef = useRef<ScratchStroke[][]>([]);
   const scaleRef = useRef(0);
-  const sizeRef = useRef({ width: 0, height: 0 });
+  const sizeRef = useRef({ width: 0, height: 0, left: 0, right: 0 });
   const drawingRef = useRef<{ pointerId: number; stroke: ScratchStroke } | null>(null);
   const erasingRef = useRef<number | null>(null);
   const lastErasePointRef = useRef<[number, number] | null>(null);
@@ -375,31 +425,51 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     });
   }, [boardHeight, onStatusChange]);
 
+  /** Wipe a whole layer, whatever transform it happens to have been left in. */
+  const wipe = useCallback((canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) => {
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+  }, []);
+
+  /**
+   * Put a layer's context into the page's own space.
+   *
+   * Two transforms in one: the device pixel ratio, so ink is drawn at the backing store's
+   * resolution rather than blown up from CSS pixels, and the origin, which sits on the
+   * question's left edge rather than the canvas's — the canvas being wider than the question
+   * whenever there is paper beside it. Applied explicitly by every path that paints, rather
+   * than inherited from whatever the last one left behind.
+   */
+  const enterPageSpace = useCallback((canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) => {
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    const ratio = canvas.width / Math.max(1, sizeRef.current.width);
+    context.scale(ratio, ratio);
+    context.translate(sizeRef.current.left * scaleRef.current, 0);
+  }, []);
+
   const paintAll = useCallback(() => {
     const canvas = baseRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    const ratio = canvas.width / Math.max(1, sizeRef.current.width);
-    context.scale(ratio, ratio);
+    wipe(canvas, context);
+    enterPageSpace(canvas, context);
     for (const stroke of strokesRef.current) paintStroke(context, stroke, scaleRef.current);
-  }, []);
+  }, [enterPageSpace, wipe]);
 
   /**
-   * Match the backing stores to the question's rendered box, then repaint.
+   * Match the backing stores to the sheet's rendered box, then repaint.
    *
-   * The scale is the question's width in pixels over its width in board units, so ink is
-   * redrawn at whatever magnification the question is shown at — sharp, rather than a bitmap
-   * stretched to fit.
+   * The scale is the sheet's width in pixels over its width in board units, which reduces to
+   * the question's own pixel width over 1000 whatever the margins are — so ink is redrawn at
+   * whatever magnification the question is shown at, sharp rather than a bitmap stretched to
+   * fit, and a stroke keeps its size when paper is added beside it.
    */
-  const measure = useCallback((width: number, height: number) => {
+  const measure = useCallback((width: number, height: number, left: number, right: number) => {
     if (width <= 0 || height <= 0) return;
-    if (width === sizeRef.current.width && height === sizeRef.current.height) return;
-    sizeRef.current = { width, height };
-    // Capped: a device pixel ratio of 3 on a large tablet costs a great deal of fill rate for
-    // a difference nobody can see on a 2 px line.
-    const ratio = Math.min(2.5, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+    const current = sizeRef.current;
+    if (width === current.width && height === current.height && left === current.left && right === current.right) return;
+    sizeRef.current = { width, height, left, right };
+    const ratio = backingRatio(width, height);
     for (const canvas of [baseRef.current, liveRef.current]) {
       if (!canvas) continue;
       // Only the backing store is set. The CSS size comes from the stylesheet, so the ink
@@ -407,14 +477,14 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
     }
-    scaleRef.current = width / BOARD_WIDTH;
+    scaleRef.current = width / (left + BOARD_WIDTH + right);
     paintAll();
   }, [paintAll]);
 
   // Resize with the page the host reports, which is exact and needs no paint to arrive.
   useEffect(() => {
-    measure(pageWidth, pagePixelHeight);
-  }, [measure, pageWidth, pagePixelHeight]);
+    measure(pageWidth, pagePixelHeight, boardLeft, boardRight);
+  }, [measure, pageWidth, pagePixelHeight, boardLeft, boardRight]);
 
   // Report what was restored, so Clear and the fill warning are right before the first
   // stroke rather than only after one.
@@ -429,7 +499,8 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     const host = hostRef.current;
     const remeasure = () => {
       const rect = host?.getBoundingClientRect();
-      if (rect) measure(Math.round(rect.width), Math.round(rect.height));
+      // The margins are the host's to say; only the pixels are being recovered here.
+      if (rect) measure(Math.round(rect.width), Math.round(rect.height), sizeRef.current.left, sizeRef.current.right);
     };
     if (typeof ResizeObserver === "undefined" || !host) {
       window.addEventListener("resize", remeasure);
@@ -442,12 +513,18 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
 
   const commit = useCallback((strokes: ScratchStroke[]) => {
     strokesRef.current = strokes;
-    // Never shorter than the writing reaches: see `inkExtent`. The question's own geometry
-    // sets the height, but taking blank paper away later must not hide what was written on
-    // it when the page is read back.
-    onChange({ height: Math.max(boardHeight, inkExtent(strokes)), strokes });
+    // Never smaller than the writing reaches, in any direction: see `inkExtent` and
+    // `inkSpread`. The question's own geometry sets the sheet, but taking blank paper away
+    // later must not hide what was written on it while it was there.
+    const spread = inkSpread(strokes);
+    onChange({
+      height: Math.max(boardHeight, inkExtent(strokes)),
+      left: Math.max(boardLeft, spread.left),
+      right: Math.max(boardRight, spread.right),
+      strokes,
+    });
     publishStatus();
-  }, [boardHeight, onChange, publishStatus]);
+  }, [boardHeight, boardLeft, boardRight, onChange, publishStatus]);
 
   const pushUndo = useCallback(() => {
     undoRef.current = [...undoRef.current.slice(-(HISTORY_DEPTH - 1)), strokesRef.current];
@@ -457,17 +534,22 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
   const clearLive = useCallback(() => {
     const canvas = liveRef.current;
     const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, canvas.width, canvas.height);
-  }, []);
+    if (canvas && context) wipe(canvas, context);
+  }, [wipe]);
 
+  /**
+   * Where on the paper a pointer is, in board units.
+   *
+   * Measured from the question's left edge, not the canvas's: the margin beside it is part of
+   * the same sheet but sits at a negative x, which is what keeps a mark made in it anchored to
+   * the question rather than to however much paper happened to be shown at the time.
+   */
   const boardPoint = useCallback((clientX: number, clientY: number): [number, number] => {
     const canvas = liveRef.current;
     if (!canvas) return [0, 0];
     const rect = canvas.getBoundingClientRect();
     const scale = scaleRef.current || 1;
-    return [(clientX - rect.left) / scale, (clientY - rect.top) / scale];
+    return [(clientX - rect.left) / scale - sizeRef.current.left, (clientY - rect.top) / scale];
   }, []);
 
   /** What this pointer is for, and the book-keeping that goes with a stylus appearing. */
@@ -496,15 +578,13 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     const canvas = liveRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    const ratio = canvas.width / Math.max(1, sizeRef.current.width);
-    context.scale(ratio, ratio);
     // The whole in-progress stroke is repainted rather than only its newest segment: a
     // translucent highlighter would otherwise darken wherever the passes overlapped, and one
     // stroke is short enough for this to stay well inside a frame.
-    context.clearRect(0, 0, sizeRef.current.width, sizeRef.current.height);
+    wipe(canvas, context);
+    enterPageSpace(canvas, context);
     paintStroke(context, stroke, scaleRef.current);
-  }, []);
+  }, [enterPageSpace, wipe]);
 
   /**
    * Erase along the path travelled since the last position, not just at the new one.
@@ -648,10 +728,16 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     drawingRef.current = null;
     const stroke = { ...drawing.stroke, points: simplifyStroke(drawing.stroke.points, SIMPLIFY_EPSILON) };
     clearLive();
-    const context = baseRef.current?.getContext("2d");
-    if (context) paintStroke(context, stroke, scaleRef.current);
+    // Added to the base layer rather than repainting every stroke on it: a page of working is
+    // thousands of segments, and the one just finished is the only one that has changed.
+    const canvas = baseRef.current;
+    const context = canvas?.getContext("2d");
+    if (canvas && context) {
+      enterPageSpace(canvas, context);
+      paintStroke(context, stroke, scaleRef.current);
+    }
     commit([...strokesRef.current, stroke]);
-  }, [clearLive, commit]);
+  }, [clearLive, commit, enterPageSpace]);
 
   useImperativeHandle(ref, () => ({
     undo: () => {
@@ -723,6 +809,20 @@ export const EXTRA_SPACE_OPTIONS: Array<{ value: number; label: string; short: s
   { value: 2, label: "Two pages more", short: "+2" },
 ];
 
+/**
+ * Paper beside the question, as a multiple of its width, on each side.
+ *
+ * Margins are how a printed paper is actually worked on \u2014 the question is read in place and
+ * the algebra goes next to it, not underneath it \u2014 and on a landscape tablet the room is
+ * there for the taking. A whole question-width each side is enough for a full derivation;
+ * more than that is further to reach than it is worth.
+ */
+export const SIDE_SPACE_OPTIONS: Array<{ value: number; label: string; short: string }> = [
+  { value: 0, label: "No margins beside the question", short: "None" },
+  { value: 0.5, label: "Half a page each side", short: "+\u00bd" },
+  { value: 1, label: "A page each side", short: "+1" },
+];
+
 export function AnnotationToolbar({
   tool,
   onToolChange,
@@ -730,6 +830,8 @@ export function AnnotationToolbar({
   onPreferencesChange,
   extraSpace = 0,
   onExtraSpaceChange,
+  sideSpace = 0,
+  onSideSpaceChange,
   status,
   onUndo,
   onRedo,
@@ -743,6 +845,9 @@ export function AnnotationToolbar({
   /** Blank paper below the question, as a multiple of its height. */
   extraSpace?: number;
   onExtraSpaceChange?: (value: number) => void;
+  /** Blank paper each side of the question, as a multiple of its width. */
+  sideSpace?: number;
+  onSideSpaceChange?: (value: number) => void;
   status: AnnotationStatus;
   onUndo: () => void;
   onRedo: () => void;
@@ -806,15 +911,36 @@ export function AnnotationToolbar({
       </div>
 
       {onExtraSpaceChange ? (
-        <div className="annotation-group annotation-space" role="group" aria-label="Room to write">
+        <div className="annotation-group annotation-space" role="group" aria-label="Room to write below the question">
+          <MoveVertical size={14} aria-hidden="true" />
           {EXTRA_SPACE_OPTIONS.map((option) => (
             <button
               key={option.value}
               type="button"
               className={extraSpace === option.value ? "selected" : ""}
               aria-pressed={extraSpace === option.value}
+              aria-label={`${option.label} below the question`}
               title={`${option.label} below the question`}
               onClick={() => onExtraSpaceChange(option.value)}
+            >
+              {option.short}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {onSideSpaceChange ? (
+        <div className="annotation-group annotation-space" role="group" aria-label="Room to write beside the question">
+          <MoveHorizontal size={14} aria-hidden="true" />
+          {SIDE_SPACE_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={sideSpace === option.value ? "selected" : ""}
+              aria-pressed={sideSpace === option.value}
+              aria-label={`${option.label}, to write beside it`}
+              title={`${option.label}, to write beside it`}
+              onClick={() => onSideSpaceChange(option.value)}
             >
               {option.short}
             </button>
@@ -850,9 +976,11 @@ export function ScratchpadPreview({ page, label }: { page: ScratchPage; label: s
     if (!canvas || !wrap || !context) return;
     const paint = () => {
       const width = Math.max(1, Math.round(wrap.getBoundingClientRect().width));
-      // The preview keeps the question's own aspect ratio, so nothing written near the foot
-      // of the page is cropped out of the review.
-      const height = Math.max(1, Math.round(width * (page.height || BOARD_WIDTH) / BOARD_WIDTH));
+      // The whole sheet the page was written on, question and margins alike, scaled to fit
+      // the review column. Its own proportions are kept, so nothing written at the foot of
+      // the page or out in a margin is cropped out of the review.
+      const scale = width / pageBoardWidth(page);
+      const height = Math.max(1, Math.round((page.height || BOARD_WIDTH) * scale));
       const ratio = Math.min(2, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
@@ -861,7 +989,10 @@ export function ScratchpadPreview({ page, label }: { page: ScratchPage; label: s
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.scale(ratio, ratio);
-      for (const stroke of page.strokes) paintStroke(context, stroke, width / BOARD_WIDTH);
+      // Board coordinates are measured from the question's left edge, which sits this far
+      // into the sheet when there was paper beside it.
+      context.translate(Math.max(0, page.left ?? 0) * scale, 0);
+      for (const stroke of page.strokes) paintStroke(context, stroke, scale);
     };
     paint();
     if (typeof ResizeObserver === "undefined") return;

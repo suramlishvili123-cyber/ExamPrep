@@ -17,6 +17,7 @@ import { AttemptDetailView, ExamPlayer, QUESTION_ZOOM_STEPS, ResultScreen, fitPa
 import {
   AnnotationToolbar,
   EMPTY_ANNOTATION_STATUS,
+  backingRatio,
   classifyPointer,
   isPalmContact,
   isPenErasing,
@@ -24,7 +25,7 @@ import {
   type ScratchPreferences,
 } from "../app/scratchpad";
 import { MIN_QUESTION_ZOOM, MAX_QUESTION_ZOOM, defaultState, type Attempt, type Question, type ResponseRecord, type Settings } from "../app/lib/core";
-import type { ScratchTool } from "../app/lib/scratch";
+import type { ScratchPage, ScratchTool } from "../app/lib/scratch";
 
 afterEach(cleanup);
 
@@ -78,6 +79,32 @@ function attempt(): Attempt {
   };
 }
 
+/**
+ * Give the question frame a real size.
+ *
+ * jsdom lays nothing out, so every element measures zero and the sheet collapses to a pixel.
+ * The surface falls back to a window `resize` listener where there is no `ResizeObserver`,
+ * which is exactly the hook needed to hand it a frame of a known size — and with one, the
+ * geometry the whole feature rests on can be asserted in numbers rather than described.
+ */
+function layOutFrame(container: HTMLElement, width = 1000, height = 700): HTMLElement {
+  const frame = container.querySelector(".question-frame") as HTMLElement;
+  Object.defineProperty(frame, "clientWidth", { value: width, configurable: true });
+  Object.defineProperty(frame, "clientHeight", { value: height, configurable: true });
+  // jsdom's own scroll offsets are read-only zeros, so they are replaced with plain fields
+  // the handlers can write and the assertions can read.
+  Object.defineProperty(frame, "scrollLeft", { value: 0, writable: true, configurable: true });
+  Object.defineProperty(frame, "scrollTop", { value: 0, writable: true, configurable: true });
+  fireEvent(window, new Event("resize"));
+  return frame;
+}
+
+/** The pixel width of a styled box, as the surface set it. */
+function widthOf(container: HTMLElement, selector: string): number {
+  const node = container.querySelector(selector) as HTMLElement | null;
+  return node ? parseFloat(node.style.width) : Number.NaN;
+}
+
 function playerProps(overrides: Record<string, unknown> = {}) {
   const settings = defaultState().settings;
   return {
@@ -102,6 +129,8 @@ function playerProps(overrides: Record<string, unknown> = {}) {
     questionZoom: settings.questionZoom,
     questionHideOptions: settings.questionHideOptions,
     questionOptionTrim: settings.questionOptionTrim,
+    questionExtraSpace: settings.questionExtraSpace,
+    questionSideSpace: settings.questionSideSpace,
     scratchPageFor: () => null,
     onScratchChange: () => undefined,
     scratchPreferences: { colour: "ink" as const, size: 2 as const, stylusOnly: false },
@@ -139,11 +168,12 @@ test("the toggle stops writing, and says which key brings it back", () => {
 test("the writing layer sits on the question, not beside it, and the options stay reachable", () => {
   const { container } = render(<ExamPlayer {...playerProps()} />);
 
-  const page = container.querySelector(".question-page");
-  assert.ok(page, "the question renders as a page");
-  // A direct child of the page, so it covers the question and any blank paper below it —
-  // not just the clipped part of the crop.
-  assert.ok(page?.querySelector(":scope > .annotation-layer"), "the writing layer covers the whole page");
+  const sheet = container.querySelector(".question-sheet");
+  assert.ok(sheet, "the question renders on a sheet of paper");
+  // A direct child of the sheet, so it covers the question, the blank paper below it and the
+  // margins beside it alike — not just the clipped part of the crop.
+  assert.ok(sheet?.querySelector(":scope > .annotation-layer"), "the writing layer covers the whole sheet");
+  assert.ok(sheet?.querySelector(":scope > .question-page"), "the question is a column on that sheet");
   assert.ok(container.querySelector(".question-clip > .question-content"), "the crop is clipped inside the page");
   // Nothing takes a column from the answers: the player has one question and one panel.
   assert.equal(container.querySelectorAll(".exam-content > section").length, 1);
@@ -256,7 +286,7 @@ test("blank paper can be added below the question, and only while writing", () =
   );
   assert.equal(container.querySelector(".question-extra"), null);
 
-  const space = screen.getByRole("group", { name: "Room to write" });
+  const space = screen.getByRole("group", { name: "Room to write below the question" });
   const buttons = [...space.querySelectorAll("button")];
   assert.deepEqual(buttons.map((button) => button.textContent), ["None", "+½", "+1", "+2"]);
   fireEvent.click(buttons[2]);
@@ -268,6 +298,123 @@ test("blank paper can be added below the question, and only while writing", () =
   // With writing switched off there is nothing to write on, so no blank paper is added.
   rerender(<ExamPlayer {...playerProps({ writingEnabled: false, questionExtraSpace: 1 })} />);
   assert.equal(container.querySelector(".question-extra"), null);
+});
+
+test("a sheet too large for a canvas is drawn softer rather than not at all", () => {
+  // An ordinary sheet, even a generous one on a high-resolution tablet, is untouched by the
+  // area cap: it is the device's own pixel ratio, capped at the point where more of them stop
+  // being visible on a 2px line.
+  assert.equal(backingRatio(1400, 1600), Math.min(2.5, window.devicePixelRatio || 1));
+
+  // A question magnified hard with paper all round it can exceed what a canvas may be — and
+  // iOS answers an oversized canvas with a blank one, which would lose the writing outright.
+  // The ratio falls instead, so the ink is soft but present, and every pixel of it is inside
+  // the ceiling.
+  const huge = { width: 14_490, height: 9_852 };
+  const ratio = backingRatio(huge.width, huge.height);
+  assert.ok(ratio < 1, `expected the sheet to be undersampled, got ${ratio}`);
+  assert.ok(huge.width * ratio * huge.height * ratio <= 16_000_000 + 1, "and to fit inside the ceiling");
+});
+
+test("paper can be added each side of the question, and the sheet grows to hold it", () => {
+  const patches: Array<Partial<Settings>> = [];
+  const { container, rerender } = render(
+    <ExamPlayer {...playerProps({ questionSideSpace: 0, onQuestionViewChange: (patch: Partial<Settings>) => patches.push(patch) })} />,
+  );
+  layOutFrame(container);
+  assert.equal(container.querySelectorAll(".question-margin").length, 0);
+
+  const beside = screen.getByRole("group", { name: "Room to write beside the question" });
+  const buttons = [...beside.querySelectorAll("button")];
+  assert.deepEqual(buttons.map((button) => button.textContent), ["None", "+½", "+1"]);
+  fireEvent.click(buttons[2]);
+  assert.deepEqual(patches, [{ questionSideSpace: 1 }]);
+
+  // Half a question-width each side, on a frame the question exactly fills: the sheet is
+  // twice the question, the question sits in the middle of it, and the paper beside it is
+  // reached by moving the sheet.
+  rerender(<ExamPlayer {...playerProps({ questionSideSpace: 0.5, onQuestionViewChange: () => undefined })} />);
+  layOutFrame(container);
+  assert.equal(widthOf(container, ".question-sheet"), 2000);
+  assert.equal(widthOf(container, ".question-page"), 1000);
+  assert.equal((container.querySelector(".question-page") as HTMLElement).style.left, "500px");
+  assert.deepEqual(
+    [...container.querySelectorAll(".question-margin")].map((node) => (node as HTMLElement).style.width),
+    ["500px", "500px"],
+    "blank paper on both sides, not just one",
+  );
+
+  // With writing switched off there is nothing to write in the margins with, so there are none.
+  rerender(<ExamPlayer {...playerProps({ writingEnabled: false, questionSideSpace: 0.5 })} />);
+  layOutFrame(container);
+  assert.equal(container.querySelectorAll(".question-margin").length, 0);
+  assert.equal(widthOf(container, ".question-sheet"), widthOf(container, ".question-page"));
+});
+
+test("width the frame has going spare becomes paper rather than nothing", () => {
+  // A question at half size on a 1000px frame leaves 250px blank either side of itself. That
+  // room is unusable however much margin was asked for, so the margin is never smaller than
+  // it: this is the paper that needs no moving about at all to reach.
+  const { container } = render(<ExamPlayer {...playerProps({ questionZoom: 0.5, questionSideSpace: 0.25 })} />);
+  layOutFrame(container);
+  assert.equal(widthOf(container, ".question-page"), 500, "the question is half the frame");
+  assert.deepEqual(
+    [...container.querySelectorAll(".question-margin")].map((node) => (node as HTMLElement).style.width),
+    ["250px", "250px"],
+    "a quarter of the question would be 125px; the spare 250px is taken instead",
+  );
+  assert.equal(widthOf(container, ".question-sheet"), 1000, "so the whole frame is writable");
+});
+
+test("writing in a margin is stored relative to the question, not to the sheet", () => {
+  const pages: ScratchPage[] = [];
+  const { container } = render(
+    <ExamPlayer {...playerProps({ questionSideSpace: 0.5, onScratchChange: (_id: string, page: ScratchPage) => pages.push(page) })} />,
+  );
+  layOutFrame(container);
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
+
+  // The sheet is 2000px wide for 2000 board units, so a pointer 100px in is 100 units in —
+  // which is 400 units to the *left* of the question, whose own left edge is the origin.
+  fireEvent.pointerDown(canvas, { pointerId: 1, pointerType: "pen", isPrimary: true, pressure: 0.5, width: 2, height: 2, clientX: 100, clientY: 60 });
+  fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: "pen", clientX: 100, clientY: 60 });
+  assert.equal(pages.length, 1);
+  assert.equal(pages[0].strokes[0].points[0], -400, "a mark in the left margin has a negative x");
+  assert.equal(pages[0].strokes[0].points[1], 60, "and the same y it would have had on the question");
+  assert.equal(pages[0].left, 500, "the page records the paper it was written on");
+
+  // And a mark on the question itself keeps the coordinates it has always had, so nothing
+  // written before the margins existed moves when they appear.
+  fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: "pen", isPrimary: true, pressure: 0.5, width: 2, height: 2, clientX: 700, clientY: 60 });
+  fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: "pen", clientX: 700, clientY: 60 });
+  assert.equal(pages[1].strokes[1].points[0], 200, "200 units into the question, as with no margins at all");
+});
+
+test("the question is put back in view when the next one is shown", () => {
+  const two = { ...attempt(), questionIds: ["q1", "q2"], responses: { q1: response("q1"), q2: response("q2") } };
+  const questionMap = { q1: question("q1"), q2: question("q2") };
+  const { container, rerender } = render(
+    <ExamPlayer {...playerProps({ attempt: two, questionMap, questionSideSpace: 0.5 })} />,
+  );
+  const frame = layOutFrame(container);
+  // Centred on the question, so the sheet opens on it rather than on the margin beside it.
+  assert.equal(frame.scrollLeft, 500);
+
+  // Pan out into the right-hand margin and down the page, then move on.
+  frame.scrollLeft = 1000;
+  frame.scrollTop = 300;
+  rerender(<ExamPlayer {...playerProps({ attempt: { ...two, currentIndex: 1 }, questionMap, questionSideSpace: 0.5 })} />);
+  assert.equal(frame.scrollLeft, 500, "the next question is not opened somewhere out in the margin");
+  assert.equal(frame.scrollTop, 0, "nor halfway down it");
+});
+
+test("Fit brings the question back from wherever the sheet has been moved to", () => {
+  const { container } = render(<ExamPlayer {...playerProps({ questionSideSpace: 0.5, onQuestionViewChange: () => undefined })} />);
+  const frame = layOutFrame(container);
+  frame.scrollLeft = 1400;
+
+  fireEvent.click(screen.getByRole("button", { name: "Fit the whole question on screen" }));
+  assert.equal(frame.scrollLeft, 500, "the one control that says 'show me the question again'");
 });
 
 test("the Move tool makes a drag move the question rather than doing nothing", () => {

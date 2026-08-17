@@ -217,6 +217,14 @@ export interface Settings {
    * needs more room than the crop itself leaves.
    */
   questionExtraSpace: number;
+  /**
+   * Blank paper added each side of the question, as a multiple of its width.
+   *
+   * Margins are how a printed paper is worked on — the question stays in view and the working
+   * goes beside it rather than under it — and on a landscape tablet the width is there for
+   * the taking. The sheet is moved about to reach them.
+   */
+  questionSideSpace: number;
 }
 
 /**
@@ -329,6 +337,9 @@ export function defaultState(): StoredState {
       questionHideOptions: false,
       questionOptionTrim: 0.28,
       questionExtraSpace: 0.5,
+      // Off until asked for: it is paper beyond the edge of the screen, and a candidate who
+      // has not gone looking for it should not have to pan back from it.
+      questionSideSpace: 0,
     },
     notes: {},
     syncMetadata: normalizeSyncMetadata(null),
@@ -425,6 +436,9 @@ export function mergeState(value: Partial<StoredState> | null | undefined): Stor
     ) / 100,
     questionExtraSpace: Math.round(
       boundedNumber(storedSettings.questionExtraSpace, 0, 2, base.settings.questionExtraSpace) * 4,
+    ) / 4,
+    questionSideSpace: Math.round(
+      boundedNumber(storedSettings.questionSideSpace, 0, 1, base.settings.questionSideSpace) * 4,
     ) / 4,
   };
 

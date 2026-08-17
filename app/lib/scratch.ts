@@ -7,10 +7,17 @@
  *
  * ## Coordinates
  *
- * A page is written in **board units**: it is always 1000 units wide, whatever its pixel
- * width, and its height follows from the shape of the question. Writing done on a tablet
+ * A page is written in **board units**: the *question* is always 1000 units wide, whatever it
+ * measures in pixels, and its height follows from its shape. Writing done on a tablet
  * therefore replays exactly on a laptop, which matters because the same page is shown again
  * in the post-session review on whatever device happens to be to hand.
+ *
+ * The question's own left edge is x = 0 and its right edge x = 1000 — always, however much
+ * blank paper is shown beside it. Working written in the margin to the left of the question
+ * has a negative x, and working to the right an x past 1000; the page records how far the
+ * paper extended either way in `left` and `right`. Anchoring to the question rather than to
+ * the sheet is what lets the candidate widen or narrow the margins, or turn them off
+ * altogether, without a single mark moving relative to the printed question.
  *
  * ## Why a compact encoding
  *
@@ -23,9 +30,9 @@
  */
 
 /**
- * A page is this many units wide, always, whatever it measures in pixels. Its height
- * follows from the shape of the question it belongs to, so a stroke's coordinates mean the
- * same thing on every screen.
+ * The question is this many units wide, always, whatever it measures in pixels. Its height
+ * follows from its own shape, so a stroke's coordinates mean the same thing on every screen.
+ * Margins beside the question extend past this in either direction: see `left` and `right`.
  */
 export const BOARD_WIDTH = 1000;
 
@@ -52,6 +59,14 @@ export interface ScratchStroke {
 export interface ScratchPage {
   /** Board-unit height the page was written at, so a shorter surface can fit it. */
   height: number;
+  /**
+   * Board units of paper to the left of the question, and to the right of it. Both are
+   * absent on a page written before margins existed, and zero on one written without them.
+   * They exist for the same reason `height` does: the review has to show back every mark,
+   * including the ones beside the question rather than on it.
+   */
+  left?: number;
+  right?: number;
   strokes: ScratchStroke[];
 }
 
@@ -81,7 +96,12 @@ export const MAX_STROKES_PER_PAGE = 2_000;
 export const MAX_POINTS_PER_PAGE = 60_000;
 
 export function emptyPage(height = 0): ScratchPage {
-  return { height, strokes: [] };
+  return { height, left: 0, right: 0, strokes: [] };
+}
+
+/** The whole sheet's width in board units: the question plus whatever paper is beside it. */
+export function pageBoardWidth(page: ScratchPage): number {
+  return Math.max(0, page.left ?? 0) + BOARD_WIDTH + Math.max(0, page.right ?? 0);
 }
 
 export function pageIsEmpty(page: ScratchPage | null | undefined): boolean {
@@ -108,8 +128,30 @@ export function inkExtent(strokes: ScratchStroke[]): number {
       if (stroke.points[index] > lowest) lowest = stroke.points[index];
     }
   }
-  // A margin so the lowest stroke is not flush against the edge of the review.
-  return lowest > 0 ? lowest + 24 : 0;
+  return lowest > 0 ? lowest + INK_MARGIN : 0;
+}
+
+/** A margin so the outermost stroke is not flush against the edge of the review. */
+const INK_MARGIN = 24;
+
+/**
+ * How far past the question's own edges the writing reaches, left and right, in board units.
+ *
+ * The horizontal counterpart of `inkExtent`, and there for the same reason: the margins are
+ * the candidate's to widen or remove, and narrowing them must not cut off what was written in
+ * them while they were there. Zero on either side means nothing was written beyond that edge.
+ */
+export function inkSpread(strokes: ScratchStroke[]): { left: number; right: number } {
+  let left = 0;
+  let right = 0;
+  for (const stroke of strokes) {
+    for (let index = 0; index < stroke.points.length; index += 3) {
+      const x = stroke.points[index];
+      if (-x > left) left = -x;
+      if (x - BOARD_WIDTH > right) right = x - BOARD_WIDTH;
+    }
+  }
+  return { left: left > 0 ? left + INK_MARGIN : 0, right: right > 0 ? right + INK_MARGIN : 0 };
 }
 
 /** True when another stroke would take the page past what can be stored. */
@@ -362,9 +404,18 @@ function decodeStroke(text: string): ScratchStroke | null {
   return { tool, colour, size, points };
 }
 
-/** The stored form: a version marker, the page height, then one line per stroke. */
+/**
+ * The stored form: a version marker, the page's geometry, then one line per stroke.
+ *
+ * The margins were added to the header rather than to a version 2, deliberately. The version
+ * marker is a hard gate — an unrecognised one decodes to an empty page — and this is a PWA,
+ * so a device holding an older cached shell can be handed a page written by a newer one. A
+ * field appended to a header the old parser reads positionally is ignored by it, which costs
+ * that device the margins and nothing else; a version bump would have cost it the writing.
+ */
 export function encodePage(page: ScratchPage): string {
-  const header = `1|${Math.round(page.height * POSITION_SCALE)}`;
+  const unit = (value: number | undefined) => Math.round(Math.max(0, value ?? 0) * POSITION_SCALE);
+  const header = `1|${Math.round(page.height * POSITION_SCALE)}|${unit(page.left)}|${unit(page.right)}`;
   return [header, ...page.strokes.map(encodeStroke)].join("\n");
 }
 
@@ -379,7 +430,7 @@ export function decodePage(text: string | null | undefined): ScratchPage {
   if (typeof text !== "string" || text.length === 0) return emptyPage();
   try {
     const [header, ...lines] = text.split("\n");
-    const [version, height] = header.split("|");
+    const [version, height, left, right] = header.split("|");
     if (version !== "1") return emptyPage();
     const strokes: ScratchStroke[] = [];
     for (const line of lines) {
@@ -387,7 +438,10 @@ export function decodePage(text: string | null | undefined): ScratchPage {
       const stroke = decodeStroke(line);
       if (stroke) strokes.push(stroke);
     }
-    return { height: (Number(height) || 0) / POSITION_SCALE, strokes };
+    // A page written before margins existed has no fields to read here, and `Number(undefined)`
+    // is NaN — so both fall back to a sheet no wider than the question, which is what it was.
+    const unit = (value: string | undefined) => Math.max(0, Number(value) || 0) / POSITION_SCALE;
+    return { height: (Number(height) || 0) / POSITION_SCALE, left: unit(left), right: unit(right), strokes };
   } catch {
     return emptyPage();
   }

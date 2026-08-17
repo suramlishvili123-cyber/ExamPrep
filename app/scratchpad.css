@@ -43,6 +43,12 @@
   padding: 12px;
   background: white;
   overflow: auto;
+  /* The width is measured once and the sheet is sized from it, so that width must not change
+     underneath. Without a reserved gutter the first measurement is taken before the vertical
+     scrollbar exists — blank paper below the question guarantees one — and every sheet then
+     comes out a scrollbar too wide, giving "100%" a horizontal scroll it is supposed not to
+     have. Reserving it costs nothing where scrollbars are overlaid, as on every tablet. */
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   display: flex;
   align-items: flex-start;
@@ -57,12 +63,36 @@
 .question-frame.is-panning { cursor: grab; }
 .question-frame.is-panning:active { cursor: grabbing; }
 
-.question-page { position: relative; margin: 0 auto; flex: none; }
+/* The sheet: the question, the blank paper below it and the margins each side, as one piece
+   of paper. It is what magnifies and what is moved about, so nothing written on it can drift
+   relative to anything else on it.
+
+   Squared, because columns of arithmetic and a sketched graph both keep straighter on a grid,
+   and ruled here rather than on each piece of blank paper so that one continuous grid runs
+   under all of them. The question covers its own share of it with plain white. */
+.question-sheet {
+  position: relative;
+  margin: 0 auto;
+  flex: none;
+  background-color: white;
+  background-image:
+    linear-gradient(to right, #eaf0ee 1px, transparent 1px),
+    linear-gradient(to bottom, #eaf0ee 1px, transparent 1px);
+  background-size: var(--paper-grid, 28px) var(--paper-grid, 28px);
+}
+
+.question-page { position: absolute; top: 0; }
 /* The question is clipped here rather than on the page, so the blank paper below it starts
    immediately under the cut rather than under the part that is hidden. */
-.question-clip { position: relative; overflow: hidden; }
+.question-clip { position: relative; overflow: hidden; background: white; }
 .question-content { position: relative; }
 .question-page-image { display: block; width: 100%; height: 100%; }
+
+/* The margins. Decoration only — the writing layer above them is what is actually written
+   on — so they carry nothing but the rule that marks the edge of the printed question. */
+.question-margin { position: absolute; top: 0; bottom: 0; }
+.question-margin-left { left: 0; border-right: 1px dashed #d9e2df; }
+.question-margin-right { right: 0; border-left: 1px dashed #d9e2df; }
 
 /* An authored item is composed at a fixed width and scaled, so it never reflows and its
    shape — and therefore anything written on it — is the same on every device. */
@@ -79,16 +109,10 @@
 }
 .question-page-authored .authored-question p { font-size: 25px; }
 
-/* Blank paper for working that needs more room than the crop leaves. Squared, because
-   columns of arithmetic and a sketched graph both keep straighter on a grid. */
-.question-extra {
-  background-color: white;
-  background-image:
-    linear-gradient(to right, #eaf0ee 1px, transparent 1px),
-    linear-gradient(to bottom, #eaf0ee 1px, transparent 1px);
-  background-size: 28px 28px;
-  border-top: 1px dashed #d9e2df;
-}
+/* Blank paper for working that needs more room than the crop leaves. Transparent: the sheet
+   below carries the grid, so the squares under the question line up with the squares beside
+   it. All this adds is the rule marking where the question ended. */
+.question-extra { border-top: 1px dashed #d9e2df; }
 
 /* The cut line: where the printed options are taken to begin. It is dragged rather than
    guessed at, because no two papers put their option list in the same place. */
@@ -215,7 +239,10 @@
 }
 .annotation-swatch.selected { border-color: var(--swatch); background: white; box-shadow: 0 0 0 2px color-mix(in srgb, var(--swatch) 22%, transparent); }
 
+/* Two of these groups sit side by side — paper below the question and paper beside it — and
+   the buttons in them read the same. The axis icon is what tells them apart at a glance. */
 .annotation-space button { min-width: 38px; padding: 0 8px; font-variant-numeric: tabular-nums; }
+.annotation-space > svg { flex: none; margin-right: 1px; color: #8d9995; }
 .annotation-sizes i { display: block; border-radius: 99px; background: #3d4b47; }
 .annotation-sizes button.selected i { background: #0f604f; }
 
