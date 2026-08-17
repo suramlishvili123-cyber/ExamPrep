@@ -20,6 +20,14 @@
  * wrong in all the others. Flexing means it is right in every state without knowing any of
  * them.
  */
+/**
+ * Writing needs room. The player is capped at 1180 px when it is a question and a list of
+ * options to pick from — but a page being written on wants every pixel a large screen has,
+ * and the extra width all goes to the question, since the answer panel keeps its own column.
+ * On a 1920 px screen this is the difference between about 880 px of paper and about 1280.
+ */
+.exam-content.is-writing { width: min(1660px, 100%); }
+
 .question-stage { display: flex; flex-direction: column; min-height: 0; }
 @media (min-width: 981px) {
   /* Header, the player's own padding and the fixed footer. A few pixels of slack so no
@@ -133,9 +141,11 @@
    space. Nothing here has a background: the question shows through. */
 .annotation-layer { position: absolute; inset: 0; }
 .annotation-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
-/* The live layer takes the pointers. `touch-action` is set from the component: `none` while
-   a finger writes, `auto` once a stylus is in use so touch scrolls the question instead. */
-.annotation-canvas-live { overscroll-behavior: contain; }
+/* The live layer takes every pointer, and never gives one back to the browser.
+   `touch-action` cannot say "let a finger scroll but not a stylus" — it governs both — so
+   relaxing it to allow scrolling also hands the browser the pen, and writing becomes
+   impossible. It stays `none`, and `classifyPointer` decides what each pointer is for. */
+.annotation-canvas-live { touch-action: none; overscroll-behavior: contain; }
 
 .annotation-tools {
   display: flex;

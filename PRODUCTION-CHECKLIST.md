@@ -23,6 +23,8 @@
 - [ ] Stylus, finger and mouse each write; a resting palm does not; a finger moves the
       question once a stylus has been used, including after moving to the next question
 - [ ] A pen's eraser end and barrel button rub out without changing the selected tool
+- [ ] Consecutive stylus strokes all write, and none of them scrolls the question
+- [ ] Two fingers pinch to magnify, and leave no mark where one had begun a stroke
 - [ ] The Move tool drags the question with a mouse, a stylus and a finger, and the page
       travels exactly as far as the pointer does
 - [ ] The option cut line lands where the printed options actually begin on each paper, and

@@ -49,7 +49,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import type { User } from "firebase/auth";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   MODULE_LABELS,
   MODULE_ORDER,
@@ -3995,6 +3995,14 @@ const AUTHORED_BASE_WIDTH = 900;
 /** Fallback shape for a crop whose dimensions are not known yet; roughly A5 landscape. */
 const DEFAULT_QUESTION_ASPECT = 0.68;
 
+/**
+ * How far a pointer must travel before it starts moving the question.
+ *
+ * A hand coming to rest on the glass twitches by a pixel or two. Without a threshold that
+ * would drag the question out from under the nib about to write on it.
+ */
+const PAN_THRESHOLD_PX = 6;
+
 /** The nearest offered step to an arbitrary zoom, so a stored value lands on the ramp. */
 export function nearestZoomStep(zoom: number): number {
   return QUESTION_ZOOM_STEPS.reduce(
@@ -4037,9 +4045,11 @@ export function QuestionSurface({
   trim,
   extraSpace,
   panning,
+  panOnDrag,
   onAspectChange,
   onFrameChange,
   onZoomGesture,
+  onZoomTo,
   onTrimChange,
   children,
 }: {
@@ -4050,11 +4060,19 @@ export function QuestionSurface({
   trim: number;
   /** Blank paper below the question, as a multiple of its height. */
   extraSpace: number;
-  /** True while the Move tool is chosen, which makes a drag pan the page. */
+  /** True while the Move tool is chosen, which makes a drag move the page. */
   panning: boolean;
+  /**
+   * True when the writing layer is present. Everything that reaches this element has
+   * then been declined by it, so a drag is a request to move the question rather than
+   * to write on it.
+   */
+  panOnDrag: boolean;
   onAspectChange: (aspect: number) => void;
   onFrameChange: (size: { width: number; height: number }) => void;
   onZoomGesture?: (direction: 1 | -1) => void;
+  /** Set an exact magnification, as a pinch does. */
+  onZoomTo?: (zoom: number) => void;
   /** Called as the cut line is dragged, with the new fraction. */
   onTrimChange?: (trim: number) => void;
   /**
@@ -4066,8 +4084,11 @@ export function QuestionSurface({
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   const authoredRef = useRef<HTMLDivElement | null>(null);
-  const panRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
+  const panRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
   const trimDragRef = useRef<{ pointerId: number; top: number } | null>(null);
+  const previousPageWidthRef = useRef(0);
   const [frame, setFrame] = useState({ width: 0, height: 0 });
   const [aspect, setAspect] = useState(0);
 
@@ -4144,43 +4165,119 @@ export function QuestionSurface({
 
   const effectiveAspect = aspect > 0 ? aspect : DEFAULT_QUESTION_ASPECT;
   const pageWidth = Math.max(1, Math.round(frame.width * zoom));
+
+  // Magnifying about the middle of what is on screen, rather than about the top-left of the
+  // page. Zooming in on a question and finding oneself at the top of it, having to scroll
+  // back to the line being read, is the difference between a usable viewer and a chore.
+  useLayoutEffect(() => {
+    const node = frameRef.current;
+    const previous = previousPageWidthRef.current;
+    previousPageWidthRef.current = pageWidth;
+    if (!node || previous <= 0 || previous === pageWidth) return;
+    const ratio = pageWidth / previous;
+    node.scrollLeft = (node.scrollLeft + node.clientWidth / 2) * ratio - node.clientWidth / 2;
+    node.scrollTop = (node.scrollTop + node.clientHeight / 2) * ratio - node.clientHeight / 2;
+  }, [pageWidth]);
   const questionHeight = Math.max(1, Math.round(pageWidth * effectiveAspect));
   const shownQuestionHeight = Math.max(80, Math.round(questionHeight * (1 - trim)));
   const extraHeight = Math.max(0, Math.round(questionHeight * extraSpace));
   const pageHeight = shownQuestionHeight + extraHeight;
 
   /**
-   * Drag to move the page.
+   * Moving the question, and pinching it.
    *
-   * Handing the pointer back to the browser is not enough: a mouse never drag-scrolls, and
-   * neither does a stylus, so the Move tool did nothing on exactly the devices it exists
-   * for. These handlers sit on the frame and receive the pointer by bubbling up from the
-   * writing layer above, which ignores it whenever Move is chosen.
+   * Every pointer that reaches this element is one the writing layer above declined — a
+   * finger while a stylus is in use, anything at all under the Move tool, or a press on the
+   * margin beside the page. Handing them to the browser instead is not an option: the layer
+   * has to keep `touch-action: none` or the browser would claim the stylus too, so the
+   * scrolling a finger expects is done here explicitly.
+   *
+   * Two fingers pinch. The zoom is the same one the buttons set, so a pinch and a tap on the
+   * plus sign leave the question in exactly the same state.
    */
-  const onPanDown = (event: React.PointerEvent<HTMLDivElement>) => {
+  const beginGesture = (event: React.PointerEvent<HTMLDivElement>) => {
     const node = frameRef.current;
-    // A middle-button drag pans whatever tool is chosen, as in any document viewer.
-    if (!node || (!panning && event.button !== 1)) return;
-    event.preventDefault();
+    if (!node) return;
+    // A middle-button drag moves the question whatever tool is chosen, as in any viewer.
+    const middleDrag = event.button === 1;
+    // Anything else reaching this element was declined by the writing layer above — a
+    // finger while a stylus is in use, a second finger for a pinch, or a press on the
+    // margin beside the page. Those are what move the question.
+    if (!panOnDrag && !panning && !middleDrag) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
-      // A pointer that has already gone is a failed capture, not a failed pan.
+      // A pointer that has already gone is a failed capture, not a failed gesture.
     }
-    panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: node.scrollLeft, top: node.scrollTop };
+
+    if (pointersRef.current.size >= 2 && onZoomTo) {
+      const [first, second] = [...pointersRef.current.values()];
+      pinchRef.current = { distance: Math.hypot(first.x - second.x, first.y - second.y), zoom };
+      panRef.current = null;
+      return;
+    }
+    panRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      left: node.scrollLeft,
+      top: node.scrollTop,
+      moved: false,
+    };
   };
 
-  const onPanMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const pan = panRef.current;
+  const moveGesture = (event: React.PointerEvent<HTMLDivElement>) => {
     const node = frameRef.current;
-    if (!pan || !node || pan.pointerId !== event.pointerId) return;
+    if (!node) return;
+    const tracked = pointersRef.current.get(event.pointerId);
+    if (tracked) {
+      tracked.x = event.clientX;
+      tracked.y = event.clientY;
+    } else if (panOnDrag && event.pointerType === "touch") {
+      // A finger the writing layer had been drawing with, released to us because a second
+      // one arrived and made the gesture a pinch. Its press never reached this element, so
+      // it is picked up here instead — otherwise a pinch begun mid-stroke would be a
+      // one-fingered gesture and do nothing.
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+
+    if (!pinchRef.current && pointersRef.current.size >= 2 && onZoomTo) {
+      const [a, b] = [...pointersRef.current.values()];
+      pinchRef.current = { distance: Math.hypot(a.x - b.x, a.y - b.y), zoom };
+      panRef.current = null;
+    }
+
+    const pinch = pinchRef.current;
+    if (pinch && pointersRef.current.size >= 2 && onZoomTo) {
+      event.preventDefault();
+      const [first, second] = [...pointersRef.current.values()];
+      const distance = Math.hypot(first.x - second.x, first.y - second.y);
+      if (pinch.distance > 0) {
+        const next = Math.round((pinch.zoom * distance / pinch.distance) * 20) / 20;
+        onZoomTo(Math.min(MAX_QUESTION_ZOOM, Math.max(MIN_QUESTION_ZOOM, next)));
+      }
+      return;
+    }
+
+    const pan = panRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    const dx = event.clientX - pan.x;
+    const dy = event.clientY - pan.y;
+    // A hand coming to rest twitches. Nothing moves until the pointer has genuinely
+    // travelled, so settling a palm on the glass cannot drag the question out from under
+    // the nib about to write on it.
+    if (!pan.moved && Math.hypot(dx, dy) < PAN_THRESHOLD_PX) return;
+    pan.moved = true;
     event.preventDefault();
-    node.scrollLeft = pan.left - (event.clientX - pan.x);
-    node.scrollTop = pan.top - (event.clientY - pan.y);
+    node.scrollLeft = pan.left - dx;
+    node.scrollTop = pan.top - dy;
   };
 
-  const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
+  const endGesture = (event: React.PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.delete(event.pointerId);
     if (panRef.current?.pointerId === event.pointerId) panRef.current = null;
+    if (pointersRef.current.size < 2) pinchRef.current = null;
   };
 
   /** Drag the cut line to say exactly where the printed options begin on this paper. */
@@ -4218,11 +4315,11 @@ export function QuestionSurface({
     <div
       className={`question-frame ${question.authored ? "authored-frame" : ""} ${panning ? "is-panning" : ""}`}
       ref={attachFrame}
-      onPointerDown={onPanDown}
-      onPointerMove={onPanMove}
-      onPointerUp={endPan}
-      onPointerCancel={endPan}
-      onLostPointerCapture={endPan}
+      onPointerDown={beginGesture}
+      onPointerMove={moveGesture}
+      onPointerUp={endGesture}
+      onPointerCancel={endGesture}
+      onLostPointerCapture={endGesture}
       onWheel={(event) => {
         // Ctrl or Cmd with the wheel is the zoom gesture every document viewer uses, and it
         // is what a trackpad pinch arrives as.
@@ -4471,7 +4568,7 @@ export function ExamPlayer({
           </div>
         </main>
       ) : (
-        <main className="exam-content" inert={Boolean(attempt.pausedAt)}>
+        <main className={`exam-content ${writingVisible ? "is-writing" : ""}`} inert={Boolean(attempt.pausedAt)}>
           <section className="question-stage">
             <div className="question-toolbar">
               <div><Pill tone="neutral">{displayedSource}</Pill>{!attempt.strictTimed ? <Pill tone="blue">{question.esatTopic}</Pill> : null}</div>
@@ -4578,9 +4675,11 @@ export function ExamPlayer({
               trim={questionHideOptions && question.questionImage ? questionOptionTrim : 0}
               extraSpace={writingVisible ? questionExtraSpace : 0}
               panning={writingVisible && tool === "pan"}
+              panOnDrag={writingVisible}
               onAspectChange={setAspect}
               onFrameChange={setFrame}
               onZoomGesture={onQuestionViewChange ? stepZoom : undefined}
+              onZoomTo={onQuestionViewChange ? (value) => onQuestionViewChange({ questionZoom: value }) : undefined}
               onTrimChange={onQuestionViewChange ? (value) => onQuestionViewChange({ questionOptionTrim: value }) : undefined}
             >
               {(page) => (writingVisible && scratchPreferences ? (

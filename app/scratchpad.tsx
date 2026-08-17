@@ -25,12 +25,16 @@
  * move would put visible lag between the stylus and the ink, which is the one thing a
  * writing surface may not do.
  *
- * ## Palm rejection
+ * ## Every pointer is routed here, not by the browser
  *
- * Once a stylus has been used, touch stops drawing and starts scrolling the question instead.
- * Resting a hand on a tablet while writing is not optional, and a palm that draws makes the
- * feature useless. Touch keeps writing until a pen is seen, so a finger remains a valid way
- * to write for anyone without a stylus — and the Move tool gives them scrolling back.
+ * `touch-action` cannot say "let a finger scroll but not a stylus": it governs both alike.
+ * Relaxing it so a finger could scroll therefore handed the browser the pen as well, and it
+ * claimed each stroke as a pan — writing became impossible. The surface keeps
+ * `touch-action: none` and every pointer is classified in code instead: a stylus writes, a
+ * finger writes until a stylus appears and moves the question afterwards, a broad contact or
+ * a hand near a working nib does nothing at all, and a second finger pinches. See
+ * `classifyPointer`, which is pure so that each combination is a test rather than something
+ * discovered on a tablet.
  *
  * ## Uncontrolled by design
  *
@@ -130,6 +134,68 @@ export function isPenErasing(event: Pick<PointerEvent, "pointerType" | "button" 
  */
 export function isPalmContact(width: number, height: number): boolean {
   return width > MAX_TOUCH_CONTACT_PX || height > MAX_TOUCH_CONTACT_PX;
+}
+
+/**
+ * How long after a stylus event touch is ignored outright.
+ *
+ * A hand does not land and lift cleanly around each stroke: the heel of it arrives a moment
+ * before the nib and stays put after it lifts. Within this window every touch is discarded,
+ * whatever its contact patch says, which is what makes writing a line at a time bearable.
+ * Outside it, a finger is taken at face value and scrolls the question.
+ */
+export const PEN_LOCKOUT_MS = 700;
+
+/** What is to be done with a pointer that has just gone down on the writing layer. */
+export type PointerIntent =
+  /** Write or erase with it. */
+  | "draw"
+  /** Not ours: let it through to move the question. */
+  | "pan"
+  /** A palm, or a hand near a working stylus. Swallowed so it does neither. */
+  | "ignore";
+
+/**
+ * Decide what a pointer is for.
+ *
+ * This is the whole of the input model, kept pure so every combination can be stated as a
+ * test rather than discovered on a tablet. It exists because `touch-action` cannot express
+ * it: that property governs pen and finger alike, so the moment it is relaxed to let a
+ * finger scroll, the browser also claims the stylus and drawing becomes impossible.
+ * Everything is therefore routed here instead, and the surface itself never yields a
+ * gesture to the browser.
+ */
+export function classifyPointer(input: {
+  pointerType: string;
+  width: number;
+  height: number;
+  isPrimary: boolean;
+  tool: ScratchTool;
+  /** A stylus has been used at some point in this session. */
+  penSeen: boolean;
+  /** A stylus is on the glass right now, or was within the lockout window. */
+  penActive: boolean;
+  stylusOnly: boolean;
+}): PointerIntent {
+  // Move is explicit: nothing writes while it is chosen.
+  if (input.tool === "pan") return "pan";
+  // A second finger belongs to the gesture handler, which uses it to pinch.
+  if (!input.isPrimary) return "pan";
+
+  if (input.pointerType === "pen") return "draw";
+
+  if (input.pointerType === "touch") {
+    // A hand resting near a working stylus must do nothing at all — neither mark the page
+    // nor scroll it out from under the nib.
+    if (input.penActive) return "ignore";
+    if (isPalmContact(input.width, input.height)) return "ignore";
+    // Once a stylus is in use, or touch is switched off, a finger is for moving about.
+    return input.penSeen || input.stylusOnly ? "pan" : "draw";
+  }
+
+  // A mouse or trackpad writes unless the candidate has asked for a stylus only, in which
+  // case dragging is the useful thing left for it to do.
+  return input.stylusOnly ? "pan" : "draw";
 }
 
 export interface ScratchPreferences {
@@ -287,6 +353,8 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
   const drawingRef = useRef<{ pointerId: number; stroke: ScratchStroke } | null>(null);
   const erasingRef = useRef<number | null>(null);
   const lastErasePointRef = useRef<[number, number] | null>(null);
+  /** When a stylus was last seen, for the lockout that keeps a resting hand quiet. */
+  const lastPenAtRef = useRef(Number.NEGATIVE_INFINITY);
   const fullWarnedRef = useRef(false);
   // Mirrors the stroke count for the accessible label only. The strokes themselves stay in
   // a ref; a ref cannot be read during render, and the label has to say something true.
@@ -402,21 +470,27 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     return [(clientX - rect.left) / scale, (clientY - rect.top) / scale];
   }, []);
 
-  /** Whether this pointer is allowed to write. */
-  const accepts = useCallback((pointerType: string, width: number, height: number): boolean => {
-    if (pointerType === "pen") {
+  /** What this pointer is for, and the book-keeping that goes with a stylus appearing. */
+  const intentFor = useCallback((event: React.PointerEvent<HTMLCanvasElement>): PointerIntent => {
+    if (event.pointerType === "pen") {
+      lastPenAtRef.current = event.timeStamp || Date.now();
       if (!penSeen) {
         onPenSeen?.();
         onNotice?.("Stylus detected. Your palm will no longer draw, and a finger now moves the question.");
       }
-      return true;
     }
-    if (pointerType !== "touch") return !stylusOnly;
-    // A palm is rejected on its own account, before the stylus rule, so a hand put down
-    // first on a fresh question cannot leave a mark even where no pen has been seen yet.
-    if (isPalmContact(width, height)) return false;
-    return !stylusOnly && !penSeen;
-  }, [onNotice, onPenSeen, penSeen, stylusOnly]);
+    const now = event.timeStamp || Date.now();
+    return classifyPointer({
+      pointerType: event.pointerType,
+      width: event.width,
+      height: event.height,
+      isPrimary: event.isPrimary,
+      tool,
+      penSeen,
+      penActive: drawingRef.current !== null || now - lastPenAtRef.current < PEN_LOCKOUT_MS,
+      stylusOnly,
+    });
+  }, [onNotice, onPenSeen, penSeen, stylusOnly, tool]);
 
   const paintLive = useCallback((stroke: ScratchStroke) => {
     const canvas = liveRef.current;
@@ -456,13 +530,39 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     paintAll();
   }, [boardPoint, commit, paintAll]);
 
+  /**
+   * Throw away the stroke being written and put the history back as it was.
+   *
+   * Used when a second finger arrives: that is a pinch, not a letter, and the mark the first
+   * finger had started is not something the candidate meant to leave behind.
+   */
+  const abortStroke = useCallback(() => {
+    if (!drawingRef.current) return;
+    drawingRef.current = null;
+    clearLive();
+    const previous = undoRef.current.pop();
+    if (previous) strokesRef.current = previous;
+    publishStatus();
+  }, [clearLive, publishStatus]);
+
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
-    // The Move tool exists for a candidate with no stylus, whose finger would otherwise
-    // always draw. It hands every pointer straight back to the browser's own scrolling.
-    if (tool === "pan" || !event.isPrimary || !accepts(event.pointerType, event.width, event.height)) return;
-    // Only after the pointer is accepted: preventing the default on a rejected touch would
-    // stop the candidate scrolling the question with a finger.
+    // A second finger means a pinch. If the first one had started writing, that mark was not
+    // intended, so it is taken back before the gesture below is allowed to run.
+    if (!event.isPrimary && event.pointerType === "touch") abortStroke();
+    const intent = intentFor(event);
+    // Left alone, so it reaches the frame beneath and moves the question. Nothing here may
+    // consume it: this is how a finger scrolls while a stylus writes.
+    if (intent === "pan") return;
+    // A palm, or a hand near a working nib. Swallowed outright — it must neither mark the
+    // page nor scroll it away from the stroke being written.
+    if (intent === "ignore") {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    // Ours. Stopping it here is what keeps the frame from panning under a stroke.
     event.preventDefault();
+    event.stopPropagation();
     try {
       // Capture keeps a stroke coming to this canvas when the nib crosses its edge. It throws
       // if the pointer is no longer active, which is a failed capture rather than a failed
@@ -503,17 +603,20 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     drawingRef.current = { pointerId: event.pointerId, stroke };
     paintLive(stroke);
     publishStatus();
-  }, [accepts, boardHeight, boardPoint, colour, eraseFrom, onNotice, paintLive, publishStatus, pushUndo, size, tool]);
+  }, [abortStroke, boardHeight, boardPoint, colour, eraseFrom, intentFor, onNotice, paintLive, publishStatus, pushUndo, size, tool]);
 
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerType === "pen") lastPenAtRef.current = event.timeStamp || Date.now();
     if (erasingRef.current === event.pointerId) {
       event.preventDefault();
+      event.stopPropagation();
       eraseFrom(event.clientX, event.clientY);
       return;
     }
     const drawing = drawingRef.current;
     if (!drawing || drawing.pointerId !== event.pointerId) return;
     event.preventDefault();
+    event.stopPropagation();
     const points = drawing.stroke.points;
     const push = (clientX: number, clientY: number, pressure: number) => {
       const [x, y] = boardPoint(clientX, clientY);
@@ -574,24 +677,17 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
     },
   }), [clearLive, commit, paintAll, pushUndo]);
 
-  /**
-   * Who moves the question under a finger.
-   *
-   * Once a stylus is in use — or touch is switched off entirely — a finger belongs to the
-   * browser, which scrolls the frame natively while the ink stays where it was put. Under
-   * the Move tool the host pans explicitly for every kind of pointer, so the browser must
-   * not scroll as well: leaving it to do both moved the page twice as far as the finger.
-   */
-  const touchAction = tool !== "pan" && (penSeen || stylusOnly) ? "auto" : "none";
-
-
   return (
     <div className="annotation-layer" ref={hostRef}>
       <canvas ref={baseRef} className="annotation-canvas" aria-hidden="true" />
       <canvas
         ref={liveRef}
         className="annotation-canvas annotation-canvas-live"
-        style={{ touchAction, cursor: tool === "pan" ? "grab" : tool === "eraser" ? "cell" : "crosshair" }}
+        // No `touch-action` here, ever. It governs a stylus exactly as it governs a finger,
+        // so the value that lets a finger scroll also hands the browser the pen — and every
+        // stroke becomes a scroll. The stylesheet pins it to `none` and `classifyPointer`
+        // decides what each pointer is for instead.
+        style={{ cursor: tool === "pan" ? "grab" : tool === "eraser" ? "cell" : "crosshair" }}
         role="img"
         aria-label={strokeCount
           ? `Your writing on this question: ${strokeCount} stroke${strokeCount === 1 ? "" : "s"}. Write with a stylus, finger or mouse.`

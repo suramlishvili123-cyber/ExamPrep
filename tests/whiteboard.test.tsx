@@ -17,6 +17,7 @@ import { AttemptDetailView, ExamPlayer, QUESTION_ZOOM_STEPS, ResultScreen, fitPa
 import {
   AnnotationToolbar,
   EMPTY_ANNOTATION_STATUS,
+  classifyPointer,
   isPalmContact,
   isPenErasing,
   type AnnotationStatus,
@@ -270,45 +271,171 @@ test("blank paper can be added below the question, and only while writing", () =
 });
 
 test("the Move tool makes a drag move the question rather than doing nothing", () => {
-  const { container, rerender } = render(<ExamPlayer {...playerProps()} />);
+  const { container } = render(<ExamPlayer {...playerProps()} />);
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
   const frame = container.querySelector(".question-frame") as HTMLElement;
-  // jsdom does not lay anything out, so scrolling is asserted through the element's own
-  // scroll properties, which the handler sets directly.
+  // jsdom lays nothing out, so scrolling is asserted through the properties the handler sets.
   Object.defineProperty(frame, "scrollLeft", { value: 0, writable: true, configurable: true });
   Object.defineProperty(frame, "scrollTop", { value: 0, writable: true, configurable: true });
 
-  // With the pen chosen a drag on the frame must not move the page.
-  fireEvent.pointerDown(frame, { pointerId: 1, clientX: 200, clientY: 200, button: 0 });
-  fireEvent.pointerMove(frame, { pointerId: 1, clientX: 150, clientY: 120 });
-  assert.equal(frame.scrollTop, 0, "the pen writes; it does not drag the page");
-  fireEvent.pointerUp(frame, { pointerId: 1 });
+  // With the pen chosen, a stylus on the page writes and the page stays where it is.
+  fireEvent.pointerDown(canvas, { pointerId: 1, pointerType: "pen", isPrimary: true, pressure: 0.6, width: 2, height: 2, clientX: 200, clientY: 200 });
+  fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: "pen", pressure: 0.6, clientX: 150, clientY: 120 });
+  assert.equal(frame.scrollTop, 0, "a stylus writes; it does not drag the page");
+  fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: "pen", clientX: 150, clientY: 120 });
 
-  rerender(<ExamPlayer {...playerProps()} />);
+  // Under Move, the same drag moves it.
   fireEvent.click(screen.getByRole("button", { name: "Move" }));
-  fireEvent.pointerDown(frame, { pointerId: 2, clientX: 200, clientY: 200, button: 0 });
-  fireEvent.pointerMove(frame, { pointerId: 2, clientX: 150, clientY: 120 });
+  fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: "pen", isPrimary: true, clientX: 200, clientY: 200 });
+  fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: "pen", clientX: 150, clientY: 120 });
   assert.equal(frame.scrollLeft, 50, "dragging left moves the page right");
   assert.equal(frame.scrollTop, 80, "dragging up moves the page down");
-  fireEvent.pointerUp(frame, { pointerId: 2 });
+  fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: "pen" });
 
   // Released, further movement is ignored.
-  fireEvent.pointerMove(frame, { pointerId: 2, clientX: 10, clientY: 10 });
+  fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: "pen", clientX: 10, clientY: 10 });
   assert.equal(frame.scrollTop, 80);
 });
 
-test("only one thing moves the question under a finger", () => {
-  // Under Move the host pans every kind of pointer, so the browser must not scroll as well.
+test("the writing surface never yields a gesture to the browser", () => {
+  // The whole of the bug this replaced: `touch-action` cannot tell a stylus from a finger,
+  // so relaxing it to let a finger scroll also handed the browser the pen, and every stroke
+  // turned into a scroll. It is pinned to none in the stylesheet and the pointers are routed
+  // in code instead, so nothing here may set it inline.
   const { container, rerender } = render(<ExamPlayer {...playerProps()} />);
   const canvas = () => container.querySelector(".annotation-canvas-live") as HTMLElement;
-  assert.equal(canvas().style.touchAction, "none", "a finger writes by default");
+  assert.ok(!canvas().style.touchAction);
 
-  // With touch switched off entirely the browser scrolls the frame and nothing draws.
   rerender(<ExamPlayer {...playerProps({ scratchPreferences: { colour: "ink" as const, size: 2 as const, stylusOnly: true } })} />);
-  assert.equal(canvas().style.touchAction, "auto");
-
-  // Under Move the host pans every pointer itself, so the browser must not scroll as well.
+  assert.ok(!canvas().style.touchAction);
   fireEvent.click(screen.getByRole("button", { name: "Move" }));
-  assert.equal(canvas().style.touchAction, "none", "under Move the host pans, not the browser");
+  assert.ok(!canvas().style.touchAction);
+});
+
+test("every pointer has exactly one job", () => {
+  const base = { width: 2, height: 2, isPrimary: true, tool: "pen" as const, penSeen: false, penActive: false, stylusOnly: false };
+
+  // A stylus always writes. This is the case that was broken.
+  assert.equal(classifyPointer({ ...base, pointerType: "pen" }), "draw");
+  assert.equal(classifyPointer({ ...base, pointerType: "pen", penSeen: true, penActive: true }), "draw");
+
+  // A finger writes until a stylus turns up, and moves the question afterwards.
+  assert.equal(classifyPointer({ ...base, pointerType: "touch", width: 12, height: 12 }), "draw");
+  assert.equal(classifyPointer({ ...base, pointerType: "touch", width: 12, height: 12, penSeen: true }), "pan");
+  assert.equal(classifyPointer({ ...base, pointerType: "touch", width: 12, height: 12, stylusOnly: true }), "pan");
+
+  // A hand near a working nib does nothing at all: it must neither mark the page nor scroll
+  // it out from under the stroke being written.
+  assert.equal(classifyPointer({ ...base, pointerType: "touch", width: 12, height: 12, penSeen: true, penActive: true }), "ignore");
+  assert.equal(classifyPointer({ ...base, pointerType: "touch", width: 60, height: 40 }), "ignore");
+
+  // Move means move, for everything.
+  for (const pointerType of ["pen", "touch", "mouse"]) {
+    assert.equal(classifyPointer({ ...base, pointerType, tool: "pan" }), "pan", pointerType);
+  }
+  // A second finger belongs to the pinch handler.
+  assert.equal(classifyPointer({ ...base, pointerType: "touch", isPrimary: false }), "pan");
+
+  // A mouse writes, unless the candidate has asked for a stylus only.
+  assert.equal(classifyPointer({ ...base, pointerType: "mouse" }), "draw");
+  assert.equal(classifyPointer({ ...base, pointerType: "mouse", stylusOnly: true }), "pan");
+});
+
+test("a stylus writes without the page moving under it", () => {
+  const drawn: unknown[] = [];
+  const { container } = render(<ExamPlayer {...playerProps({ onScratchChange: (_id: string, page: unknown) => drawn.push(page) })} />);
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
+  const frame = container.querySelector(".question-frame") as HTMLElement;
+  Object.defineProperty(frame, "scrollTop", { value: 0, writable: true, configurable: true });
+  Object.defineProperty(frame, "scrollLeft", { value: 0, writable: true, configurable: true });
+
+  fireEvent.pointerDown(canvas, { pointerId: 1, pointerType: "pen", isPrimary: true, pressure: 0.6, width: 2, height: 2, clientX: 100, clientY: 100 });
+  fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: "pen", pressure: 0.6, clientX: 160, clientY: 140 });
+  fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: "pen", clientX: 160, clientY: 140 });
+  assert.equal(drawn.length, 1, "the stylus wrote");
+  assert.equal(frame.scrollTop, 0, "and the page did not move under it");
+
+  // A hand touching down in the moments around a stroke is part of writing, not a gesture:
+  // within the lockout it neither marks the page nor scrolls it.
+  fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: "touch", isPrimary: true, width: 12, height: 12, clientX: 200, clientY: 300 });
+  fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: "touch", width: 12, height: 12, clientX: 200, clientY: 220 });
+  assert.equal(drawn.length, 1, "the hand wrote nothing");
+  assert.equal(frame.scrollTop, 0, "and moved nothing");
+  fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: "touch", clientX: 200, clientY: 220 });
+});
+
+test("a finger moves the question when it is not the writing tool", () => {
+  const drawn: unknown[] = [];
+  const { container } = render(<ExamPlayer {...playerProps({
+    onScratchChange: (_id: string, page: unknown) => drawn.push(page),
+    scratchPreferences: { colour: "ink" as const, size: 2 as const, stylusOnly: true },
+  })} />);
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
+  const frame = container.querySelector(".question-frame") as HTMLElement;
+  Object.defineProperty(frame, "scrollTop", { value: 0, writable: true, configurable: true });
+  Object.defineProperty(frame, "scrollLeft", { value: 0, writable: true, configurable: true });
+
+  fireEvent.pointerDown(canvas, { pointerId: 7, pointerType: "touch", isPrimary: true, width: 12, height: 12, clientX: 200, clientY: 300 });
+  fireEvent.pointerMove(canvas, { pointerId: 7, pointerType: "touch", width: 12, height: 12, clientX: 240, clientY: 220 });
+  assert.equal(frame.scrollTop, 80, "the finger moved the question up");
+  assert.equal(frame.scrollLeft, -40, "and across");
+  assert.deepEqual(drawn, [], "and wrote nothing");
+  fireEvent.pointerUp(canvas, { pointerId: 7, pointerType: "touch", clientX: 240, clientY: 220 });
+});
+
+test("a resting hand neither writes nor nudges the question", () => {
+  const drawn: unknown[] = [];
+  const { container } = render(<ExamPlayer {...playerProps({ onScratchChange: (_id: string, page: unknown) => drawn.push(page) })} />);
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
+  const frame = container.querySelector(".question-frame") as HTMLElement;
+  Object.defineProperty(frame, "scrollTop", { value: 0, writable: true, configurable: true });
+
+  fireEvent.pointerDown(canvas, { pointerId: 3, pointerType: "touch", isPrimary: true, width: 54, height: 46, clientX: 120, clientY: 400 });
+  fireEvent.pointerMove(canvas, { pointerId: 3, pointerType: "touch", width: 54, height: 46, clientX: 126, clientY: 380 });
+  fireEvent.pointerUp(canvas, { pointerId: 3, pointerType: "touch", clientX: 126, clientY: 380 });
+  assert.deepEqual(drawn, [], "a palm leaves no mark");
+  assert.equal(frame.scrollTop, 0, "and does not scroll the question away");
+});
+
+test("a tremor does not move the question, but a real drag does", () => {
+  const { container } = render(<ExamPlayer {...playerProps()} />);
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
+  const frame = container.querySelector(".question-frame") as HTMLElement;
+  Object.defineProperty(frame, "scrollTop", { value: 0, writable: true, configurable: true });
+
+  fireEvent.click(screen.getByRole("button", { name: "Move" }));
+  fireEvent.pointerDown(canvas, { pointerId: 4, pointerType: "touch", isPrimary: true, width: 12, height: 12, clientX: 100, clientY: 100 });
+  fireEvent.pointerMove(canvas, { pointerId: 4, pointerType: "touch", clientX: 102, clientY: 103 });
+  assert.equal(frame.scrollTop, 0, "under the threshold nothing happens");
+  fireEvent.pointerMove(canvas, { pointerId: 4, pointerType: "touch", clientX: 110, clientY: 130 });
+  assert.equal(frame.scrollTop, -30, "past it, the question follows the pointer");
+});
+
+test("two fingers pinch the question, even when a finger had started writing", () => {
+  const zooms: number[] = [];
+  const drawn: unknown[] = [];
+  const { container } = render(
+    <ExamPlayer {...playerProps({
+      onScratchChange: (_id: string, page: unknown) => drawn.push(page),
+      onQuestionViewChange: (patch: Partial<Settings>) => { if (patch.questionZoom) zooms.push(patch.questionZoom); },
+    })} />,
+  );
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
+
+  // No stylus has been used, so the first finger starts writing. The second says a pinch was
+  // meant all along, and the mark it had begun is taken back.
+  fireEvent.pointerDown(canvas, { pointerId: 5, pointerType: "touch", isPrimary: true, width: 12, height: 12, clientX: 200, clientY: 300 });
+  fireEvent.pointerDown(canvas, { pointerId: 6, pointerType: "touch", isPrimary: false, width: 12, height: 12, clientX: 300, clientY: 300 });
+  fireEvent.pointerMove(canvas, { pointerId: 5, pointerType: "touch", clientX: 200, clientY: 300 });
+  fireEvent.pointerMove(canvas, { pointerId: 6, pointerType: "touch", clientX: 400, clientY: 300 });
+  assert.equal(zooms[zooms.length - 1], 2, "spreading to twice the span doubles the magnification");
+
+  fireEvent.pointerMove(canvas, { pointerId: 6, pointerType: "touch", clientX: 250, clientY: 300 });
+  assert.equal(zooms[zooms.length - 1], 0.5, "and pinching back in reduces it");
+
+  fireEvent.pointerUp(canvas, { pointerId: 6, pointerType: "touch" });
+  fireEvent.pointerUp(canvas, { pointerId: 5, pointerType: "touch" });
+  assert.deepEqual(drawn, [], "a pinch leaves no mark behind");
 });
 
 test("a middle-button drag moves the question whatever tool is chosen", () => {
@@ -439,9 +566,7 @@ test("a palm resting first on a fresh question does not draw", () => {
   assert.deepEqual(drawn, [], "a palm must not start a stroke");
 
   // A fingertip on the same question still writes, because no pen has been used.
-  assert.equal(canvas().style.touchAction, "none");
   rerender(<ExamPlayer {...playerProps({ writingReady: true })} />);
-  assert.equal(canvas().style.touchAction, "none");
 });
 
 test("a stylus seen on one question is remembered on the next", () => {
@@ -450,12 +575,12 @@ test("a stylus seen on one question is remembered on the next", () => {
   // event, with no pen of its own having been seen.
   const { container } = render(<ExamPlayer {...playerProps()} />);
   const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
-  assert.equal(canvas.style.touchAction, "none", "before any stylus, a finger writes");
+  assert.ok(!canvas.style.touchAction, "the surface never sets one");
 
   fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: "pen", isPrimary: true, pressure: 0.5, width: 2, height: 2, clientX: 20, clientY: 20 });
   fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: "pen" });
   // The host was told, and the layer now hands touch to the browser to move the question.
-  assert.equal(canvas.style.touchAction, "auto", "after a stylus, a finger moves the page");
+  
 });
 
 
