@@ -79,8 +79,11 @@ as an application and, after one signed-in visit, runs entirely offline.
   anchored to the paper rather than the screen, so it stays exactly where it was put through
   any magnification and lands in the same place when the page is read back on another
   device. Each question keeps its own writing, it survives a reload, and it is shown back
-  beside every mistake in the post-session review. The whole feature is switched on and off
-  from the toolbar, the W key, or Settings.
+  beside every mistake in the post-session review. **Press a question in the review and it
+  reopens on its own paper, with what you wrote still on it**, so a question you got wrong
+  can be worked through properly rather than only looked at — the same tools, the same
+  margins, and anything you add is saved back to that attempt. The whole feature is switched
+  on and off from the toolbar, the W key, or Settings.
 - **A question you can actually read.** The question is magnified from 40% to 300% of the
   width that fits, with a Fit control that brings a whole tall paper onto one screen and
   Ctrl or Cmd with the wheel to zoom. The printed option list at the foot of a scan can be

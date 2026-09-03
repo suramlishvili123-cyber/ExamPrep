@@ -13,7 +13,7 @@ import "./dom-setup";
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { AttemptDetailView, ExamPlayer, QUESTION_ZOOM_STEPS, ResultScreen, fitPageZoom, nearestZoomStep } from "../app/esat-app";
+import { AttemptDetailView, ExamPlayer, QUESTION_ZOOM_STEPS, ResultScreen, ReviewWorkspace, fitPageZoom, nearestZoomStep } from "../app/esat-app";
 import {
   AnnotationToolbar,
   EMPTY_ANNOTATION_STATUS,
@@ -807,4 +807,146 @@ test("the working is shown again in an attempt reopened from the history", () =>
   assert.ok(screen.getByText("Your working on this question"));
   // Its shape comes from the page, so nothing written low down is cropped out of the review.
   assert.ok(screen.getByRole("img", { name: /picture of your own working/ }));
+});
+
+/* ------------------------------------------- carrying on writing from the review -- */
+
+function reviewedAttempt(): Attempt {
+  const base = attempt();
+  return {
+    ...base,
+    questionIds: ["q1"],
+    responses: { q1: { ...response("q1"), selectedAnswer: "B", finalAnswer: "B", correct: false, unanswered: false } },
+    rawScore: 0,
+    endedAt: base.startedAt + 60_000,
+    durationMs: 60_000,
+    completionStatus: "submitted",
+  };
+}
+
+function workspaceProps(overrides: Record<string, unknown> = {}) {
+  const settings = defaultState().settings;
+  return {
+    question: question("q1"),
+    number: 4,
+    source: "NSAA 2019",
+    answered: "B",
+    correctAnswer: "C",
+    initialPage: null,
+    settings,
+    onSettingsChange: () => undefined,
+    preferences: { colour: "ink" as const, size: 2 as const, stylusOnly: false },
+    onPreferencesChange: () => undefined,
+    onChange: () => undefined,
+    onClose: () => undefined,
+    ...overrides,
+  };
+}
+
+test("a reviewed question is a way back into it, not just a picture of it", () => {
+  const opened: string[] = [];
+  const { container, rerender } = render(
+    <ResultScreen
+      attempt={reviewedAttempt()}
+      questionMap={{ q1: question("q1") }}
+      showScoreEstimate
+      returnLabel="Back"
+      previous={null}
+      onOpenWriting={(id: string) => opened.push(id)}
+      onClose={() => undefined}
+      onContinue={() => undefined}
+      onRetryMissed={() => undefined}
+      onTag={() => undefined}
+    />,
+  );
+
+  const opener = screen.getByRole("button", { name: /Open question .* to write on it/ });
+  assert.ok(opener.querySelector("img"), "the question itself is what is pressed");
+  fireEvent.click(opener);
+  assert.deepEqual(opened, ["q1"], "pressing it asks the host to open that question");
+
+  // Without a handler — a question no longer in the bank, or a reader who cannot write —
+  // it stays the plain picture it always was rather than becoming a dead control.
+  rerender(
+    <ResultScreen
+      attempt={reviewedAttempt()}
+      questionMap={{ q1: question("q1") }}
+      showScoreEstimate
+      returnLabel="Back"
+      previous={null}
+      onClose={() => undefined}
+      onContinue={() => undefined}
+      onRetryMissed={() => undefined}
+      onTag={() => undefined}
+    />,
+  );
+  assert.equal(screen.queryByRole("button", { name: /Open question/ }), null);
+  assert.ok(container.querySelector(".error-review-body img"), "and the question is still shown");
+});
+
+test("the reopened question carries the working already on it, and keeps writing", () => {
+  const written: ScratchPage[] = [];
+  const existing: ScratchPage = { height: 700, strokes: [{ tool: "pen", colour: "ink", size: 2, points: [100, 40, 0.6, 200, 90, 0.6] }] };
+  const { container } = render(
+    <ReviewWorkspace {...workspaceProps({ initialPage: existing, onChange: (page: ScratchPage) => written.push(page) })} />,
+  );
+
+  // The same surface the exam player uses, so everything already proved about it holds.
+  assert.ok(container.querySelector(".question-sheet"));
+  assert.ok(container.querySelector(".annotation-canvas-live"));
+  assert.ok(screen.getByRole("group", { name: "Writing tool" }));
+  assert.ok(screen.getByRole("group", { name: "Question size" }));
+
+  // What was written during the session is on the page: the layer reports it as the count
+  // it was seeded with, which is what makes Clear and Undo right before the first stroke.
+  assert.ok(screen.getByRole("img", { name: /1 stroke/ }));
+
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
+  fireEvent.pointerDown(canvas, { pointerId: 1, pointerType: "pen", isPrimary: true, pressure: 0.6, width: 2, height: 2, clientX: 40, clientY: 40 });
+  fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: "pen", pressure: 0.6, clientX: 90, clientY: 70 });
+  fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: "pen", clientX: 90, clientY: 70 });
+
+  assert.equal(written.length, 1, "the new stroke is reported for saving");
+  assert.equal(written[0].strokes.length, 2, "and it is added to what was already there, not instead of it");
+});
+
+test("the reopened question says what was answered, and closes on Escape", () => {
+  const closes: string[] = [];
+  render(<ReviewWorkspace {...workspaceProps({ onClose: () => closes.push("closed") })} />);
+
+  assert.ok(screen.getByText("Question 4 · NSAA 2019"));
+  assert.ok(screen.getByText(/You answered/));
+  assert.ok(screen.getByText(/Correct/));
+  assert.equal(screen.getByRole("dialog").getAttribute("aria-modal"), "true");
+
+  fireEvent.click(screen.getByRole("button", { name: /Close/ }));
+  assert.deepEqual(closes, ["closed"]);
+
+  fireEvent.keyDown(window, { key: "Escape" });
+  assert.deepEqual(closes, ["closed", "closed"], "Escape closes it too");
+});
+
+test("the reopened question behaves as a dialog, and gives the review back on close", () => {
+  // It covers the review completely, so the list underneath must not scroll under a stray
+  // finger, and the focus a candidate came in with has to be given back to them.
+  const opener = document.createElement("button");
+  document.body.append(opener);
+  opener.focus();
+
+  const { unmount } = render(<ReviewWorkspace {...workspaceProps()} />);
+  assert.equal(document.body.style.overflow, "hidden", "the review behind is pinned");
+  assert.equal(document.activeElement?.textContent?.trim(), "Close", "focus starts inside the dialog");
+
+  unmount();
+  assert.equal(document.body.style.overflow, "", "and is released again");
+  assert.equal(document.activeElement, opener, "focus returns to whatever opened it");
+  opener.remove();
+});
+
+test("a blank question opens ready to be written on rather than refusing", () => {
+  render(<ReviewWorkspace {...workspaceProps({ initialPage: null })} />);
+  assert.ok(screen.getByRole("img", { name: /Write your working here/ }));
+  // Nothing to undo or erase yet, so those controls are not offered as if there were.
+  assert.equal((screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled, true);
+  assert.equal((screen.getByRole("button", { name: "Erase everything on this question" }) as HTMLButtonElement).disabled, true);
 });

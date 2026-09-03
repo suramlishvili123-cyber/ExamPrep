@@ -1576,6 +1576,82 @@ export default function EsatApp() {
 
   const reviewPages = reviewScratch?.attemptId === reviewAttemptId ? reviewScratch.pages : {};
 
+  /* ----------------------------------------------- writing on a reviewed question -- */
+
+  /**
+   * A question reopened from the review, and the working being added to it.
+   *
+   * The pages live in a ref while the workspace is open, for the same reason they do during
+   * a session: a state write per committed stroke would re-render the whole review — every
+   * question, every worked solution — under the candidate's hand. The state is updated once
+   * on close, which is when the previews behind the dialog need to be right.
+   */
+  // Keyed by attempt rather than reset when it changes: a dialog left open over one result
+  // must not reappear over the next one, and a value that no longer matches simply reads as
+  // closed — which is the answer — without a synchronous state write from an effect.
+  const [writing, setWriting] = useState<{ attemptId: string; questionId: string } | null>(null);
+  const writingQuestionId = writing && writing.attemptId === reviewAttemptId ? writing.questionId : null;
+  const reviewPagesRef = useRef<Record<string, ScratchPage>>({});
+  const reviewDirtyRef = useRef(new Set<string>());
+  const reviewTimerRef = useRef<number | null>(null);
+
+  const flushReviewScratch = useCallback(() => {
+    if (reviewTimerRef.current !== null) {
+      window.clearTimeout(reviewTimerRef.current);
+      reviewTimerRef.current = null;
+    }
+    const attemptId = reviewAttemptId;
+    const dirty = [...reviewDirtyRef.current];
+    reviewDirtyRef.current.clear();
+    if (!user || !attemptId || !dirty.length || destructiveCloudActionRef.current) return;
+    for (const questionId of dirty) {
+      const page = reviewPagesRef.current[questionId];
+      const empty = pageIsEmpty(page);
+      trackWrite(saveScratchPageCloud(user.uid, {
+        attemptId,
+        questionId,
+        page: empty || !page ? "" : encodePage(page),
+        height: page?.height ?? 0,
+        strokeCount: page?.strokes.length ?? 0,
+        updatedAt: Date.now(),
+      })).catch(() => setToast("Your working is safe on this device; it will sync to your account shortly."));
+    }
+  }, [reviewAttemptId, trackWrite, user]);
+
+  const recordReviewScratchPage = useCallback((questionId: string, page: ScratchPage) => {
+    reviewPagesRef.current = { ...reviewPagesRef.current, [questionId]: page };
+    reviewDirtyRef.current.add(questionId);
+    if (reviewTimerRef.current !== null) window.clearTimeout(reviewTimerRef.current);
+    reviewTimerRef.current = window.setTimeout(flushReviewScratch, 2_500);
+  }, [flushReviewScratch]);
+
+  const openReviewWriting = useCallback((questionId: string) => {
+    if (!reviewAttemptId) return;
+    reviewPagesRef.current = reviewScratch?.attemptId === reviewAttemptId ? reviewScratch.pages : {};
+    setWriting({ attemptId: reviewAttemptId, questionId });
+  }, [reviewAttemptId, reviewScratch]);
+
+  const closeReviewWriting = useCallback(() => {
+    flushReviewScratch();
+    const attemptId = reviewAttemptId;
+    const pages = reviewPagesRef.current;
+    if (attemptId) setReviewScratch({ attemptId, pages });
+    setWriting(null);
+  }, [flushReviewScratch, reviewAttemptId]);
+
+  // The lid closing, or the tab being hidden, must not cost the last few strokes.
+  useEffect(() => {
+    if (!writingQuestionId) return;
+    const flush = () => flushReviewScratch();
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", flush);
+      flush();
+    };
+  }, [flushReviewScratch, writingQuestionId]);
+
   const syncState: SyncState = !offline.online
     ? "offline"
     : pendingWrites > 0
@@ -1691,8 +1767,44 @@ export default function EsatApp() {
     );
   }
 
+  const openAttempt = openAttemptId ? state.attempts.find((attempt) => attempt.attemptId === openAttemptId) ?? null : null;
+
+  /**
+   * The dialog itself, rendered by whichever review screen is on show. One instance rather
+   * than one per screen, so the working being edited and the writing it is saved into can
+   * only ever belong to the attempt currently being reviewed.
+   */
+  const reviewWritingDialog = (() => {
+    const attempt = result ?? openAttempt;
+    const question = writingQuestionId ? questionMap[writingQuestionId] : undefined;
+    if (!attempt || !question || !writingQuestionId) return null;
+    const response = attempt.responses[writingQuestionId];
+    return (
+      <ReviewWorkspace
+        key={writingQuestionId}
+        question={question}
+        number={attempt.questionIds.indexOf(writingQuestionId) + 1}
+        source={sourceLabelForAttempt(question, attempt)}
+        answered={response?.finalAnswer ?? null}
+        correctAnswer={question.correctAnswer}
+        // Seeded once, at the moment the dialog opens. Everything written after that lives
+        // in the ref until it is closed, which is when this state catches up.
+        initialPage={reviewPages[writingQuestionId] ?? null}
+        settings={state.settings}
+        onSettingsChange={updateSettings}
+        preferences={scratchPreferences}
+        onPreferencesChange={updateScratchPreferences}
+        onChange={(page) => recordReviewScratchPage(writingQuestionId, page)}
+        onClose={closeReviewWriting}
+        onNotice={setToast}
+      />
+    );
+  })();
+
   if (result) {
     return (
+      <>
+      {reviewWritingDialog}
       <ResultScreen
         attempt={result}
         questionMap={questionMap}
@@ -1701,6 +1813,7 @@ export default function EsatApp() {
         previous={previousComparableAttempt(state.attempts, result)}
         scratchPages={reviewPages}
         onClose={() => { setResult(null); setView(result.planSessionId ? "plan" : "dashboard"); }}
+        onOpenWriting={openReviewWriting}
         onContinue={() => continueSequence(result)}
         onRetryMissed={() => {
           const missed = Object.values(result.responses)
@@ -1728,10 +1841,9 @@ export default function EsatApp() {
           setState((current) => ({ ...current, attempts: current.attempts.map((attempt) => attempt.attemptId === result.attemptId ? update(attempt) : attempt) }));
         }}
       />
+      </>
     );
   }
-
-  const openAttempt = openAttemptId ? state.attempts.find((attempt) => attempt.attemptId === openAttemptId) ?? null : null;
 
   return (
     <div className="app-shell">
@@ -1788,6 +1900,7 @@ export default function EsatApp() {
               attempts={state.attempts}
               showScoreEstimate={state.settings.showScoreEstimate}
               scratchPages={reviewPages}
+              onOpenWriting={openReviewWriting}
               onBack={() => setOpenAttemptId(null)}
               onDelete={() => {
                 if (window.confirm("Remove this result from your history? Question progress and the retrieval queue are not affected.")) deleteAttempt(openAttempt.attemptId);
@@ -3647,13 +3760,50 @@ function QuestionLearningSupport({ question }: { question: Question }) {
   );
 }
 
-export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, scratchPages = {}, onBack, onDelete, onResit }: {
+/**
+ * A question in the review, which is a way back into it rather than a picture of it.
+ *
+ * The thing a candidate does after reading a question they got wrong is work it through
+ * again, and until now the review could only show them a flat copy of what they wrote the
+ * first time. Pressing the question reopens it on its own paper with that writing still on
+ * it. It is a button rather than a click handler on the image so that it is reachable by
+ * keyboard and announced as something that can be pressed; where no handler is supplied —
+ * a signed-out reader, or a question no longer in the bank — it renders as the plain
+ * picture it always was.
+ */
+function ReviewQuestion({
+  question,
+  onOpenWriting,
+  children,
+}: {
+  question: Question | undefined;
+  onOpenWriting?: (questionId: string) => void;
+  children: React.ReactNode;
+}) {
+  if (!question || !onOpenWriting) return <>{children}</>;
+  return (
+    <button
+      type="button"
+      className="review-open-question"
+      onClick={() => onOpenWriting(question.id)}
+      aria-label={`Open question ${question.originalQuestionNumber} to write on it`}
+      title="Open this question and carry on writing on it"
+    >
+      {children}
+      <span className="review-open-hint"><PencilRuler size={15} /> Open and write</span>
+    </button>
+  );
+}
+
+export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEstimate, scratchPages = {}, onOpenWriting, onBack, onDelete, onResit }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   attempts: Attempt[];
   showScoreEstimate: boolean;
   /** The working written during this attempt, keyed by question. */
   scratchPages?: Record<string, ScratchPage>;
+  /** Reopen a question to carry on writing on it. */
+  onOpenWriting?: (questionId: string) => void;
   onBack: () => void;
   onDelete: () => void;
   onResit: () => void;
@@ -3781,11 +3931,13 @@ export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEst
                 <Pill tone={response.correct ? "good" : response.unanswered ? "neutral" : "bad"}>{response.correct ? "Correct" : response.unanswered ? "Blank" : "Wrong"}</Pill>
               </summary>
               <div className="log-review">
-                {question?.questionImage
-                  ? <img src={publicAsset(question.questionImage)} alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`} loading="lazy" />
-                  : question
-                    ? <div className="authored-review"><p><MathText>{question.questionText}</MathText></p><QuestionFigure question={question} /></div>
-                    : <p className="panel-footnote">This question is no longer in the bank.</p>}
+                <ReviewQuestion question={question} onOpenWriting={onOpenWriting}>
+                  {question?.questionImage
+                    ? <img src={publicAsset(question.questionImage)} alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`} loading="lazy" />
+                    : question
+                      ? <div className="authored-review"><p><MathText>{question.questionText}</MathText></p><QuestionFigure question={question} /></div>
+                      : <p className="panel-footnote">This question is no longer in the bank.</p>}
+                </ReviewQuestion>
                 {question ? (
                   <div className="log-review-side">
                     <div className="log-answer-grid">
@@ -4567,6 +4719,226 @@ export function QuestionSurface({
   );
 }
 
+/**
+ * A question from the review, reopened to be worked on again.
+ *
+ * The review shows what was written during the session as a flat picture, which is right for
+ * scanning a list but useless for the thing a candidate actually does next: going back to the
+ * question they got wrong and working it through properly. This opens the same question on the
+ * same sheet of paper, with the same tools and the same writing already on it, and saves what
+ * is added back to the attempt it belongs to.
+ *
+ * It is deliberately the same `QuestionSurface` and `QuestionAnnotator` the exam player uses,
+ * so zoom, margins, blank paper, palm rejection and the stylus rules behave identically. A
+ * second implementation of any of that would drift.
+ */
+export function ReviewWorkspace({
+  question,
+  number,
+  source,
+  answered,
+  correctAnswer,
+  initialPage,
+  settings,
+  onSettingsChange,
+  preferences,
+  onPreferencesChange,
+  onChange,
+  onClose,
+  onNotice,
+}: {
+  question: Question;
+  /** The question's place in the paper, as the review numbers it. */
+  number: number;
+  source: string;
+  /** What the candidate put, or null if they left it blank. */
+  answered: string | null;
+  correctAnswer: string;
+  initialPage: ScratchPage | null;
+  settings: Settings;
+  onSettingsChange: (patch: Partial<Settings>) => void;
+  preferences: ScratchPreferences;
+  onPreferencesChange: (patch: Partial<ScratchPreferences>) => void;
+  onChange: (page: ScratchPage) => void;
+  onClose: () => void;
+  onNotice?: (message: string) => void;
+}) {
+  const [tool, setTool] = useState<ScratchTool>("pen");
+  const [status, setStatus] = useState<AnnotationStatus>(EMPTY_ANNOTATION_STATUS);
+  const [aspect, setAspect] = useState(0);
+  const [frame, setFrame] = useState({ width: 0, height: 0 });
+  const [penSeen, setPenSeen] = useState(false);
+  const annotatorRef = useRef<AnnotatorHandle | null>(null);
+  const surfaceRef = useRef<QuestionSurfaceHandle | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  const zoomIndex = QUESTION_ZOOM_STEPS.indexOf(nearestZoomStep(settings.questionZoom) as typeof QUESTION_ZOOM_STEPS[number]);
+  const stepZoom = useCallback((direction: 1 | -1) => {
+    const next = QUESTION_ZOOM_STEPS[Math.min(QUESTION_ZOOM_STEPS.length - 1, Math.max(0, zoomIndex + direction))];
+    if (next !== settings.questionZoom) onSettingsChange({ questionZoom: next });
+  }, [onSettingsChange, settings.questionZoom, zoomIndex]);
+
+  const trim = settings.questionHideOptions && question.questionImage ? settings.questionOptionTrim : 0;
+  const boardHeight = BOARD_WIDTH * (aspect > 0 ? aspect : DEFAULT_QUESTION_ASPECT)
+    * (1 - trim + settings.questionExtraSpace);
+
+  /**
+   * The keyboard, while this is open.
+   *
+   * Escape closes it, as it does for every other dialog. Tab is kept inside: this covers the
+   * review completely, so a focus ring that wandered off into the list underneath would be
+   * invisible, and the reader would be typing into a page they cannot see. The exam
+   * shortcuts are not a concern — they only run while a session is open, and this is only
+   * reachable from a finished one.
+   */
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const root = dialogRef.current;
+      if (!root) return;
+      const focusable = [...root.querySelectorAll<HTMLElement>(
+        "button:not(:disabled), [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+      )].filter((node) => node.offsetParent !== null || node === document.activeElement);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !root.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  // Focus lands inside the dialog rather than being left behind on the review underneath,
+  // and returns to where it came from when it closes.
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    // The review behind is a long scrolling list; letting it move under a full-screen dialog
+    // is disorienting and, on a tablet, means a stray finger scrolls the wrong thing.
+    const scroll = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = scroll;
+      previous?.focus?.();
+    };
+  }, []);
+
+  return (
+    <div className="review-workspace" ref={dialogRef} role="dialog" aria-modal="true" aria-label={`Question ${number}: your working`}>
+      <header className="review-workspace-head">
+        <div>
+          <span className="eyebrow">Question {number} · {source}</span>
+          <h2>{question.esatTopic}</h2>
+        </div>
+        <div className="review-workspace-answers">
+          <span className={answered === correctAnswer ? "is-correct" : ""}>
+            {answered ? <>You answered <strong>{answered}</strong></> : <>You left this <strong>blank</strong></>}
+          </span>
+          <span className="is-correct">Correct <strong>{correctAnswer}</strong></span>
+        </div>
+        <div className="review-workspace-actions">
+          <span className="question-zoom" role="group" aria-label="Question size">
+            <button type="button" aria-label="Show the question smaller" title="Show the question smaller" disabled={zoomIndex <= 0} onClick={() => stepZoom(-1)}>
+              <ZoomOut size={15} />
+            </button>
+            <b>{Math.round(settings.questionZoom * 100)}%</b>
+            <button type="button" aria-label="Show the question larger" title="Show the question larger" disabled={zoomIndex >= QUESTION_ZOOM_STEPS.length - 1} onClick={() => stepZoom(1)}>
+              <ZoomIn size={15} />
+            </button>
+            <button
+              type="button"
+              className="question-zoom-fit"
+              aria-label="Fit the whole question on screen"
+              title="Fit the whole question on screen, and bring it back into view"
+              onClick={() => {
+                surfaceRef.current?.centreOnQuestion();
+                onSettingsChange({ questionZoom: fitPageZoom(frame.width, frame.height, aspect) });
+              }}
+            >
+              <Maximize2 size={14} /> <span>Fit</span>
+            </button>
+          </span>
+          <button type="button" className="button button-secondary compact" ref={closeRef} onClick={onClose}>
+            <X size={16} /> Close
+          </button>
+        </div>
+      </header>
+
+      <AnnotationToolbar
+        tool={tool}
+        onToolChange={setTool}
+        preferences={preferences}
+        onPreferencesChange={onPreferencesChange}
+        extraSpace={settings.questionExtraSpace}
+        onExtraSpaceChange={(value) => onSettingsChange({ questionExtraSpace: value })}
+        sideSpace={settings.questionSideSpace}
+        onSideSpaceChange={(value) => onSettingsChange({ questionSideSpace: value })}
+        status={status}
+        onUndo={() => annotatorRef.current?.undo()}
+        onRedo={() => annotatorRef.current?.redo()}
+        onClear={() => annotatorRef.current?.clear()}
+      />
+
+      <div className="review-workspace-stage question-stage">
+        <QuestionSurface
+          ref={surfaceRef}
+          question={question}
+          index={number - 1}
+          zoom={settings.questionZoom}
+          trim={trim}
+          extraSpace={settings.questionExtraSpace}
+          sideSpace={settings.questionSideSpace}
+          panning={tool === "pan"}
+          panOnDrag
+          onAspectChange={setAspect}
+          onFrameChange={setFrame}
+          onZoomGesture={stepZoom}
+          onZoomTo={(value) => onSettingsChange({ questionZoom: value })}
+          onTrimChange={(value) => onSettingsChange({ questionOptionTrim: value })}
+        >
+          {(page) => (
+            <QuestionAnnotator
+              key={question.id}
+              ref={annotatorRef}
+              initialPage={initialPage}
+              onChange={onChange}
+              boardHeight={boardHeight}
+              pageWidth={page.width}
+              pagePixelHeight={page.height}
+              boardLeft={page.boardLeft}
+              boardRight={page.boardRight}
+              tool={tool}
+              preferences={preferences}
+              penSeen={penSeen}
+              onPenSeen={() => setPenSeen(true)}
+              onStatusChange={setStatus}
+              onNotice={onNotice}
+            />
+          )}
+        </QuestionSurface>
+      </div>
+
+      <p className="review-workspace-note">
+        Anything you write here is saved with this attempt, so it is on the question when you
+        come back to it. Your original answer and mark are unchanged.
+      </p>
+    </div>
+  );
+}
+
 export function ExamPlayer({
   attempt,
   questionMap,
@@ -4945,7 +5317,7 @@ export function ExamPlayer({
   );
 }
 
-export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, previous, scratchPages = {}, onClose, onContinue, onRetryMissed, onTag }: {
+export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, previous, scratchPages = {}, onOpenWriting, onClose, onContinue, onRetryMissed, onTag }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   showScoreEstimate: boolean;
@@ -4953,6 +5325,8 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
   previous: Attempt | null;
   /** The working written during this attempt, keyed by question. */
   scratchPages?: Record<string, ScratchPage>;
+  /** Reopen a question to carry on writing on it. */
+  onOpenWriting?: (questionId: string) => void;
   onClose: () => void;
   onContinue: () => void;
   onRetryMissed: () => void;
@@ -5084,9 +5458,11 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
                   </div>
                 </summary>
                 <div className="error-review-body">
-                  {question?.questionImage
-                    ? <img src={publicAsset(question.questionImage)} alt={`Review question ${question.id}`} loading="lazy" />
-                    : <div className="authored-review"><p><MathText>{question?.questionText}</MathText></p><QuestionFigure question={question} /></div>}
+                  <ReviewQuestion question={question} onOpenWriting={onOpenWriting}>
+                    {question?.questionImage
+                      ? <img src={publicAsset(question.questionImage)} alt={`Review question ${question.id}`} loading="lazy" />
+                      : <div className="authored-review"><p><MathText>{question?.questionText}</MathText></p><QuestionFigure question={question} /></div>}
+                  </ReviewQuestion>
                   <div>
                     {!isCorrect ? (
                       <>

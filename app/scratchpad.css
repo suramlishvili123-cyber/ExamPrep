@@ -265,3 +265,83 @@
    beside question crops that are black on white for the same reason. */
 .scratch-preview figcaption { margin-bottom: 7px; color: var(--muted); font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .08em; }
 .scratch-preview canvas { display: block; width: 100%; border: 1px solid var(--line); border-radius: 8px; background: white; }
+
+/* ------------------------------------------------- writing on a reviewed question -- */
+
+/* A question reopened from the review. It covers the review rather than sitting inside it:
+   the whole point is the room to write, and a dialog that shared the page with a list of
+   every other question would have none. */
+.review-workspace {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px clamp(12px, 3vw, 28px) 10px;
+  background: white;
+  color: #16211f;
+  overscroll-behavior: contain;
+}
+.review-workspace-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; padding-bottom: 10px; }
+.review-workspace-head .eyebrow { color: #68746f; }
+.review-workspace-head h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -.01em; }
+.review-workspace-answers { display: flex; gap: 14px; font-size: 12px; color: #52625e; }
+.review-workspace-answers strong { color: #16211f; }
+.review-workspace-answers .is-correct strong { color: #0f604f; }
+.review-workspace-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+/* The stage is the frame's parent, and the frame takes what it leaves — the same
+   arrangement the exam player uses, so the writing surface behaves identically here. */
+.review-workspace-stage { flex: 1 1 auto; min-height: 0; }
+.review-workspace-stage .question-frame { min-height: 0; }
+.review-workspace-note { margin: 8px 0 0; color: #68746f; font-size: 12px; }
+
+@media (max-width: 700px) {
+  .review-workspace { padding: 10px 10px 8px; }
+  .review-workspace-head { gap: 8px 12px; }
+  .review-workspace-head h2 { font-size: 15px; }
+  .review-workspace-answers { width: 100%; order: 3; }
+  .review-workspace-actions { margin-left: auto; }
+}
+
+/* The question in the review list, which is the way back into it. A button, so it is
+   reachable by keyboard and announced as pressable, styled to stay the picture it was. */
+.review-open-question {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+.review-open-question:hover, .review-open-question:focus-visible { border-color: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 14%, transparent); }
+.review-open-question > img { display: block; width: 100%; border-radius: 11px; }
+.review-open-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 99px;
+  background: var(--green);
+  color: white;
+  font-size: 12px;
+  font-weight: 750;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+}
+.review-open-question:hover .review-open-hint, .review-open-question:focus-visible .review-open-hint { opacity: 1; transform: none; }
+/* A pointer that cannot hover has no way to discover the hint, so it is simply always on. */
+@media (hover: none) {
+  .review-open-hint { opacity: 1; transform: none; }
+}
