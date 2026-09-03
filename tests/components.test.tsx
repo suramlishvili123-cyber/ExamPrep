@@ -17,7 +17,7 @@ import {
   MistakesView,
   NumberSetting,
   QuestionTimingPanel,
-  ScoreEvidenceNotice,
+  AttemptScore,
   StudyConsistencyPanel,
 } from "../app/esat-app";
 import { studyActivity } from "../app/lib/insights";
@@ -531,24 +531,44 @@ test("the queue states the one-correct-answer rule", () => {
   assert.ok(screen.getByText(/clears for good/));
 });
 
-/* ----------------------------------------------------------- ScoreEvidenceNotice -- */
+/* ------------------------------------------------------------------ AttemptScore -- */
 
-test("a withheld estimate explains itself instead of leaving a blank", () => {
+test("a practice session is scored, with the reason it is only indicative beside it", () => {
   const practice = attempt([response("q1", { correct: true, unanswered: false, selectedAnswer: "A" })]);
   const report = scoreReportForAttempt(practice);
-  render(<ScoreEvidenceNotice report={report} />);
+  render(<AttemptScore report={report} />);
 
   assert.equal(report.eligible, false);
+  assert.equal(report.confidence, "indicative");
+  // The number is there — that is the whole point — and it is named as indicative.
+  assert.ok(report.estimate);
+  assert.ok(screen.getByText(report.estimate!.scaledScore.toFixed(1)));
+  assert.ok(screen.getByText(/indicative ESAT score/));
+  // And so is the reason, rather than in place of the score.
   assert.ok(screen.getByRole("note"));
   assert.ok(screen.getByText(report.label));
-  assert.ok(screen.getByText(/not representative enough for a cohort estimate/));
+  assert.ok(screen.getByText(/not sat under exam conditions/));
 });
 
 test("a retrieval session is named as recall practice, not as readiness evidence", () => {
   const retry = attempt([response("q1", { correct: true, unanswered: false, selectedAnswer: "A" })], { mode: "retry" });
   const report = scoreReportForAttempt(retry);
-  render(<ScoreEvidenceNotice report={report} />);
+  render(<AttemptScore report={report} />);
 
   assert.equal(report.reason, "retrieval");
-  assert.ok(screen.getByText(/cannot estimate exam standing/));
+  assert.ok(screen.getByText(/material you have already seen/));
+  assert.ok(report.estimate, "a recall session still says roughly where the candidate is");
+});
+
+test("a strict full-length paper is scored without a caveat attached", () => {
+  const responses = Array.from({ length: 18 }, (_, index) =>
+    response(`q${index + 1}`, { correct: index < 9, unanswered: false, selectedAnswer: "A" }));
+  const strict = attempt(responses, { mode: "exam", strictTimed: true, rawScore: 9, freshQuestionCount: 18 });
+  const report = scoreReportForAttempt(strict);
+  render(<AttemptScore report={report} />);
+
+  assert.equal(report.confidence, "calibrated");
+  assert.equal(report.caveat, null);
+  assert.ok(screen.getByText(/estimated ESAT score/));
+  assert.equal(screen.queryByRole("note"), null, "nothing to warn about, so nothing is said");
 });

@@ -5,19 +5,30 @@
  *
  *  1. Raw percentage -> estimated scaled score. UAT-UK does NOT publish raw-to-scaled
  *     tables; every live form is equated with a Rasch item-response model, so this step
- *     is an explicit, stated modelling assumption. See SCORE_CURVE.
+ *     is an explicit, stated modelling assumption. See `estimatedScaledScore`.
  *
- *  2. Scaled score -> standing in the cohort. This is NOT modelled. It reads directly
- *     off the official October 2025 score distributions published by UAT-UK in
- *     "Engineering and Science Admissions Test (ESAT) Explanation of Results", one
- *     histogram per module. See ESAT_SCORE_DISTRIBUTIONS.
+ *  2. Scaled score -> standing in the cohort. This is NOT modelled. It is read off the
+ *     official score distributions published by UAT-UK in "Engineering and Science
+ *     Admissions Test (ESAT) Explanation of Results", one histogram per module. See
+ *     ESAT_SCORE_DISTRIBUTIONS.
  *
- * Published facts used (UAT-UK, Explanation of Results, October 2025):
+ * Published facts used (UAT-UK, Explanation of Results, October 2025 and January 2026):
  *   - "Results for the ESAT are reported on a scale that runs from 1.0 (low) to 9.0
  *      (high), with scores being reported to one decimal place."
  *   - "The scale has been designed so that typical candidates will score around 4.5."
  *   - "Approximately 10% of candidates will achieve scores higher than 7.0."
  *   - "Low scores are capped at 1.0 and high scores are capped at 9.0."
+ *
+ * ## Every completed session is scored
+ *
+ * An estimate is produced for anything that was finished, because a candidate working
+ * through a past paper wants to know roughly where they stand, and withholding the number
+ * does not leave them better informed. What varies is how far it can be trusted, and that
+ * is carried explicitly rather than implied: `confidence` separates a representative,
+ * fresh, strictly timed sitting from everything else, `range` states the sampling error a
+ * short set carries, and `label` says in words why a particular result is only indicative.
+ * The readiness doctrine is unchanged — `eligible` still means exactly what it did, and the
+ * study plan and the progress trend still count only those sittings.
  */
 
 import { scoreEstimateEligibility } from "./core";
@@ -25,52 +36,68 @@ import type { Attempt, ModuleId, Question, ResponseRecord, ScoreEstimateEligibil
 
 export type { ScoreEstimateEligibilityReason } from "./core";
 
+/**
+ * What a candidate who knows nothing scores by answering everything at random.
+ *
+ * Measured over the 517 published archive questions this application serves, whose option
+ * counts run from 4 to 8 and are mostly 6 and 8: the mean of 1/options is 0.160. It is not
+ * a guess — it is a property of the papers themselves, and it is where the scale has to
+ * start, because a mark at chance is evidence of no knowledge rather than of a little.
+ */
+export const CHANCE_RATE = 0.16;
+
 export const SCORE_MODEL = {
-  version: "esat-atlas-estimate-v2",
+  version: "esat-atlas-estimate-v3",
   scaleMin: 1,
   scaleMax: 9,
   typicalScore: 4.5,
-  distributionSitting: "October 2025",
-  source: "UAT-UK, Engineering and Science Admissions Test (ESAT) Explanation of Results, October 2025",
+  chanceRate: CHANCE_RATE,
+  distributionSitting: "October 2025 and January 2026",
+  source: "UAT-UK, Engineering and Science Admissions Test (ESAT) Explanation of Results, October 2025 and January 2026",
   sourceUrl: "https://esat-tmua.ac.uk/test-results/",
   publishedFacts: [
     "Scores run from 1.0 to 9.0 and are reported to one decimal place",
     "Typical candidates score around 4.5",
     "Approximately 10% of candidates score higher than 7.0",
+    "Low scores are capped at 1.0 and high scores are capped at 9.0",
   ],
-  assumption: "Answering half of an ESAT-difficulty module correctly is treated as the typical candidate's performance. UAT-UK publishes no raw-to-scaled table, so this step is an estimate.",
+  assumption: "Answering half of an ESAT-difficulty module correctly is treated as the typical candidate's performance, and four fifths of it as the published top-decile mark. Between and beyond those anchors the scale is modelled on the log-odds of the share actually known, which is the shape a Rasch-equated test implies. UAT-UK publishes no raw-to-scaled table, so this step is an estimate.",
   noCutOff: "Cambridge states there is no pass or fail for the ESAT, and Imperial states there are no grade boundaries or pass marks.",
 } as const;
 
 /**
- * Official October 2025 score distributions, one entry per reported half-point, read
- * from the histograms in the UAT-UK results document. Percentages are of all candidates
- * sitting that module and each list sums to 100.
+ * Official score distributions, one entry per reported half-point, for the October 2025
+ * and January 2026 sittings combined.
+ *
+ * Taken from the histograms in the UAT-UK results document by measuring the plotted bars
+ * rather than reading them by eye, and normalised so each module sums to 100 per cent.
+ * Every module's median falls in the 4.0-4.5 bin and its mean between 4.26 and 4.57, which
+ * is the published "typical candidates will score around 4.5" reproduced from the data.
  */
 export const ESAT_SCORE_DISTRIBUTIONS: Record<ModuleId, Array<{ score: number; percent: number }>> = {
   maths1: [
-    { score: 1.0, percent: 0.4 }, { score: 1.5, percent: 0.8 }, { score: 2.0, percent: 2.2 },
-    { score: 2.5, percent: 3.3 }, { score: 3.0, percent: 11.5 }, { score: 3.5, percent: 10.1 },
-    { score: 4.0, percent: 14.0 }, { score: 4.5, percent: 14.2 }, { score: 5.0, percent: 10.4 },
-    { score: 5.5, percent: 9.5 }, { score: 6.0, percent: 6.8 }, { score: 6.5, percent: 5.8 },
-    { score: 7.0, percent: 3.6 }, { score: 7.5, percent: 2.7 }, { score: 8.0, percent: 0.3 },
-    { score: 8.5, percent: 2.1 }, { score: 9.0, percent: 2.3 },
+    { score: 1.0, percent: 0.4 }, { score: 1.5, percent: 0.6 }, { score: 2.0, percent: 2.2 },
+    { score: 2.5, percent: 3.5 }, { score: 3.0, percent: 11.3 }, { score: 3.5, percent: 11.8 },
+    { score: 4.0, percent: 15.4 }, { score: 4.5, percent: 17.2 }, { score: 5.0, percent: 10.2 },
+    { score: 5.5, percent: 8.7 }, { score: 6.0, percent: 5.5 }, { score: 6.5, percent: 4.9 },
+    { score: 7.0, percent: 2.8 }, { score: 7.5, percent: 2.0 }, { score: 8.0, percent: 0.4 },
+    { score: 8.5, percent: 1.5 }, { score: 9.0, percent: 1.6 },
   ],
   physics: [
-    { score: 1.0, percent: 2.7 }, { score: 1.5, percent: 1.9 }, { score: 2.0, percent: 2.6 },
-    { score: 2.5, percent: 7.3 }, { score: 3.0, percent: 5.6 }, { score: 3.5, percent: 11.3 },
-    { score: 4.0, percent: 12.3 }, { score: 4.5, percent: 13.6 }, { score: 5.0, percent: 8.4 },
-    { score: 5.5, percent: 12.6 }, { score: 6.0, percent: 6.2 }, { score: 6.5, percent: 5.4 },
-    { score: 7.0, percent: 4.4 }, { score: 7.5, percent: 0.5 }, { score: 8.0, percent: 2.7 },
-    { score: 8.5, percent: 0.2 }, { score: 9.0, percent: 2.3 },
+    { score: 1.0, percent: 3.7 }, { score: 1.5, percent: 2.6 }, { score: 2.0, percent: 5.6 },
+    { score: 2.5, percent: 7.5 }, { score: 3.0, percent: 7.7 }, { score: 3.5, percent: 13.0 },
+    { score: 4.0, percent: 11.3 }, { score: 4.5, percent: 13.0 }, { score: 5.0, percent: 8.1 },
+    { score: 5.5, percent: 10.4 }, { score: 6.0, percent: 5.0 }, { score: 6.5, percent: 4.3 },
+    { score: 7.0, percent: 3.4 }, { score: 7.5, percent: 0.6 }, { score: 8.0, percent: 1.9 },
+    { score: 8.5, percent: 0.2 }, { score: 9.0, percent: 1.7 },
   ],
   maths2: [
-    { score: 1.0, percent: 1.1 }, { score: 1.5, percent: 1.4 }, { score: 2.0, percent: 2.6 },
-    { score: 2.5, percent: 4.7 }, { score: 3.0, percent: 7.2 }, { score: 3.5, percent: 12.5 },
-    { score: 4.0, percent: 15.3 }, { score: 4.5, percent: 7.5 }, { score: 5.0, percent: 14.6 },
-    { score: 5.5, percent: 8.4 }, { score: 6.0, percent: 8.9 }, { score: 6.5, percent: 4.5 },
-    { score: 7.0, percent: 3.8 }, { score: 7.5, percent: 1.3 }, { score: 8.0, percent: 2.3 },
-    { score: 8.5, percent: 0.5 }, { score: 9.0, percent: 3.4 },
+    { score: 1.0, percent: 2.1 }, { score: 1.5, percent: 2.2 }, { score: 2.0, percent: 3.4 },
+    { score: 2.5, percent: 5.4 }, { score: 3.0, percent: 10.5 }, { score: 3.5, percent: 13.3 },
+    { score: 4.0, percent: 14.7 }, { score: 4.5, percent: 9.9 }, { score: 5.0, percent: 12.5 },
+    { score: 5.5, percent: 7.3 }, { score: 6.0, percent: 7.1 }, { score: 6.5, percent: 3.5 },
+    { score: 7.0, percent: 2.7 }, { score: 7.5, percent: 1.1 }, { score: 8.0, percent: 1.6 },
+    { score: 8.5, percent: 0.4 }, { score: 9.0, percent: 2.3 },
   ],
 };
 
@@ -87,29 +114,90 @@ export const CAMBRIDGE_CONTEXT = {
 } as const;
 
 /**
- * Raw percentage correct -> estimated scaled score. Monotone and piecewise linear.
- * Pinned to the two published anchors (50% -> 4.5 typical, 80% -> 7.0 top decile) and
- * consistent with published third-party estimates for the 20-question NSAA/ENGAA
- * predecessors, which put 4.5 at roughly 11-16/27 and 7.0 at roughly 18-24/27 once
- * rescaled to a 27-question module. Deliberately conservative at the top: this curve
- * only reaches 9.0 at full marks, whereas the live cap is reached earlier.
+ * The two anchors the raw-to-scaled step is pinned to. Both come from the published
+ * description of the scale rather than from anything inferred, and they are the only
+ * numbers in this step that came from outside the model.
  */
-export const SCORE_CURVE: Array<{ percentCorrect: number; scaledScore: number }> = [
-  { percentCorrect: 0, scaledScore: 1.0 },
-  { percentCorrect: 15, scaledScore: 2.0 },
-  { percentCorrect: 28, scaledScore: 3.0 },
-  { percentCorrect: 39, scaledScore: 4.0 },
+export const PUBLISHED_ANCHORS = [
   { percentCorrect: 50, scaledScore: 4.5 },
-  { percentCorrect: 58, scaledScore: 5.0 },
-  { percentCorrect: 65, scaledScore: 5.5 },
-  { percentCorrect: 72, scaledScore: 6.1 },
   { percentCorrect: 80, scaledScore: 7.0 },
-  { percentCorrect: 87, scaledScore: 7.8 },
-  { percentCorrect: 94, scaledScore: 8.5 },
-  { percentCorrect: 100, scaledScore: 9.0 },
-];
+] as const;
+
+/** The share of a paper a candidate actually knew, with the guessing floor taken out. */
+export function knownShare(accuracy: number): number {
+  return Math.min(1, Math.max(0, (accuracy - CHANCE_RATE) / (1 - CHANCE_RATE)));
+}
+
+/**
+ * Scaled score as a straight line in the log-odds of the share known.
+ *
+ * A Rasch-equated test reports an ability, and the proportion of items a given ability gets
+ * right is logistic in that ability — so the inverse, which is what has to be computed
+ * here, is a line in the log-odds rather than in the proportion itself. Working in log-odds
+ * also produces the two caps without having to impose them: the reported scale runs out at
+ * 1.0 and 9.0 while the ability behind it does not, which is why the published histograms
+ * have a pile of candidates sitting on each end.
+ *
+ * The gradient and intercept are solved from the two published anchors.
+ */
+const LOG_ODDS_LINE = (() => {
+  const [lower, upper] = PUBLISHED_ANCHORS;
+  const logOdds = (percent: number) => {
+    const share = Math.min(1 - 1e-9, Math.max(1e-9, knownShare(percent / 100)));
+    return Math.log(share / (1 - share));
+  };
+  const gradient = (upper.scaledScore - lower.scaledScore)
+    / (logOdds(upper.percentCorrect) - logOdds(lower.percentCorrect));
+  return { gradient, intercept: lower.scaledScore - gradient * logOdds(lower.percentCorrect) };
+})();
+
+/** Estimated scaled score for a proportion correct, to the one decimal place reported. */
+export function estimatedScaledScore(accuracy: number): number {
+  const share = knownShare(accuracy);
+  if (share <= 0) return SCORE_MODEL.scaleMin;
+  if (share >= 1) return SCORE_MODEL.scaleMax;
+  const raw = LOG_ODDS_LINE.intercept + LOG_ODDS_LINE.gradient * Math.log(share / (1 - share));
+  return Math.round(Math.min(SCORE_MODEL.scaleMax, Math.max(SCORE_MODEL.scaleMin, raw)) * 10) / 10;
+}
+
+/** The proportion correct, 0-1, at which the scale reaches a given score. */
+export function accuracyForScaledScore(scaledScore: number): number {
+  const bounded = Math.min(SCORE_MODEL.scaleMax, Math.max(SCORE_MODEL.scaleMin, scaledScore));
+  const share = 1 / (1 + Math.exp(-(bounded - LOG_ODDS_LINE.intercept) / LOG_ODDS_LINE.gradient));
+  return Math.min(1, Math.max(0, CHANCE_RATE + share * (1 - CHANCE_RATE)));
+}
+
+/**
+ * The curve as a table, for showing a candidate what a mark is worth and for reading the
+ * scale backwards. Derived from the model above rather than written out beside it, so the
+ * two cannot drift apart. It spans the range that is actually reported: below the first row
+ * every mark is capped at 1.0, and above the last every mark is capped at 9.0.
+ */
+export const SCORE_CURVE: Array<{ percentCorrect: number; scaledScore: number }> = (() => {
+  const round = (value: number) => Math.round(value * 10) / 10;
+  const floor = round(accuracyForScaledScore(SCORE_MODEL.scaleMin) * 100);
+  const ceiling = round(accuracyForScaledScore(SCORE_MODEL.scaleMax) * 100);
+  const percents = [floor];
+  for (let percent = Math.ceil((floor + 1) / 5) * 5; percent < ceiling - 1; percent += 5) percents.push(percent);
+  percents.push(ceiling);
+  return percents.map((percentCorrect) => ({
+    percentCorrect,
+    scaledScore: estimatedScaledScore(percentCorrect / 100),
+  }));
+})();
 
 export type ScoreTone = "bad" | "warn" | "neutral" | "good";
+
+/**
+ * How far a number can be trusted.
+ *
+ * `calibrated` is a representative, fully fresh, strictly timed module: the sample the
+ * cohort comparison was designed for. `indicative` is everything else that was finished —
+ * a practice set, an untimed paper, a short topic drill, a repeat. Both carry a scaled
+ * score, because a candidate is entitled to know roughly where a piece of work puts them;
+ * only the first is treated as readiness evidence anywhere in the application.
+ */
+export type ScoreConfidence = "calibrated" | "indicative";
 
 export interface ScoreEstimate {
   rawScore: number;
@@ -118,6 +206,14 @@ export interface ScoreEstimate {
   accuracy: number;
   /** Estimated ESAT scaled score, 1.0-9.0 to one decimal place. */
   scaledScore: number;
+  /**
+   * The scores a mark this size is consistent with, given how few questions it rests on.
+   *
+   * One standard error of the proportion correct either way, mapped through the same
+   * curve. Ten questions and twenty-seven questions can produce the same percentage and
+   * mean very different things, and this is the difference stated rather than buried.
+   */
+  range: { low: number; high: number };
   /** Share of candidates estimated to score below this, 0-100. */
   percentile: number;
   /** Share of candidates estimated to score at or above this, 0-100. */
@@ -131,55 +227,72 @@ export interface ScoreEstimate {
 }
 
 export interface AttemptScoreReport {
+  /** Always present for a finished session; null only while one is still open. */
   estimate: ScoreEstimate | null;
   accuracy: number;
+  /** True only for a representative, fresh, strictly timed module. */
   eligible: boolean;
+  confidence: ScoreConfidence;
   reason: ScoreEstimateEligibilityReason;
   label: string;
+  /** Why this particular result is only indicative, or null when it is not. */
+  caveat: string | null;
 }
 
 const ELIGIBILITY_LABELS: Record<ScoreEstimateEligibilityReason, string> = {
   eligible: "Representative fresh strict set",
   incomplete: "Complete the session to see a result",
-  retrieval: "Retrieval result — not readiness evidence",
-  practice: "Practice result — not readiness evidence",
-  original: "Uncalibrated challenge result — raw mark only",
-  "not-strict": "Untimed result — raw mark only",
-  "too-short": "Too few questions for a reliable estimate",
-  repeated: "Repeated material — raw mark only",
+  retrieval: "Retrieval session — indicative only",
+  practice: "Practice session — indicative only",
+  original: "Challenge mock — indicative only",
+  "not-strict": "Untimed session — indicative only",
+  "too-short": "Short set — indicative only",
+  repeated: "Repeated material — indicative only",
 };
 
 /**
- * A cohort standing is only meaningful for a representative, fully fresh, strictly timed
- * exam sample. Exact raw marks remain available for every other activity, and the reason
- * an estimate was withheld is carried through to the interface rather than left blank.
+ * Why a result is not readiness evidence, in the candidate's own terms.
+ *
+ * Each of these is a real reason the number would flatter or understate a live sitting, so
+ * it is said plainly beside the estimate rather than used as grounds for hiding it.
+ */
+const INDICATIVE_CAVEATS: Record<ScoreEstimateEligibilityReason, string | null> = {
+  eligible: null,
+  incomplete: "This session has not been submitted yet.",
+  retrieval: "Retrieval sessions revisit material you have already seen, so they run ahead of what a first sitting would give you.",
+  practice: "Practice sessions are not sat under exam conditions, so treat this as a rough position rather than a forecast.",
+  original: "The challenge mock is deliberately harder than a live form and is not calibrated to one, so this reads low.",
+  "not-strict": "This was untimed, and the ESAT allows 40 minutes for 27 questions. Time pressure costs marks that this result does not show.",
+  "too-short": "Too few questions to be reliable: the range beside this score is how much a set this size can swing.",
+  repeated: "Some of these questions had been seen before, so this runs ahead of what fresh material would give you.",
+};
+
+/**
+ * The result of a finished session, always with a scaled score attached.
+ *
+ * The score is produced for every completed attempt, because the question a candidate
+ * actually has is "roughly where am I?" and a blank space answers it worse than a number
+ * with its limits stated. What the eligibility rule decides is not whether to show a
+ * figure but what weight it carries: `eligible` still means a representative, fresh,
+ * strictly timed module and is still the only thing the study plan and the progress trend
+ * will count, while everything else comes back marked indicative with the reason attached.
  */
 export function scoreReportForAttempt(attempt: Attempt): AttemptScoreReport {
   const count = Math.max(0, attempt.questionIds.length);
   const raw = Math.max(0, Math.min(count, attempt.rawScore ?? 0));
   const reason = scoreEstimateEligibility(attempt);
   const eligible = reason === "eligible";
+  // A session still in progress has no mark to scale; everything finished does.
+  const finished = reason !== "incomplete";
   return {
-    estimate: eligible ? scoreEstimate(raw, count, attempt.module) : null,
+    estimate: finished ? scoreEstimate(raw, count, attempt.module) : null,
     accuracy: count ? raw / count : 0,
     eligible,
+    confidence: eligible ? "calibrated" : "indicative",
     reason,
     label: ELIGIBILITY_LABELS[reason],
+    caveat: INDICATIVE_CAVEATS[reason],
   };
-}
-
-export function estimatedScaledScore(accuracy: number): number {
-  const percent = Math.min(100, Math.max(0, accuracy * 100));
-  for (let index = 1; index < SCORE_CURVE.length; index += 1) {
-    const lower = SCORE_CURVE[index - 1];
-    const upper = SCORE_CURVE[index];
-    if (percent <= upper.percentCorrect) {
-      const span = upper.percentCorrect - lower.percentCorrect;
-      const weight = span === 0 ? 0 : (percent - lower.percentCorrect) / span;
-      return Math.round((lower.scaledScore + weight * (upper.scaledScore - lower.scaledScore)) * 10) / 10;
-    }
-  }
-  return SCORE_MODEL.scaleMax;
 }
 
 const BIN_HALF_WIDTH = 0.25;
@@ -248,6 +361,24 @@ function bandFor(scaledScore: number): { band: string; tone: ScoreTone } {
   return { band: "Developing", tone: "bad" };
 }
 
+/**
+ * How much a mark of this size could have been luck, as a scaled-score range.
+ *
+ * The standard error of a proportion over `count` questions, mapped through the same curve
+ * as the score itself. Twelve out of twenty-four and six out of twelve are the same
+ * percentage and are not the same evidence, and this is where that difference is said. One
+ * standard error rather than two: a 95% interval on a short set spans most of the scale,
+ * which is true but tells a candidate nothing they can use.
+ */
+export function scoreRange(accuracy: number, questionCount: number): { low: number; high: number } {
+  const count = Math.max(1, questionCount);
+  const error = Math.sqrt(Math.max(0, accuracy * (1 - accuracy)) / count);
+  return {
+    low: estimatedScaledScore(accuracy - error),
+    high: estimatedScaledScore(accuracy + error),
+  };
+}
+
 export function scoreEstimate(rawScore: number, questionCount: number, module: ModuleId | null = null): ScoreEstimate {
   const safeCount = Math.max(1, questionCount);
   const accuracy = Math.min(1, Math.max(0, rawScore / safeCount));
@@ -260,6 +391,7 @@ export function scoreEstimate(rawScore: number, questionCount: number, module: M
     questionCount: safeCount,
     accuracy,
     scaledScore,
+    range: scoreRange(accuracy, safeCount),
     percentile,
     topPercent,
     standing: standingLabel(topPercent, percentile),

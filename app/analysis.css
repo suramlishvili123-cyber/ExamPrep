@@ -159,7 +159,18 @@
 
 .score-scale { position: relative; margin: 6px 0 30px; }
 .score-scale-track { display: block; height: 9px; border-radius: 6px; background: var(--surface-3); overflow: hidden; }
+.score-scale-track { position: relative; }
 .score-scale-track b { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--green-2), var(--green)); transition: width .5s cubic-bezier(.22, .8, .3, 1); }
+/* The band a mark this size could plausibly have come from. Drawn behind the filled bar,
+   so the score reads first and the uncertainty around it second. */
+.score-scale-track u { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: var(--lime); opacity: .55; }
+
+/* An indicative result is marked rather than hidden: the number still answers the question
+   the candidate asked, and the reason it is soft belongs beside it, not instead of it. */
+.score-estimate-value span em { display: block; margin-top: 3px; font-style: normal; font-size: 11px; font-weight: 750; color: var(--muted); font-variant-numeric: tabular-nums; text-transform: none; letter-spacing: 0; }
+.score-evidence-notice.is-indicative { border-color: var(--amber); background: var(--amber-soft); }
+.score-evidence-notice.is-indicative strong { color: var(--amber); }
+.module-estimate.is-indicative { color: var(--muted); }
 .score-scale-marker { position: absolute; top: 13px; transform: translateX(-50%); display: grid; justify-items: center; color: var(--muted); font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
 .score-scale-marker::before { content: ""; position: absolute; top: -15px; width: 1px; height: 13px; background: var(--line-strong); }
 .score-scale-marker em { font-style: normal; font-size: 13px; font-weight: 850; color: var(--ink); }

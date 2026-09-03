@@ -2,19 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CAMBRIDGE_CONTEXT,
+  CHANCE_RATE,
   ESAT_SCORE_DISTRIBUTIONS,
   SCORE_CURVE,
   SCORE_MODEL,
+  accuracyForScaledScore,
   cambridgeContextFor,
   combinedScoreEstimate,
   estimatedScaledScore,
   ordinal,
   pacingSummary,
+  knownShare,
   scaledScorePercentile,
   scoreEstimate,
+  scoreRange,
+  scoreReportForAttempt,
   sectionBreakdown,
 } from "../app/lib/scoring";
-import { MODULE_ORDER, type ModuleId, type Question, type ResponseRecord } from "../app/lib/core";
+import { MODULE_ORDER, type Attempt, type ModuleId, type Question, type ResponseRecord } from "../app/lib/core";
 
 function response(overrides: Partial<ResponseRecord> & { questionId: string }): ResponseRecord {
   return {
@@ -72,13 +77,50 @@ test("the score curve is monotone and stays inside the reported 1.0-9.0 scale", 
     previousPercent = point.percentCorrect;
     previousScore = point.scaledScore;
   }
-  assert.equal(SCORE_CURVE[0].percentCorrect, 0);
-  assert.equal(SCORE_CURVE[SCORE_CURVE.length - 1].percentCorrect, 100);
+  // The table spans what is actually reported rather than 0 to 100: below the first row
+  // every mark is capped at 1.0, and above the last every mark is capped at 9.0.
+  assert.equal(SCORE_CURVE[0].scaledScore, SCORE_MODEL.scaleMin);
+  assert.equal(SCORE_CURVE[SCORE_CURVE.length - 1].scaledScore, SCORE_MODEL.scaleMax);
 });
 
 test("the curve is pinned to the two published anchors", () => {
   assert.equal(estimatedScaledScore(0.5), SCORE_MODEL.typicalScore);
   assert.equal(estimatedScaledScore(0.8), 7);
+});
+
+test("a mark at chance is a 1.0, because it is evidence of nothing", () => {
+  // The archive's questions have four to eight options, averaging one in 6.25. A candidate
+  // answering at random therefore lands near 16%, and everything at or below that has to
+  // read as the bottom of the scale rather than as a little knowledge.
+  assert.equal(estimatedScaledScore(CHANCE_RATE), SCORE_MODEL.scaleMin);
+  assert.equal(estimatedScaledScore(0), SCORE_MODEL.scaleMin);
+  assert.equal(estimatedScaledScore(CHANCE_RATE / 2), SCORE_MODEL.scaleMin);
+  assert.ok(estimatedScaledScore(CHANCE_RATE + 0.12) > SCORE_MODEL.scaleMin, "but real marks above it must move");
+  assert.equal(knownShare(CHANCE_RATE), 0);
+  assert.equal(knownShare(1), 1);
+  assert.ok(Math.abs(knownShare(0.5) - 0.4048) < 0.001, "half a paper is about two fifths of it actually known");
+});
+
+test("reading the scale backwards returns the mark it came from", () => {
+  for (let score = 1.1; score <= 8.9; score += 0.1) {
+    const target = Math.round(score * 10) / 10;
+    const accuracy = accuracyForScaledScore(target);
+    assert.equal(estimatedScaledScore(accuracy), target, `${target} did not round-trip`);
+  }
+  // The caps are one-way by construction: many marks give 1.0, and the inverse names the
+  // highest of them rather than inventing one below it.
+  assert.ok(accuracyForScaledScore(1) > CHANCE_RATE);
+  assert.ok(accuracyForScaledScore(9) < 1);
+});
+
+test("a short set reports a wider range than a long one at the same percentage", () => {
+  const long = scoreRange(0.5, 27);
+  const short = scoreRange(0.5, 10);
+  assert.ok(long.low < 4.5 && long.high > 4.5, "the range has to straddle the score");
+  assert.ok(short.high - short.low > long.high - long.low, "ten questions cannot be as certain as twenty-seven");
+  // A perfect or empty set has no sampling error to report.
+  assert.deepEqual(scoreRange(1, 27), { low: 9, high: 9 });
+  assert.deepEqual(scoreRange(0, 27), { low: 1, high: 1 });
 });
 
 test("percentiles rise monotonically with the score", () => {
@@ -179,4 +221,64 @@ test("pacing is measured against the 40-minute, 27-question ESAT reference", () 
   assert.equal(summary.rushedIncorrect, 1, "a blank must not be counted as a rushed wrong answer");
   assert.equal(summary.slowIncorrect, 1);
   assert.equal(summary.overtimeQuestions, 1);
+});
+
+/* ------------------------------------------------- scoring a session, whatever it was -- */
+
+function paper(overrides: Partial<Attempt> = {}): Attempt {
+  const questionIds = Array.from({ length: 27 }, (_, index) => `q${index + 1}`);
+  return {
+    attemptId: "a1", mode: "exam", module: "maths1", questionIds,
+    questionBankVersion: "t", specificationVersion: "t", scoreConversionVersion: "t", benchmarkVersion: "t",
+    startedAt: 0, endsAt: null, pausedAt: null, totalPausedDuration: 0, endedAt: 1_000,
+    durationMs: 1_000, strictTimed: true, generated: true, originalHistoricSet: false,
+    sourceYears: [2019], sourceExams: ["NSAA"], sourceSetLabel: "NSAA 2019", currentIndex: 0,
+    lastVisitStartedAt: 0, responses: {}, completionStatus: "submitted",
+    rawScore: 14, freshQuestionCount: 27, sequenceRemaining: [], sequenceSource: "archive",
+    ...overrides,
+  } as Attempt;
+}
+
+test("every finished session is scored, and says how far it can be trusted", () => {
+  const strict = scoreReportForAttempt(paper());
+  assert.equal(strict.eligible, true);
+  assert.equal(strict.confidence, "calibrated");
+  assert.equal(strict.caveat, null);
+  assert.ok(strict.estimate);
+  assert.equal(strict.estimate?.scaledScore, estimatedScaledScore(14 / 27));
+
+  // The change this makes: a past paper worked through as practice used to come back with
+  // nothing at all, which answered the candidate's question worse than a marked number.
+  for (const overrides of [
+    { mode: "practice" as const, strictTimed: false },
+    { mode: "historic" as const, strictTimed: false },
+    { mode: "retry" as const },
+    { mode: "original" as const },
+    { freshQuestionCount: 20 },
+    { questionIds: ["q1", "q2", "q3"], freshQuestionCount: 3, rawScore: 2 },
+  ]) {
+    const report = scoreReportForAttempt(paper(overrides));
+    assert.ok(report.estimate, `${JSON.stringify(overrides)} produced no estimate`);
+    assert.equal(report.eligible, false);
+    assert.equal(report.confidence, "indicative");
+    assert.ok(report.caveat && report.caveat.length > 20, "an indicative score has to say why it is indicative");
+    assert.ok(report.estimate!.scaledScore >= 1 && report.estimate!.scaledScore <= 9);
+  }
+});
+
+test("a session still in progress has no score to report", () => {
+  const open = scoreReportForAttempt(paper({ rawScore: null }));
+  assert.equal(open.estimate, null);
+  assert.equal(open.reason, "incomplete");
+  assert.equal(open.confidence, "indicative");
+});
+
+test("the same marks give the same score however the session was sat", () => {
+  // Only the confidence attached to it changes; the arithmetic does not, so a candidate
+  // comparing a practice paper with a timed one is comparing like with like.
+  const strict = scoreReportForAttempt(paper());
+  const practice = scoreReportForAttempt(paper({ mode: "practice", strictTimed: false }));
+  assert.equal(practice.estimate?.scaledScore, strict.estimate?.scaledScore);
+  assert.equal(practice.estimate?.percentile, strict.estimate?.percentile);
+  assert.notEqual(practice.confidence, strict.confidence);
 });

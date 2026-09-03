@@ -2,7 +2,8 @@
 
 An independent Cambridge Engineering ESAT preparation platform: sit historic papers by
 year, take harder-than-exam original mocks, and get a section-level breakdown with an
-estimated 1.0–9.0 score only when a result is sufficiently representative.
+estimated 1.0–9.0 score on everything you finish, marked as readiness evidence only when a
+result is representative enough to be one.
 
 It is a **single static site** with **Firebase (Google) authentication** and per-user
 Firestore storage. There is no server to run and no other authentication path. It installs
@@ -99,12 +100,35 @@ TMUA intake is restricted to Paper 1.
 ## Scoring: what is measured and what is estimated
 
 Raw marks are exact. The 1.0–9.0 figure is an **ESAT Atlas estimate**, never an official
-score. UAT-UK equates each live form with a Rasch model and does not publish the
-conversion tables, so the estimate is anchored only on published facts — a typical
-candidate scores about 4.5, and about 10% of candidates score above 7.0 — plus one
-stated modelling assumption. The full curve and the cohort model are shown in the
-application under **Settings → Methodology** and on every attempt breakdown. The estimate
-can be switched off entirely in Settings.
+score.
+
+**Every finished session is scored**, including practice and past papers worked through
+untimed, because "roughly where am I?" is the question a candidate actually has and a blank
+space answers it worse than a number with its limits printed beside it. What changes is the
+weight the result carries: a representative, fully fresh, strictly timed module is
+*calibrated* and is the only kind of result the study plan and the readiness trend will
+count; everything else is *indicative* and says in one line why — untimed, repeated
+material, too few questions. The arithmetic is identical either way, so a practice paper
+and a timed one can be compared directly.
+
+Three steps, with very different evidential status:
+
+1. **Guessing floor — measured.** The archive's questions carry four to eight options,
+   averaging one in 6.25, so answering at random is worth about 16%. A mark at or below
+   that is evidence of no knowledge, and reads as 1.0.
+2. **Raw mark → scaled score — modelled.** UAT-UK equates each live form with a Rasch model
+   and publishes no conversion table. The share actually known is mapped to the scale as a
+   straight line in its log-odds, which is the shape a Rasch-equated test implies and which
+   produces the published caps at 1.0 and 9.0 by itself. It is pinned to the only two
+   published anchors: a typical candidate scores about 4.5, and about 10% score above 7.0.
+3. **Scaled score → standing — published data.** Read off the official October 2025 and
+   January 2026 distributions, one per module, measured from the histograms in the UAT-UK
+   results document rather than estimated by eye.
+
+Every score carries a **likely range** from the sampling error of the mark it rests on, so
+seven out of ten and nineteen out of twenty-seven are not presented as equally certain. The
+full curve, the distributions and the sources are shown under **Settings → Methodology**
+and on every attempt breakdown. The estimate can be switched off entirely in Settings.
 
 ## Run locally
 

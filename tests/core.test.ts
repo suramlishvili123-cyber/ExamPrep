@@ -12,6 +12,7 @@ import {
   isReadinessEvidence,
   mergeState,
   MIN_REPRESENTATIVE_QUESTIONS,
+  RECENT_FORM_SESSIONS,
   moduleStats,
   remainingMs,
   scoreEstimateEligibility,
@@ -460,3 +461,53 @@ test("only a complete, fresh, strictly timed full-length paper is readiness evid
   assert.equal(moduleStats([shortPaper], "maths1").freshAttemptCount, 0);
   assert.equal(moduleStats([shortPaper], "maths1").recentAccuracy, null);
 });
+
+test("practice counts towards recent form even when it is not readiness evidence", () => {
+  const { attempt: paper } = representativePaper();
+  // The same paper worked through as untimed practice: no longer readiness evidence, but
+  // still the most recent thing this candidate has actually done.
+  const practice = { ...paper, mode: "practice" as const, strictTimed: false, rawScore: 12 };
+  const stats = moduleStats([practice], "maths1");
+
+  assert.equal(stats.recentAccuracy, null, "the strict figures stay empty, as they must");
+  assert.equal(stats.recentRawAverage, null);
+  assert.equal(stats.freshAttemptCount, 0);
+
+  assert.equal(stats.practiceSessionCount, 1, "but the session is not simply discarded");
+  assert.equal(stats.practiceQuestionCount, MIN_REPRESENTATIVE_QUESTIONS);
+  assert.equal(stats.practiceAccuracy, 12 / MIN_REPRESENTATIVE_QUESTIONS);
+});
+
+test("recent form pools by question, so a long paper outweighs a short drill", () => {
+  const { attempt: paper } = representativePaper();
+  const long = { ...paper, attemptId: "long", mode: "practice" as const, strictTimed: false, rawScore: 9, endedAt: 2_000 };
+  const shortIds = paper.questionIds.slice(0, 2);
+  const drill = {
+    ...paper, attemptId: "drill", mode: "practice" as const, strictTimed: false,
+    questionIds: shortIds, freshQuestionCount: shortIds.length, rawScore: 2, endedAt: 3_000,
+  };
+  const stats = moduleStats([long, drill], "maths1");
+
+  assert.equal(stats.practiceSessionCount, 2);
+  assert.equal(stats.practiceQuestionCount, MIN_REPRESENTATIVE_QUESTIONS + 2);
+  // 11 correct out of 20, not the 75% a straight average of the two sessions would give.
+  assert.equal(stats.practiceAccuracy, 11 / 20);
+});
+
+test("recent form is a window, not a lifetime total", () => {
+  const { attempt: paper } = representativePaper();
+  const sessions = Array.from({ length: RECENT_FORM_SESSIONS + 3 }, (_, index) => ({
+    ...paper,
+    attemptId: `a${index}`,
+    mode: "practice" as const,
+    strictTimed: false,
+    // The oldest sessions went badly and the newest went well; only the newest should count.
+    rawScore: index < 3 ? 0 : MIN_REPRESENTATIVE_QUESTIONS,
+    endedAt: 1_000 + index,
+  }));
+  const stats = moduleStats(sessions, "maths1");
+  assert.equal(stats.practiceSessionCount, RECENT_FORM_SESSIONS);
+  assert.equal(stats.practiceAccuracy, 1, "the three older, weaker sessions have dropped out of the window");
+  assert.equal(stats.attemptCount, RECENT_FORM_SESSIONS + 3, "though they are still counted as work done");
+});
+

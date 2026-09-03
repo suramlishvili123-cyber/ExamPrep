@@ -869,6 +869,15 @@ export function applyCompletedAttempt(state: StoredState, attempt: Attempt): Sto
  */
 export const MIN_REPRESENTATIVE_QUESTIONS = 18;
 
+/**
+ * How many recent sessions the indicative "where am I" figure pools.
+ *
+ * Enough that one bad afternoon does not define the number, few enough that it still moves
+ * when the candidate improves. The same window the strict figures use, so the two are
+ * describing the same stretch of work.
+ */
+export const RECENT_FORM_SESSIONS = 5;
+
 export type ScoreEstimateEligibilityReason =
   | "eligible"
   | "incomplete"
@@ -880,9 +889,15 @@ export type ScoreEstimateEligibilityReason =
   | "repeated";
 
 /**
- * The single source of truth for "is this attempt readiness evidence?". The cohort estimate
- * and the module readiness statistics must agree: if they drifted apart, the dashboard would
- * average an attempt that its own breakdown refuses to score.
+ * The single source of truth for "is this attempt readiness evidence?".
+ *
+ * Note what this does and does not decide. Every finished session is given a scaled score —
+ * a candidate working through a past paper is owed a rough answer to "where am I", and a
+ * blank space is not a better one. What this decides is the weight that score carries: only
+ * an eligible attempt is averaged into the module readiness figures, counted in the progress
+ * trend or fed to the study plan, and anything else is shown marked as indicative with the
+ * reason attached. The rule has to live in one place because those consumers must agree; if
+ * they drifted apart the dashboard would average an attempt its own breakdown had disowned.
  *
  * Order matters only for which reason is reported; any non-eligible reason disqualifies.
  */
@@ -914,6 +929,18 @@ export interface ModuleStats {
   recentAccuracy: number | null;
   /** Lowest proportion correct across the recent strict attempts. */
   recentFloorAccuracy: number | null;
+  /**
+   * Recent form over every completed session in this module, practice included.
+   *
+   * The strict figures above are the evidence the plan and the trend are built on, and
+   * they stay that way. This is the weaker question a candidate actually asks first —
+   * "roughly where am I?" — which a fortnight of practice papers can answer and a stricter
+   * rule leaves blank. Weighted by question count, so a 27-question paper counts for more
+   * than a 10-question drill.
+   */
+  practiceAccuracy: number | null;
+  practiceQuestionCount: number;
+  practiceSessionCount: number;
   trend: "improving" | "declining" | "stable" | "insufficient data";
 }
 
@@ -935,6 +962,13 @@ export function moduleStats(attempts: Attempt[], module: ModuleId): ModuleStats 
   // the proportion correct rather than the raw mark.
   const recentAccuracies = recentScores.map((score, index) => score / recentCounts[index]);
   const mean = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / values.length;
+  // Recent form across everything finished, however it was sat. Pooled rather than
+  // averaged per session so a long paper carries the weight a short drill does not.
+  const recentAny = [...completed]
+    .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
+    .slice(0, RECENT_FORM_SESSIONS);
+  const practiceQuestionCount = recentAny.reduce((sum, attempt) => sum + attempt.questionIds.length, 0);
+  const practiceCorrect = recentAny.reduce((sum, attempt) => sum + (attempt.rawScore ?? 0), 0);
   let trend: ModuleStats["trend"] = "insufficient data";
   if (recentAccuracies.length >= 3) {
     const newestMean = mean(recentAccuracies.slice(0, Math.ceil(recentAccuracies.length / 2)));
@@ -954,6 +988,9 @@ export function moduleStats(attempts: Attempt[], module: ModuleId): ModuleStats 
     recentQuestionAverage: recentCounts.length ? mean(recentCounts) : null,
     recentAccuracy: recentAccuracies.length ? mean(recentAccuracies) : null,
     recentFloorAccuracy: recentAccuracies.length ? Math.min(...recentAccuracies) : null,
+    practiceAccuracy: practiceQuestionCount ? practiceCorrect / practiceQuestionCount : null,
+    practiceQuestionCount,
+    practiceSessionCount: recentAny.length,
     trend,
   };
 }

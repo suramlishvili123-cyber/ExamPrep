@@ -102,6 +102,7 @@ import {
   scoreEstimate,
   sectionBreakdown,
   type AttemptScoreReport,
+  type ScoreConfidence,
   type ScoreEstimate,
   type SectionRow,
 } from "./lib/scoring";
@@ -397,16 +398,31 @@ function Pill({ tone = "neutral", children }: { tone?: "neutral" | "good" | "war
   return <span className={`pill pill-${tone}`}>{children}</span>;
 }
 
-function ScoreEstimateBlock({ estimate, compact = false }: { estimate: ScoreEstimate; compact?: boolean }) {
+function ScoreEstimateBlock({
+  estimate,
+  compact = false,
+  confidence = "calibrated",
+}: {
+  estimate: ScoreEstimate;
+  compact?: boolean;
+  confidence?: ScoreConfidence;
+}) {
   const cambridge = cambridgeContextFor(estimate.scaledScore);
   const offerAverage = CAMBRIDGE_CONTEXT.offerHolderAverage;
   // Position both markers on the reported 1.0-9.0 scale.
   const asPercent = (score: number) => ((Math.min(9, Math.max(1, score)) - 1) / 8) * 100;
+  // A range narrower than the reporting step says nothing a candidate can act on, and a
+  // number followed by "5.8 to 5.8" reads as a fault rather than as precision.
+  const spread = estimate.range.high - estimate.range.low;
+  const showRange = spread >= 0.2;
   return (
     <div className={compact ? "score-estimate score-estimate-compact" : "score-estimate"}>
       <div className="score-estimate-value">
         <strong>{estimate.scaledScore.toFixed(1)}</strong>
-        <span>estimated ESAT score</span>
+        <span>
+          {confidence === "indicative" ? "indicative ESAT score" : "estimated ESAT score"}
+          {showRange ? <em>likely {estimate.range.low.toFixed(1)}–{estimate.range.high.toFixed(1)}</em> : null}
+        </span>
       </div>
       <div className="score-estimate-meta">
         <Pill tone={estimate.tone}>{estimate.band}</Pill>
@@ -414,8 +430,15 @@ function ScoreEstimateBlock({ estimate, compact = false }: { estimate: ScoreEsti
       </div>
       {!compact ? (
         <>
-          <div className="score-scale" role="img" aria-label={`${estimate.scaledScore.toFixed(1)} on the 1.0 to 9.0 ESAT scale; typical candidate ${SCORE_MODEL.typicalScore}; recent Cambridge Engineering offer holders averaged ${offerAverage}`}>
+          <div
+            className="score-scale"
+            role="img"
+            aria-label={`${estimate.scaledScore.toFixed(1)} on the 1.0 to 9.0 ESAT scale${showRange ? `, likely ${estimate.range.low.toFixed(1)} to ${estimate.range.high.toFixed(1)}` : ""}; typical candidate ${SCORE_MODEL.typicalScore}; recent Cambridge Engineering offer holders averaged ${offerAverage}`}
+          >
             <i className="score-scale-track">
+              {showRange ? (
+                <u style={{ left: `${asPercent(estimate.range.low)}%`, width: `${asPercent(estimate.range.high) - asPercent(estimate.range.low)}%` }} />
+              ) : null}
               <b style={{ width: `${asPercent(estimate.scaledScore)}%` }} />
             </i>
             <span className="score-scale-marker score-scale-typical" style={{ left: `${asPercent(SCORE_MODEL.typicalScore)}%` }}><em>{SCORE_MODEL.typicalScore}</em>typical</span>
@@ -423,7 +446,7 @@ function ScoreEstimateBlock({ estimate, compact = false }: { estimate: ScoreEsti
           </div>
           <p className={`score-estimate-cambridge tone-${cambridge.tone}`}>{cambridge.message}</p>
           <p className="score-estimate-note">
-            If this proxy scaled score matched a live result, the official {SCORE_MODEL.distributionSitting} distribution would place it around this standing.
+            {estimate.rawScore}/{estimate.questionCount} correct. If this proxy scaled score matched a live result, the official {SCORE_MODEL.distributionSitting} distribution would place it around this standing.
             The raw-to-scaled step is modelled because UAT-UK does not publish a conversion table and live forms are Rasch-equated per sitting.
           </p>
         </>
@@ -432,20 +455,35 @@ function ScoreEstimateBlock({ estimate, compact = false }: { estimate: ScoreEsti
   );
 }
 
-export function ScoreEvidenceNotice({ report }: { report: AttemptScoreReport }) {
-  const detail = report.reason === "retrieval"
-    ? "This session measures recall on material you have already seen. It updates mastery and scheduling, but cannot estimate exam standing."
-    : report.reason === "original"
-      ? "The challenge mock is intentionally harder and is not calibrated to a live ESAT form, so its exact raw mark is the honest result."
-      : report.reason === "too-short"
-        ? "A cohort comparison needs at least 18 fresh questions under strict timing. One or a few correct answers are not enough to infer a 1.0–9.0 score."
-        : report.reason === "repeated"
-          ? "Some questions were previously seen. Use this result to measure learning; only a fully fresh set can contribute a cohort estimate."
-          : "This activity is useful practice, but its conditions are not representative enough for a cohort estimate.";
+/**
+ * A finished session's score, with whatever has to be said about how far to trust it.
+ *
+ * Both parts are shown together rather than one instead of the other. Withholding the
+ * number from a practice paper does not stop a candidate wondering where they are; it just
+ * leaves them to guess, which is worse than a figure with its limits printed beside it.
+ */
+export function AttemptScore({ report }: { report: AttemptScoreReport }) {
+  if (!report.estimate) return <ScoreEvidenceNotice report={report} />;
   return (
-    <div className="score-evidence-notice" role="note">
+    <>
+      <ScoreEstimateBlock estimate={report.estimate} confidence={report.confidence} />
+      {report.caveat ? <ScoreEvidenceNotice report={report} /> : null}
+    </>
+  );
+}
+
+/**
+ * Why a result is indicative rather than readiness evidence. Shown beside the score, not
+ * in place of it: the reason a number is soft is useful, the absence of the number is not.
+ */
+export function ScoreEvidenceNotice({ report }: { report: AttemptScoreReport }) {
+  return (
+    <div className={`score-evidence-notice ${report.eligible ? "" : "is-indicative"}`} role="note">
       <ShieldCheck size={19} />
-      <div><strong>{report.label}</strong><span>{detail}</span></div>
+      <div>
+        <strong>{report.label}</strong>
+        <span>{report.caveat ?? "This was a representative, fully fresh set under strict timing — the sample a cohort comparison is designed for."}</span>
+      </div>
     </div>
   );
 }
@@ -2021,19 +2059,32 @@ export function Dashboard({
             .filter((question) => question.targetModule === module && !question.excluded && !question.reviewRequired)
             .map((question) => question.id);
           const unseen = approvedIds.filter((id) => !state.progress[id] || state.progress[id].neverSeen).length;
-          const estimate = item.recentRawAverage === null || item.recentQuestionAverage === null
+          // The strict figure when there is one, and recent practice form when there is
+          // not — a candidate who has only worked through past papers still gets an answer
+          // to "where am I", marked as the weaker evidence it is.
+          const strictEstimate = item.recentRawAverage === null || item.recentQuestionAverage === null
             ? null
             : scoreEstimate(item.recentRawAverage, item.recentQuestionAverage, module);
+          const practiceEstimate = strictEstimate || item.practiceAccuracy === null
+            ? null
+            : scoreEstimate(item.practiceAccuracy * item.practiceQuestionCount, item.practiceQuestionCount, module);
+          const estimate = strictEstimate ?? practiceEstimate;
           return (
             <article className="module-card" key={module}>
               <div className={`module-accent ${module}`} />
               <div className="module-card-top"><span>{MODULE_LABELS[module]}</span><Pill tone={item.trend === "improving" ? "good" : item.trend === "declining" ? "warn" : "neutral"}>{item.trend}</Pill></div>
-              {item.recentRawAverage === null || item.recentQuestionAverage === null
-                ? <strong className="module-score empty-score">—</strong>
-                : <strong className="module-score">{item.recentRawAverage.toFixed(1)}<small>/{item.recentQuestionAverage.toFixed(item.recentQuestionAverage % 1 === 0 ? 0 : 1)} raw</small></strong>}
+              {item.recentRawAverage !== null && item.recentQuestionAverage !== null
+                ? <strong className="module-score">{item.recentRawAverage.toFixed(1)}<small>/{item.recentQuestionAverage.toFixed(item.recentQuestionAverage % 1 === 0 ? 0 : 1)} raw</small></strong>
+                : item.practiceAccuracy !== null
+                  ? <strong className="module-score">{Math.round(item.practiceAccuracy * 100)}%<small>over {item.practiceQuestionCount} practised</small></strong>
+                  : <strong className="module-score empty-score">—</strong>}
               {estimate && state.settings.showScoreEstimate
-                ? <p className="module-estimate"><strong>{estimate.scaledScore.toFixed(1)}</strong> estimated · {estimate.standing}</p>
-                : <p>{item.recentFloorAccuracy !== null ? `Recent fresh floor ${Math.round(item.recentFloorAccuracy * 100)}%` : "No fresh timed module yet"}</p>}
+                ? (
+                  <p className={practiceEstimate ? "module-estimate is-indicative" : "module-estimate"}>
+                    <strong>{estimate.scaledScore.toFixed(1)}</strong> {practiceEstimate ? "indicative" : "estimated"} · {estimate.standing}
+                  </p>
+                )
+                : <p>{item.recentFloorAccuracy !== null ? `Recent fresh floor ${Math.round(item.recentFloorAccuracy * 100)}%` : "No sessions in this module yet"}</p>}
               <div className="module-meta">
                 <span><Target size={14} /> Personal target {state.targets[module].toFixed(1)}</span>
                 <span>{approvedCounts[module]} approved · {Math.max(0, unseen)} unseen</span>
@@ -3610,7 +3661,6 @@ export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEst
   const [logFilter, setLogFilter] = useState<"all" | "correct" | "missed" | "flagged">("all");
   const responses = attempt.questionIds.map((id) => attempt.responses[id]).filter(Boolean);
   const report = scoreReportForAttempt(attempt);
-  const estimate = report.estimate;
   const topics = sectionBreakdown(responses, questionMap);
   const pacing = pacingSummary(responses, attempt.questionIds.length, attempt.durationMs ?? 0);
   const times = responses.map((response) => response.timeSpentMs).sort((left, right) => left - right);
@@ -3648,7 +3698,7 @@ export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEst
           <span>/ {attempt.questionIds.length} raw</span>
           <small>{Math.round(report.accuracy * 100)}% accuracy{delta !== null ? ` · ${delta >= 0 ? "+" : ""}${delta} pts vs previous attempt` : ""}</small>
         </div>
-        {showScoreEstimate && estimate ? <ScoreEstimateBlock estimate={estimate} /> : showScoreEstimate ? <ScoreEvidenceNotice report={report} /> : null}
+        {showScoreEstimate ? <AttemptScore report={report} /> : null}
       </section>
 
       <section className="result-metrics">
@@ -3778,6 +3828,7 @@ function ScoreMethodology() {
           <span className="method-step">Step 1 · estimated</span>
           <h3>Raw mark → scaled score</h3>
           <p>UAT-UK publishes no raw-to-scaled table, because every live form is Rasch-equated for question difficulty. This step is a stated assumption: {SCORE_MODEL.assumption.toLowerCase()}</p>
+          <p>The scale starts at a mark of {Math.round(SCORE_MODEL.chanceRate * 100)}%, which is what answering these papers entirely at random is worth: their questions carry four to eight options, averaging one in {(1 / SCORE_MODEL.chanceRate).toFixed(2)}. A score at or below that is evidence of no knowledge rather than of a little, so it reads as 1.0.</p>
         </div>
         <div>
           <span className="method-step method-step-solid">Step 2 · published data</span>
@@ -4608,6 +4659,8 @@ export function ExamPlayer({
   );
   const annotatorRef = useRef<AnnotatorHandle | null>(null);
   const surfaceRef = useRef<QuestionSurfaceHandle | null>(null);
+  /** Whether the margins have already been explained once in this session. */
+  const sideSpaceNoticedRef = useRef(false);
   // The question's shape, reported by the surface once it knows it, and the frame it is
   // drawn into. Both are needed to work out the magnification that fits a whole page.
   const [aspect, setAspect] = useState(0);
@@ -4792,7 +4845,16 @@ export function ExamPlayer({
                 extraSpace={questionExtraSpace}
                 onExtraSpaceChange={onQuestionViewChange ? (value) => onQuestionViewChange({ questionExtraSpace: value }) : undefined}
                 sideSpace={questionSideSpace}
-                onSideSpaceChange={onQuestionViewChange ? (value) => onQuestionViewChange({ questionSideSpace: value }) : undefined}
+                onSideSpaceChange={onQuestionViewChange ? (value) => {
+                  onQuestionViewChange({ questionSideSpace: value });
+                  // The question stays exactly where it was, which is the point — but it also
+                  // means nothing visibly happens, the new paper being off the side of the
+                  // screen. Said once, the first time, rather than left to be discovered.
+                  if (value > 0 && !sideSpaceNoticedRef.current) {
+                    sideSpaceNoticedRef.current = true;
+                    onNotice?.("Paper added each side of the question. Drag it into view with a finger, with Move, or press Fit to come back.");
+                  }
+                } : undefined}
                 status={writingStatus}
                 onUndo={() => annotatorRef.current?.undo()}
                 onRedo={() => annotatorRef.current?.redo()}
@@ -4904,7 +4966,6 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
   const incorrect = responses.filter((response) => response.correct === false && !response.unanswered);
   const missed = [...incorrect, ...responses.filter((response) => response.unanswered)];
   const report = scoreReportForAttempt(attempt);
-  const estimate = report.estimate;
   const topics = sectionBreakdown(responses, questionMap);
   const pacing = pacingSummary(responses, attempt.questionIds.length, attempt.durationMs ?? 0);
   const delta = accuracyDelta(attempt, previous);
@@ -4938,7 +4999,7 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
       </section>
       {showScoreEstimate ? (
         <section className="panel result-estimate">
-          {estimate ? <ScoreEstimateBlock estimate={estimate} /> : <ScoreEvidenceNotice report={report} />}
+          <AttemptScore report={report} />
         </section>
       ) : null}
       <section className="result-metrics">
