@@ -75,8 +75,7 @@ import {
   PEN_WIDTHS,
   SCRATCH_COLOURS,
   eraseAt,
-  inkExtent,
-  inkSpread,
+  inkBounds,
   pageBoardWidth,
   pageIsFull,
   pagePointCount,
@@ -513,14 +512,14 @@ export const QuestionAnnotator = memo(function QuestionAnnotator({
 
   const commit = useCallback((strokes: ScratchStroke[]) => {
     strokesRef.current = strokes;
-    // Never smaller than the writing reaches, in any direction: see `inkExtent` and
-    // `inkSpread`. The question's own geometry sets the sheet, but taking blank paper away
-    // later must not hide what was written on it while it was there.
-    const spread = inkSpread(strokes);
+    // Never smaller than the writing reaches, in any direction: see `inkBounds`. The
+    // question's own geometry sets the sheet, but taking blank paper away later must not hide
+    // what was written on it while it was there.
+    const ink = inkBounds(strokes);
     onChange({
-      height: Math.max(boardHeight, inkExtent(strokes)),
-      left: Math.max(boardLeft, spread.left),
-      right: Math.max(boardRight, spread.right),
+      height: Math.max(boardHeight, ink.bottom),
+      left: Math.max(boardLeft, ink.left),
+      right: Math.max(boardRight, ink.right),
       strokes,
     });
     publishStatus();

@@ -122,13 +122,7 @@ export function pagePointCount(page: ScratchPage): number {
  * bottom of the review. The stored height is therefore never less than the ink needs.
  */
 export function inkExtent(strokes: ScratchStroke[]): number {
-  let lowest = 0;
-  for (const stroke of strokes) {
-    for (let index = 1; index < stroke.points.length; index += 3) {
-      if (stroke.points[index] > lowest) lowest = stroke.points[index];
-    }
-  }
-  return lowest > 0 ? lowest + INK_MARGIN : 0;
+  return inkBounds(strokes).bottom;
 }
 
 /** A margin so the outermost stroke is not flush against the edge of the review. */
@@ -142,16 +136,36 @@ const INK_MARGIN = 24;
  * them while they were there. Zero on either side means nothing was written beyond that edge.
  */
 export function inkSpread(strokes: ScratchStroke[]): { left: number; right: number } {
+  const { left, right } = inkBounds(strokes);
+  return { left, right };
+}
+
+/**
+ * The paper the writing needs, on all three open sides at once.
+ *
+ * One pass rather than three. This is called on every committed change, which includes every
+ * move of the eraser that actually rubs something out, and a heavy page is tens of thousands
+ * of points — so the two questions it answers are asked together.
+ */
+export function inkBounds(strokes: ScratchStroke[]): { bottom: number; left: number; right: number } {
+  let bottom = 0;
   let left = 0;
   let right = 0;
   for (const stroke of strokes) {
-    for (let index = 0; index < stroke.points.length; index += 3) {
-      const x = stroke.points[index];
+    const points = stroke.points;
+    for (let index = 0; index < points.length; index += 3) {
+      const x = points[index];
+      const y = points[index + 1];
+      if (y > bottom) bottom = y;
       if (-x > left) left = -x;
       if (x - BOARD_WIDTH > right) right = x - BOARD_WIDTH;
     }
   }
-  return { left: left > 0 ? left + INK_MARGIN : 0, right: right > 0 ? right + INK_MARGIN : 0 };
+  return {
+    bottom: bottom > 0 ? bottom + INK_MARGIN : 0,
+    left: left > 0 ? left + INK_MARGIN : 0,
+    right: right > 0 ? right + INK_MARGIN : 0,
+  };
 }
 
 /** True when another stroke would take the page past what can be stored. */

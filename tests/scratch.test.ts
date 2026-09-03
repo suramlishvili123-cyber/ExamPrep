@@ -16,6 +16,7 @@ import {
   encodePage,
   encodedPageSize,
   eraseAt,
+  inkBounds,
   inkExtent,
   inkSpread,
   pageBoardWidth,
@@ -248,6 +249,11 @@ test("a page never records margins that would hide what is written in them", () 
   const spread = inkSpread([beside]);
   assert.equal(Math.max(written, spread.left), 500);
   assert.equal(Math.max(0, spread.left), 284, "and with the margins since removed, the ink still fits");
+
+  // All three sides come from one pass over the points, so they must agree with the two
+  // helpers that read them separately.
+  const bounds = inkBounds([beside]);
+  assert.deepEqual(bounds, { bottom: inkExtent([beside]), left: spread.left, right: spread.right });
 });
 
 test("the sheet a page was written on is as wide as the question and its margins together", () => {
