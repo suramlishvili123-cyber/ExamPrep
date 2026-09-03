@@ -26,11 +26,17 @@ export type MathNode =
   | { type: "binom"; upper: MathNode[]; lower: MathNode[] };
 
 const SYMBOLS: Record<string, string> = {
-  pi: "π", theta: "θ", alpha: "α", beta: "β", lambda: "λ",
-  rho: "ρ", mu: "μ", Delta: "Δ", Omega: "Ω", ohm: "Ω",
+  pi: "π", theta: "θ", alpha: "α", beta: "β", gamma: "γ", delta: "δ",
+  lambda: "λ", rho: "ρ", mu: "μ", nu: "ν", eta: "η",
+  phi: "φ", Phi: "Φ", sigma: "σ", Sigma: "Σ", tau: "τ",
+  omega: "ω", Omega: "Ω", ohm: "Ω", Delta: "Δ",
+  epsilon: "ε", varepsilon: "ε",
   times: "×", div: "÷", cdot: "·", pm: "±", mp: "∓",
-  le: "≤", ge: "≥", ne: "≠", approx: "≈", to: "→",
-  infty: "∞", deg: "°", propto: "∝", therefore: "∴",
+  le: "≤", leq: "≤", ge: "≥", geq: "≥", ne: "≠", neq: "≠",
+  approx: "≈", to: "→", rightarrow: "→", leftarrow: "←",
+  infty: "∞", deg: "°", degree: "°", circ: "°",
+  propto: "∝", therefore: "∴", equiv: "≡", sim: "∼",
+  parallel: "∥", perp: "⊥",
   ldots: "…", cdots: "⋯", int: "∫", sum: "∑", partial: "∂",
   // Escaped literals and spacing.
   "%": "%", "&": "&", "#": "#", "_": "_", "{": "{", "}": "}",
@@ -55,7 +61,10 @@ export const KNOWN_COMMANDS: ReadonlySet<string> = new Set([
 const UPRIGHT_WORDS = new Set(["sin", "cos", "tan", "log", "ln", "lg", "arcsin", "arccos", "arctan", "cosec", "sec", "cot"]);
 
 /** Symbols that need breathing room on their right-hand side. */
-const OPERATORS = new Set(["times", "div", "cdot", "pm", "mp", "le", "ge", "ne", "approx", "to", "propto"]);
+const OPERATORS = new Set([
+  "times", "div", "cdot", "pm", "mp", "le", "leq", "ge", "geq", "ne", "neq",
+  "approx", "to", "rightarrow", "leftarrow", "propto", "equiv", "sim", "parallel", "perp",
+]);
 
 class MathParser {
   private index = 0;
@@ -93,11 +102,19 @@ class MathParser {
           nodes.push({ type: "text", value: spaced ? `${command} ` : command, italic: false });
         }
         else if (command in SYMBOLS) {
-          // Binary and relational operators keep a space before their right-hand side;
+          // Binary and relational operators keep balanced spacing around themselves;
           // letter-like symbols and unit marks sit tight against what follows.
           const next = this.source[this.index];
-          const spaced = OPERATORS.has(command) && next !== undefined && next !== " ";
-          nodes.push({ type: "text", value: spaced ? `${SYMBOLS[command]} ` : SYMBOLS[command], italic: false });
+          const trailingSpace = OPERATORS.has(command) && next !== undefined && next !== " ";
+          let symbolText = SYMBOLS[command];
+          if (OPERATORS.has(command) && nodes.length > 0) {
+            const last = nodes[nodes.length - 1];
+            if (last.type === "text" && !last.value.endsWith(" ") && !last.value.endsWith("(") && !last.value.endsWith("[")) {
+              symbolText = ` ${symbolText}`;
+            }
+          }
+          if (trailingSpace) symbolText = `${symbolText} `;
+          nodes.push({ type: "text", value: symbolText, italic: false });
         }
         // An unknown command is a bug in the authored bank, not something to paper over.
         // It is marked so it is impossible to miss in review, and the build rejects it.
@@ -153,6 +170,7 @@ class MathParser {
 
   /** A braced group, or the single next character when unbraced (as in x^2). */
   private readGroup(): MathNode[] {
+    while (this.source[this.index] === " ") this.index += 1;
     if (this.source[this.index] === "{") {
       this.index += 1;
       const inner = this.parse(true);
@@ -217,13 +235,18 @@ export function splitMath(source: string): MathSegment[] {
 const SUPERSCRIPTS: Record<string, string> = {
   "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
   "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
-  "-": "⁻", "+": "⁺", "(": "⁽", ")": "⁾", n: "ⁿ",
+  "-": "⁻", "+": "⁺", "=": "⁼", "(": "⁽", ")": "⁾",
+  a: "ᵃ", b: "ᵇ", c: "ᶜ", d: "ᵈ", e: "ᵉ", f: "ᶠ", g: "ᵍ", h: "ʰ",
+  i: "ⁱ", j: "ʲ", k: "ᵏ", l: "ˡ", m: "ᵐ", n: "ⁿ", o: "ᵒ", p: "ᵖ",
+  r: "ʳ", s: "ˢ", t: "ᵗ", u: "ᵘ", v: "ᵛ", w: "ʷ", x: "ˣ", y: "ʸ", z: "ᶻ",
 };
 
 const SUBSCRIPTS: Record<string, string> = {
   "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄",
   "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
-  "-": "₋", "+": "₊", "(": "₍", ")": "₎", n: "ₙ",
+  "-": "₋", "+": "₊", "=": "₌", "(": "₍", ")": "₎",
+  a: "ₐ", e: "ₑ", h: "ₕ", i: "ᵢ", j: "ⱼ", k: "ₖ", l: "ₗ", m: "ₘ",
+  n: "ₙ", o: "ₒ", p: "ₚ", r: "ᵣ", s: "ₛ", t: "ₜ", u: "ᵤ", v: "ᵥ", x: "ₓ",
 };
 
 function nodesToText(nodes: MathNode[], script: "none" | "sup" | "sub" = "none"): string {

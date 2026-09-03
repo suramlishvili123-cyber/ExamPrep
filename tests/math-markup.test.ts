@@ -52,9 +52,12 @@ test("superscripts and subscripts accept both braced and single-character argume
   assert.equal(shape(parseMath("x^{2n}")), "i(x)^[2i(n)]");
 });
 
-test("radicals and fractions nest correctly", () => {
+test("radicals and fractions nest correctly and tolerate whitespace between groups", () => {
   assert.equal(shape(parseMath("\\sqrt{57}")), "sqrt[57]");
   assert.equal(shape(parseMath("\\frac{1}{2}")), "frac[1|2]");
+  assert.equal(shape(parseMath("\\frac{1} {2}")), "frac[1|2]");
+  assert.equal(shape(parseMath("\\binom{n} {k}")), "binom[i(n)|i(k)]");
+  assert.equal(shape(parseMath("x^ {2}")), "i(x)^[2]");
   assert.equal(shape(parseMath("\\frac{\\sqrt{5}}{2}")), "frac[sqrt[5]|2]");
   assert.equal(shape(parseMath("\\sqrt{x^2 + 1}")), "sqrt[i(x)^[2] + 1]");
 });
@@ -65,7 +68,10 @@ test("symbols and function names render upright, variables render italic", () =>
   assert.equal(shape(parseMath("30\\deg")), "30°");
   assert.equal(shape(parseMath("4 \\times 10^3")), "4 × 10^[3]");
   assert.equal(shape(parseMath("x \\le 6")), "i(x) ≤ 6");
+  assert.equal(shape(parseMath("x \\neq y")), "i(x) ≠ i(y)");
   assert.equal(shape(parseMath("R = 12\\ohm")), "i(R) = 12Ω");
+  assert.equal(shape(parseMath("\\gamma \\times \\phi")), "γ × φ");
+  assert.equal(shape(parseMath("A \\rightarrow B")), "i(A) → i(B)");
 });
 
 test("text mode keeps units and words upright", () => {
