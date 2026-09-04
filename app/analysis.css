@@ -259,7 +259,11 @@
 .log-entry > summary:hover { background: var(--surface-2); }
 .log-entry[open] > summary { background: var(--surface-2); }
 .log-review { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; padding: 14px 4px 20px; }
-.log-review > img { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: white; }
+/* The question, whether it is a plain picture or wrapped in the button that reopens it
+   for writing. Both are direct children of the review; the image inside the button is
+   one level further down, and losing this rule leaves the crop unbordered and unsized. */
+.log-review > img,
+.log-review > .review-open-question > img { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: white; }
 .log-review-side { display: grid; align-content: start; gap: 12px; }
 .log-answer-grid { display: grid; gap: 5px; }
 .log-answer { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }

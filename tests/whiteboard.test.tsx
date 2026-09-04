@@ -11,6 +11,7 @@
 import "./dom-setup";
 
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test, { afterEach } from "node:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AttemptDetailView, ExamPlayer, QUESTION_ZOOM_STEPS, ResultScreen, ReviewWorkspace, fitPageZoom, nearestZoomStep } from "../app/esat-app";
@@ -860,7 +861,9 @@ test("a reviewed question is a way back into it, not just a picture of it", () =
     />,
   );
 
-  const opener = screen.getByRole("button", { name: /Open question .* to write on it/ });
+  // Numbered as the row beside it is — its place in this set, not the number the original
+  // paper printed on it, which for a practice set is almost never the same.
+  const opener = screen.getByRole("button", { name: "Open question 1 to write on it" });
   assert.ok(opener.querySelector("img"), "the question itself is what is pressed");
   fireEvent.click(opener);
   assert.deepEqual(opened, ["q1"], "pressing it asks the host to open that question");
@@ -882,6 +885,37 @@ test("a reviewed question is a way back into it, not just a picture of it", () =
   );
   assert.equal(screen.queryByRole("button", { name: /Open question/ }), null);
   assert.ok(container.querySelector(".error-review-body img"), "and the question is still shown");
+});
+
+test("a question reopened from the history is offered the same way", () => {
+  // The history is the more common way back to a question than the result of the session
+  // that has only just finished, and it was the path that did not work: the dialog was
+  // rendered on the result screen alone, so pressing a question here did nothing at all.
+  const opened: string[] = [];
+  render(
+    <AttemptDetailView
+      attempt={reviewedAttempt()}
+      questionMap={{ q1: question("q1") }}
+      attempts={[reviewedAttempt()]}
+      showScoreEstimate
+      onOpenWriting={(id: string) => opened.push(id)}
+      onBack={() => undefined}
+      onDelete={() => undefined}
+      onResit={() => undefined}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Open question 1 to write on it" }));
+  assert.deepEqual(opened, ["q1"]);
+});
+
+test("the host renders the dialog everywhere a question can be opened from", async () => {
+  // A source check, because the two review screens live under different branches of the
+  // application shell and the failure mode is silent: the button is there, the handler runs,
+  // and nothing appears. Both branches must render it.
+  const source = await readFile(new URL("../app/esat-app.tsx", import.meta.url), "utf8");
+  const renders = source.split("{reviewWritingDialog}").length - 1;
+  assert.equal(renders, 2, "the result screen and the application shell must each render it");
+  assert.match(source, /const reviewWritingDialog = /, "and it is built once, from the attempt being reviewed");
 });
 
 test("the reopened question carries the working already on it, and keeps writing", () => {

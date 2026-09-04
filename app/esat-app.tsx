@@ -1847,6 +1847,10 @@ export default function EsatApp() {
 
   return (
     <div className="app-shell">
+      {/* Above the shell, and rendered here as well as on the result screen: a question is
+          reopened from the history far more often than from the result of the session that
+          has only just finished. */}
+      {reviewWritingDialog}
       <a className="skip-link" href="#main-content">Skip to main content</a>
       {sidebarOpen ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} /> : null}
       <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
@@ -3773,10 +3777,13 @@ function QuestionLearningSupport({ question }: { question: Question }) {
  */
 function ReviewQuestion({
   question,
+  number,
   onOpenWriting,
   children,
 }: {
   question: Question | undefined;
+  /** Its place in this set, which is what the row beside it is numbered by. */
+  number: number;
   onOpenWriting?: (questionId: string) => void;
   children: React.ReactNode;
 }) {
@@ -3786,7 +3793,11 @@ function ReviewQuestion({
       type="button"
       className="review-open-question"
       onClick={() => onOpenWriting(question.id)}
-      aria-label={`Open question ${question.originalQuestionNumber} to write on it`}
+      // Numbered as the review numbers it, not as the original paper does. The two rarely
+      // agree — question 1 of a practice set can be question 18 of the paper it came from —
+      // and a label that disagreed with the row above it would be read out as a different
+      // question entirely.
+      aria-label={`Open question ${number} to write on it`}
       title="Open this question and carry on writing on it"
     >
       {children}
@@ -3931,7 +3942,7 @@ export function AttemptDetailView({ attempt, questionMap, attempts, showScoreEst
                 <Pill tone={response.correct ? "good" : response.unanswered ? "neutral" : "bad"}>{response.correct ? "Correct" : response.unanswered ? "Blank" : "Wrong"}</Pill>
               </summary>
               <div className="log-review">
-                <ReviewQuestion question={question} onOpenWriting={onOpenWriting}>
+                <ReviewQuestion question={question} number={index + 1} onOpenWriting={onOpenWriting}>
                   {question?.questionImage
                     ? <img src={publicAsset(question.questionImage)} alt={`${question.sourceExam} ${question.year} question ${question.originalQuestionNumber}`} loading="lazy" />
                     : question
@@ -5458,7 +5469,11 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
                   </div>
                 </summary>
                 <div className="error-review-body">
-                  <ReviewQuestion question={question} onOpenWriting={onOpenWriting}>
+                  <ReviewQuestion
+                    question={question}
+                    number={attempt.questionIds.indexOf(response.questionId) + 1}
+                    onOpenWriting={onOpenWriting}
+                  >
                     {question?.questionImage
                       ? <img src={publicAsset(question.questionImage)} alt={`Review question ${question.id}`} loading="lazy" />
                       : <div className="authored-review"><p><MathText>{question?.questionText}</MathText></p><QuestionFigure question={question} /></div>}

@@ -715,7 +715,8 @@ figure.question-figure img { display: block; width: 100%; min-width: 560px; heig
 .review-trap svg { flex: 0 0 auto; margin-top: 2px; }
 .error-learning { grid-column: 1 / -1; }
 .error-learning .question-learning { margin-top: 2px; }
-.error-review-body > img { width: 100%; }
+.error-review-body > img,
+.error-review-body > .review-open-question > img { width: 100%; }
 
 @media (hover: hover) and (pointer: fine) {
   .tactic-card:hover, .technique-card:hover { border-color: color-mix(in srgb, var(--green) 35%, var(--line)); box-shadow: var(--shadow); }
