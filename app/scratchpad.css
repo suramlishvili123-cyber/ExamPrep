@@ -38,6 +38,13 @@
 @media (min-width: 981px) and (max-width: 1200px) {
   .exam-content { padding-inline: 14px; gap: 14px; }
 }
+/* Above that the player is only at the full width of the screen while it is being written
+   on — capped at 1180px otherwise, where the margin is real and wanted. So this band gives
+   up its margin for writing alone. A 13-inch tablet in landscape is 1440 wide and lands
+   squarely in it. */
+@media (min-width: 1201px) and (max-width: 1500px) {
+  .exam-content.is-writing { padding-inline: 14px; gap: 14px; }
+}
 
 .question-stage { display: flex; flex-direction: column; min-height: 0; }
 @media (min-width: 981px) {
@@ -389,3 +396,28 @@
 }
 .review-workspace-step button:disabled { opacity: .32; cursor: default; }
 .review-workspace-step button + button { border-left: 1px solid #e4e9e7; }
+
+/*
+ * Touch targets, where the pointer is a finger.
+ *
+ * A tablet with a stylus is still driven by a hand: the pen writes, and the other hand taps
+ * the toolbar. The zoom stepper was 28px square and the tool buttons 34 — around 7mm and 9mm
+ * on a 13-inch tablet, under every published minimum and genuinely awkward to hit while
+ * holding a pen. They are sized for a finger wherever the primary pointer is a coarse one,
+ * which costs about twenty pixels of writing height and buys back every mis-tap.
+ *
+ * Keyed on the pointer rather than the width: a touchscreen laptop wants the same treatment,
+ * and a small window on a mouse-driven machine does not.
+ */
+@media (pointer: coarse) {
+  .annotation-tools button { min-height: 44px; min-width: 44px; }
+  .annotation-swatch { width: 40px; min-width: 40px; }
+  .annotation-sizes button, .annotation-history button { min-width: 44px; }
+  .annotation-space button { min-width: 46px; }
+  .question-zoom button { min-height: 40px; min-width: 40px; }
+  .question-zoom-fit { padding: 0 12px; }
+  .board-button, .flag-button { min-height: 40px; }
+  .review-workspace-step button { min-height: 44px; min-width: 44px; }
+  /* The cut line is dragged by its handle, which needs to be findable under a fingertip. */
+  .question-trim-line::before { top: -16px; height: 32px; }
+}

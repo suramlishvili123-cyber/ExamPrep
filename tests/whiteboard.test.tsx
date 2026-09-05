@@ -531,6 +531,41 @@ test("a finger moves the question when it is not the writing tool", () => {
   fireEvent.pointerUp(canvas, { pointerId: 7, pointerType: "touch", clientX: 240, clientY: 220 });
 });
 
+test("a hovering stylus locks the hand out before the nib has landed", () => {
+  // An S Pen reports itself while it is still above the glass, and the hand arrives before
+  // the nib does — the heel of it lands as the wrist comes down to write. Hover keeps the
+  // lockout fresh, so the whole hand is quiet from the moment the pen is near the paper
+  // rather than only from the first mark. This is the case a stylus tablet lives or dies on.
+  const drawn: unknown[] = [];
+  const { container } = render(<ExamPlayer {...playerProps({ onScratchChange: (_id: string, page: unknown) => drawn.push(page) })} />);
+  const canvas = container.querySelector(".annotation-canvas-live") as HTMLElement;
+  const frame = container.querySelector(".question-frame") as HTMLElement;
+  Object.defineProperty(frame, "scrollTop", { value: 0, writable: true, configurable: true });
+  Object.defineProperty(frame, "scrollLeft", { value: 0, writable: true, configurable: true });
+
+  // Hovering: a pen pointer with nothing pressed. It must leave no mark of its own.
+  fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: "pen", isPrimary: true, pressure: 0, buttons: 0, clientX: 300, clientY: 200 });
+  fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: "pen", isPrimary: true, pressure: 0, buttons: 0, clientX: 330, clientY: 215 });
+  assert.deepEqual(drawn, [], "a hovering nib writes nothing");
+
+  // The hand, while the pen is still in the air: neither a palm nor a fingertip may act.
+  fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: "touch", isPrimary: true, width: 55, height: 46, clientX: 120, clientY: 420 });
+  fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: "touch", width: 55, height: 46, clientX: 130, clientY: 360 });
+  fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: "touch", clientX: 130, clientY: 360 });
+  fireEvent.pointerDown(canvas, { pointerId: 3, pointerType: "touch", isPrimary: true, width: 12, height: 12, clientX: 500, clientY: 400 });
+  fireEvent.pointerMove(canvas, { pointerId: 3, pointerType: "touch", width: 12, height: 12, clientX: 500, clientY: 300 });
+  fireEvent.pointerUp(canvas, { pointerId: 3, pointerType: "touch", clientX: 500, clientY: 300 });
+  assert.deepEqual(drawn, [], "and nothing the hand does marks the page");
+  assert.equal(frame.scrollTop, 0, "nor moves it out from under the nib about to write");
+
+  // Then the nib lands and writes, as it was always going to.
+  fireEvent.pointerDown(canvas, { pointerId: 1, pointerType: "pen", isPrimary: true, pressure: 0.4, buttons: 1, width: 1, height: 1, clientX: 330, clientY: 215 });
+  fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: "pen", pressure: 0.7, buttons: 1, clientX: 420, clientY: 250 });
+  fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: "pen", pressure: 0, buttons: 0, clientX: 420, clientY: 250 });
+  assert.equal(drawn.length, 1, "the stylus writes");
+  assert.equal(frame.scrollTop, 0);
+});
+
 test("a resting hand neither writes nor nudges the question", () => {
   const drawn: unknown[] = [];
   const { container } = render(<ExamPlayer {...playerProps({ onScratchChange: (_id: string, page: unknown) => drawn.push(page) })} />);

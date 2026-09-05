@@ -456,3 +456,9 @@
   .history-tidy { flex-wrap: wrap; }
   .history-tidy button { margin-left: 0; width: 100%; justify-content: center; }
 }
+
+/* A finger needs more of a target than a cursor does; see the note in scratchpad.css. */
+@media (pointer: coarse) {
+  .history-remove { min-width: 44px; min-height: 44px; }
+  .history-filters button { min-height: 42px; }
+}
