@@ -1578,6 +1578,8 @@ export default function EsatApp() {
 
   /* ----------------------------------------------- writing on a reviewed question -- */
 
+  const openAttempt = openAttemptId ? state.attempts.find((attempt) => attempt.attemptId === openAttemptId) ?? null : null;
+
   /**
    * A question reopened from the review, and the working being added to it.
    *
@@ -1591,7 +1593,16 @@ export default function EsatApp() {
   // closed — which is the answer — without a synchronous state write from an effect.
   const [writing, setWriting] = useState<{ attemptId: string; questionId: string } | null>(null);
   const writingQuestionId = writing && writing.attemptId === reviewAttemptId ? writing.questionId : null;
-  const reviewPagesRef = useRef<Record<string, ScratchPage>>({});
+  /**
+   * Only what has been written in this review, never a copy of what was loaded.
+   *
+   * Taking a snapshot of the loaded pages when the dialog opened lost a race: the working is
+   * fetched on demand, so a candidate who pressed a question before that arrived captured an
+   * empty set, and closing wrote it back over everything the fetch had since delivered. The
+   * other questions' working was still safe in the account but gone from the review until a
+   * reload. Holding the edits alone means there is nothing to be stale.
+   */
+  const reviewEditsRef = useRef<{ attemptId: string; pages: Record<string, ScratchPage> }>({ attemptId: "", pages: {} });
   const reviewDirtyRef = useRef(new Set<string>());
   const reviewTimerRef = useRef<number | null>(null);
 
@@ -1604,8 +1615,9 @@ export default function EsatApp() {
     const dirty = [...reviewDirtyRef.current];
     reviewDirtyRef.current.clear();
     if (!user || !attemptId || !dirty.length || destructiveCloudActionRef.current) return;
+    if (reviewEditsRef.current.attemptId !== attemptId) return;
     for (const questionId of dirty) {
-      const page = reviewPagesRef.current[questionId];
+      const page = reviewEditsRef.current.pages[questionId];
       const empty = pageIsEmpty(page);
       trackWrite(saveScratchPageCloud(user.uid, {
         attemptId,
@@ -1619,25 +1631,55 @@ export default function EsatApp() {
   }, [reviewAttemptId, trackWrite, user]);
 
   const recordReviewScratchPage = useCallback((questionId: string, page: ScratchPage) => {
-    reviewPagesRef.current = { ...reviewPagesRef.current, [questionId]: page };
+    if (!reviewAttemptId) return;
+    const edits = reviewEditsRef.current;
+    // Edits belong to one attempt. Reviewing a different one starts again rather than
+    // carrying the last one's working across.
+    const pages = edits.attemptId === reviewAttemptId ? edits.pages : {};
+    reviewEditsRef.current = { attemptId: reviewAttemptId, pages: { ...pages, [questionId]: page } };
     reviewDirtyRef.current.add(questionId);
     if (reviewTimerRef.current !== null) window.clearTimeout(reviewTimerRef.current);
     reviewTimerRef.current = window.setTimeout(flushReviewScratch, 2_500);
-  }, [flushReviewScratch]);
+  }, [flushReviewScratch, reviewAttemptId]);
 
   const openReviewWriting = useCallback((questionId: string) => {
-    if (!reviewAttemptId) return;
-    reviewPagesRef.current = reviewScratch?.attemptId === reviewAttemptId ? reviewScratch.pages : {};
-    setWriting({ attemptId: reviewAttemptId, questionId });
-  }, [reviewAttemptId, reviewScratch]);
+    if (reviewAttemptId) setWriting({ attemptId: reviewAttemptId, questionId });
+  }, [reviewAttemptId]);
 
-  const closeReviewWriting = useCallback(() => {
+  /**
+   * Fold what has been written into the loaded pages, and start the cloud write.
+   *
+   * Done when the dialog closes and whenever it moves to another question, because the page
+   * it seeds a question from is this state — so anything not folded in first would be handed
+   * back stale the moment a candidate stepped away and returned.
+   */
+  const commitReviewEdits = useCallback(() => {
     flushReviewScratch();
     const attemptId = reviewAttemptId;
-    const pages = reviewPagesRef.current;
-    if (attemptId) setReviewScratch({ attemptId, pages });
-    setWriting(null);
+    const edits = reviewEditsRef.current;
+    // Merged, never replaced: whatever the fetch delivered while the dialog was open is kept,
+    // and only the questions actually written on are overwritten.
+    if (attemptId && edits.attemptId === attemptId && Object.keys(edits.pages).length) {
+      setReviewScratch((current) => ({
+        attemptId,
+        pages: { ...(current?.attemptId === attemptId ? current.pages : {}), ...edits.pages },
+      }));
+    }
   }, [flushReviewScratch, reviewAttemptId]);
+
+  const closeReviewWriting = useCallback(() => {
+    commitReviewEdits();
+    setWriting(null);
+  }, [commitReviewEdits]);
+
+  const stepReviewWriting = useCallback((direction: 1 | -1) => {
+    const reviewed = result ?? openAttempt;
+    if (!reviewed || !writingQuestionId || !reviewAttemptId) return;
+    const next = reviewed.questionIds[reviewed.questionIds.indexOf(writingQuestionId) + direction];
+    if (!next) return;
+    commitReviewEdits();
+    setWriting({ attemptId: reviewAttemptId, questionId: next });
+  }, [commitReviewEdits, openAttempt, result, reviewAttemptId, writingQuestionId]);
 
   // The lid closing, or the tab being hidden, must not cost the last few strokes.
   useEffect(() => {
@@ -1767,7 +1809,6 @@ export default function EsatApp() {
     );
   }
 
-  const openAttempt = openAttemptId ? state.attempts.find((attempt) => attempt.attemptId === openAttemptId) ?? null : null;
 
   /**
    * The dialog itself, rendered by whichever review screen is on show. One instance rather
@@ -1779,11 +1820,16 @@ export default function EsatApp() {
     const question = writingQuestionId ? questionMap[writingQuestionId] : undefined;
     if (!attempt || !question || !writingQuestionId) return null;
     const response = attempt.responses[writingQuestionId];
+    const position = attempt.questionIds.indexOf(writingQuestionId);
     return (
       <ReviewWorkspace
-        key={writingQuestionId}
+        key={attempt.attemptId}
         question={question}
-        number={attempt.questionIds.indexOf(writingQuestionId) + 1}
+        number={position + 1}
+        total={attempt.questionIds.length}
+        hasPrevious={position > 0}
+        hasNext={position >= 0 && position < attempt.questionIds.length - 1}
+        onStep={stepReviewWriting}
         source={sourceLabelForAttempt(question, attempt)}
         answered={response?.finalAnswer ?? null}
         correctAnswer={question.correctAnswer}
@@ -1812,8 +1858,9 @@ export default function EsatApp() {
         returnLabel={result.planSessionId ? "Continue today’s plan" : "Back to dashboard"}
         previous={previousComparableAttempt(state.attempts, result)}
         scratchPages={reviewPages}
+        inert={Boolean(writingQuestionId)}
         onClose={() => { setResult(null); setView(result.planSessionId ? "plan" : "dashboard"); }}
-        onOpenWriting={openReviewWriting}
+        onOpenWriting={state.settings.scratchpadEnabled ? openReviewWriting : undefined}
         onContinue={() => continueSequence(result)}
         onRetryMissed={() => {
           const missed = Object.values(result.responses)
@@ -1846,11 +1893,13 @@ export default function EsatApp() {
   }
 
   return (
-    <div className="app-shell">
-      {/* Above the shell, and rendered here as well as on the result screen: a question is
-          reopened from the history far more often than from the result of the session that
-          has only just finished. */}
+    <>
+      {/* Outside the shell, and rendered here as well as on the result screen: a question is
+          reopened from the history far more often than from a session that has only just
+          finished. Outside, because the shell is made inert beneath it — a dialog covering
+          the page has to be out of a screen reader's reach as well as the Tab key's. */}
       {reviewWritingDialog}
+      <div className="app-shell" inert={Boolean(writingQuestionId)}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       {sidebarOpen ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} /> : null}
       <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
@@ -1904,7 +1953,7 @@ export default function EsatApp() {
               attempts={state.attempts}
               showScoreEstimate={state.settings.showScoreEstimate}
               scratchPages={reviewPages}
-              onOpenWriting={openReviewWriting}
+              onOpenWriting={state.settings.scratchpadEnabled ? openReviewWriting : undefined}
               onBack={() => setOpenAttemptId(null)}
               onDelete={() => {
                 if (window.confirm("Remove this result from your history? Question progress and the retrieval queue are not affected.")) deleteAttempt(openAttempt.attemptId);
@@ -2095,6 +2144,12 @@ export default function EsatApp() {
           </div>
         </main>
       </div>
+      {offline.updateReady && !updateDismissed ? (
+        <UpdateBanner onApply={offline.applyUpdate} onDismiss={() => setUpdateDismissed(true)} />
+      ) : null}
+      </div>
+      {/* Outside the shell, so it is still readable and dismissible while a question is open
+          over it — the dialog raises notices of its own. */}
       {toast ? (
         <div className="toast" role="status" aria-live="polite">
           <TriangleAlert size={17} />
@@ -2102,10 +2157,7 @@ export default function EsatApp() {
           <button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification"><X size={15} /></button>
         </div>
       ) : null}
-      {offline.updateReady && !updateDismissed ? (
-        <UpdateBanner onApply={offline.applyUpdate} onDismiss={() => setUpdateDismissed(true)} />
-      ) : null}
-    </div>
+    </>
   );
 }
 
@@ -4132,7 +4184,7 @@ export function SettingsView({ state, busy, offline, onToast, onSettingsChange, 
           <div className="panel-heading"><div><span className="eyebrow">Writing on the question</span><h2>Work on the paper itself</h2></div><NotebookPen size={18} /></div>
           <p className="panel-copy">Write your working straight onto the question, as you would on a printed paper — beside the diagram it belongs to, under the line it follows from. Each question keeps its own writing, and it is stored with the attempt so you can see it again in the review afterwards.</p>
           <label className="toggle-row">
-            <span>Offer writing on the question<small>Also started and stopped during a session with the Write button, or the W key</small></span>
+            <span>Offer writing on the question<small>Started and stopped during a session with the Write button or the W key. Turning this off also stops a question being reopened from the review to write on</small></span>
             <input type="checkbox" checked={state.settings.scratchpadEnabled} onChange={(event) => onSettingsChange({ scratchpadEnabled: event.target.checked })} />
           </label>
           <label className="toggle-row">
@@ -4746,6 +4798,10 @@ export function QuestionSurface({
 export function ReviewWorkspace({
   question,
   number,
+  total,
+  hasPrevious,
+  hasNext,
+  onStep,
   source,
   answered,
   correctAnswer,
@@ -4761,6 +4817,16 @@ export function ReviewWorkspace({
   question: Question;
   /** The question's place in the paper, as the review numbers it. */
   number: number;
+  total: number;
+  /**
+   * Moving to the question before or after this one without closing.
+   *
+   * Reworking a set of mistakes is the reason this dialog exists, and doing it a question at
+   * a time meant closing, scrolling back to the list, finding the next row and expanding it.
+   */
+  hasPrevious?: boolean;
+  hasNext?: boolean;
+  onStep?: (direction: 1 | -1) => void;
   source: string;
   /** What the candidate put, or null if they left it blank. */
   answered: string | null;
@@ -4850,9 +4916,33 @@ export function ReviewWorkspace({
   return (
     <div className="review-workspace" ref={dialogRef} role="dialog" aria-modal="true" aria-label={`Question ${number}: your working`}>
       <header className="review-workspace-head">
-        <div>
-          <span className="eyebrow">Question {number} · {source}</span>
-          <h2>{question.esatTopic}</h2>
+        <div className="review-workspace-title">
+          {onStep ? (
+            <div className="review-workspace-step" role="group" aria-label="Move between questions">
+              <button
+                type="button"
+                aria-label="Previous question"
+                title="Previous question"
+                disabled={!hasPrevious}
+                onClick={() => onStep(-1)}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                aria-label="Next question"
+                title="Next question"
+                disabled={!hasNext}
+                onClick={() => onStep(1)}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          ) : null}
+          <div>
+            <span className="eyebrow">Question {number} of {total} · {source}</span>
+            <h2>{question.esatTopic}</h2>
+          </div>
         </div>
         <div className="review-workspace-answers">
           <span className={answered === correctAnswer ? "is-correct" : ""}>
@@ -5328,7 +5418,7 @@ export function ExamPlayer({
   );
 }
 
-export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, previous, scratchPages = {}, onOpenWriting, onClose, onContinue, onRetryMissed, onTag }: {
+export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLabel, previous, scratchPages = {}, onOpenWriting, inert, onClose, onContinue, onRetryMissed, onTag }: {
   attempt: Attempt;
   questionMap: Record<string, Question>;
   showScoreEstimate: boolean;
@@ -5338,6 +5428,8 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
   scratchPages?: Record<string, ScratchPage>;
   /** Reopen a question to carry on writing on it. */
   onOpenWriting?: (questionId: string) => void;
+  /** True while a question from this review is open over it. */
+  inert?: boolean;
   onClose: () => void;
   onContinue: () => void;
   onRetryMissed: () => void;
@@ -5365,7 +5457,7 @@ export function ResultScreen({ attempt, questionMap, showScoreEstimate, returnLa
   });
 
   return (
-    <main className="result-screen">
+    <main className="result-screen" inert={inert}>
       <header className="result-header">
         <div className="sidebar-brand"><div className="brand-mark">EA</div><div><strong>ESAT Atlas</strong><span>Session result</span></div></div>
         <button className="button button-secondary" onClick={onClose}>{returnLabel}</button>

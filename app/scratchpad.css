@@ -292,7 +292,11 @@
 .review-workspace-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 /* The stage is the frame's parent, and the frame takes what it leaves — the same
    arrangement the exam player uses, so the writing surface behaves identically here. */
-.review-workspace-stage { flex: 1 1 auto; min-height: 0; }
+/* The stage is the frame's parent and the frame takes what it leaves — the same arrangement
+   the exam player uses, so the writing surface behaves identically here. The player's own
+   height bound is dropped: that number is its header, padding and fixed footer, and none of
+   them exist inside a dialog, so keeping it would leave a strip of the screen unused. */
+.review-workspace-stage { flex: 1 1 auto; min-height: 0; max-height: none; }
 .review-workspace-stage .question-frame { min-height: 0; }
 .review-workspace-note { margin: 8px 0 0; color: #68746f; font-size: 12px; }
 
@@ -345,3 +349,21 @@
 @media (hover: none) {
   .review-open-hint { opacity: 1; transform: none; }
 }
+
+/* Moving to the next question without leaving the paper. Reworking a set of mistakes is the
+   reason this dialog exists, and it is a question at a time. */
+.review-workspace-title { display: flex; align-items: center; gap: 12px; }
+.review-workspace-step { display: inline-flex; align-items: center; gap: 2px; border: 1px solid #dbe0df; border-radius: 8px; background: white; }
+.review-workspace-step button {
+  min-height: 34px;
+  min-width: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #3d4b47;
+  cursor: pointer;
+}
+.review-workspace-step button:disabled { opacity: .32; cursor: default; }
+.review-workspace-step button + button { border-left: 1px solid #e4e9e7; }

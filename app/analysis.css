@@ -71,7 +71,8 @@
 .detail-raw strong { display: block; font-size: 52px; font-weight: 850; letter-spacing: -.05em; line-height: 1; }
 .detail-raw span { display: block; margin-top: 4px; color: var(--muted); font-size: 14px; font-weight: 700; }
 .detail-raw small { display: block; margin-top: 7px; color: var(--muted); font-size: 13px; }
-.detail-columns { display: grid; grid-template-columns: 1.35fr 1fr; gap: 16px; margin: 16px 0; }
+/* minmax(0, …) for the same reason: a bare `1fr` track is floored at its content width. */
+.detail-columns { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; margin: 16px 0; }
 .pacing-rows { display: grid; }
 .pacing-rows > div { display: flex; justify-content: space-between; align-items: center; min-height: 36px; border-top: 1px solid var(--line); font-size: 14px; }
 .pacing-rows > div:first-child { border-top: 0; }
@@ -128,7 +129,7 @@
 .loading-screen-error .button { margin-top: 6px; }
 
 @media (max-width: 1080px) {
-  .detail-columns { grid-template-columns: 1fr; }
+  .detail-columns { grid-template-columns: minmax(0, 1fr); }
   .detail-hero { grid-template-columns: 1fr; }
 }
 

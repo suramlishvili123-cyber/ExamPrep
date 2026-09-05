@@ -830,6 +830,7 @@ function workspaceProps(overrides: Record<string, unknown> = {}) {
   return {
     question: question("q1"),
     number: 4,
+    total: 10,
     source: "NSAA 2019",
     answered: "B",
     correctAnswer: "C",
@@ -948,7 +949,7 @@ test("the reopened question says what was answered, and closes on Escape", () =>
   const closes: string[] = [];
   render(<ReviewWorkspace {...workspaceProps({ onClose: () => closes.push("closed") })} />);
 
-  assert.ok(screen.getByText("Question 4 · NSAA 2019"));
+  assert.ok(screen.getByText("Question 4 of 10 · NSAA 2019"));
   assert.ok(screen.getByText(/You answered/));
   assert.ok(screen.getByText(/Correct/));
   assert.equal(screen.getByRole("dialog").getAttribute("aria-modal"), "true");
@@ -975,6 +976,28 @@ test("the reopened question behaves as a dialog, and gives the review back on cl
   assert.equal(document.body.style.overflow, "", "and is released again");
   assert.equal(document.activeElement, opener, "focus returns to whatever opened it");
   opener.remove();
+});
+
+test("the next question is a press away, without leaving the paper", () => {
+  const steps: number[] = [];
+  const { rerender } = render(
+    <ReviewWorkspace {...workspaceProps({ number: 1, total: 3, hasPrevious: false, hasNext: true, onStep: (d: number) => steps.push(d) })} />,
+  );
+  const previous = screen.getByRole("button", { name: "Previous question" }) as HTMLButtonElement;
+  const next = screen.getByRole("button", { name: "Next question" }) as HTMLButtonElement;
+  assert.equal(previous.disabled, true, "there is nothing before the first question");
+  assert.equal(next.disabled, false);
+  fireEvent.click(next);
+  assert.deepEqual(steps, [1]);
+
+  rerender(<ReviewWorkspace {...workspaceProps({ number: 3, total: 3, hasPrevious: true, hasNext: false, onStep: (d: number) => steps.push(d) })} />);
+  assert.equal((screen.getByRole("button", { name: "Next question" }) as HTMLButtonElement).disabled, true, "nor after the last");
+  fireEvent.click(screen.getByRole("button", { name: "Previous question" }));
+  assert.deepEqual(steps, [1, -1]);
+
+  // A host that does not offer stepping shows no dead controls.
+  rerender(<ReviewWorkspace {...workspaceProps()} />);
+  assert.equal(screen.queryByRole("group", { name: "Move between questions" }), null);
 });
 
 test("a blank question opens ready to be written on rather than refusing", () => {
