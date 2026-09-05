@@ -11,7 +11,7 @@ import "./dom-setup";
 
 import assert from "node:assert/strict";
 import test, { afterEach, before, after } from "node:test";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
   AdaptiveStudyPlanView,
   AnalyticsView,
@@ -20,6 +20,7 @@ import {
   MistakesView,
   OriginalMocksView,
   PaperHistoryView,
+  isBlankResult,
   PracticeView,
   QuickTricksView,
   ResultScreen,
@@ -305,4 +306,65 @@ test("ResultScreen and AttemptDetailView offer filtering for correct questions",
   assert.ok(detailContainer.textContent?.includes("Missed only"));
   assertClean("AttemptDetailView filters");
   unmountDetail();
+});
+
+/* ------------------------------------------------------- removing a stray result -- */
+
+/** A session left running and submitted by the clock: every question untouched. */
+function blankAttemptState(): StoredState {
+  let state = defaultState();
+  const paper = archive.filter((q) => q.targetModule === "maths1");
+  const attempt = createAttempt({
+    questions: paper, module: "maths1", mode: "historic", durationMinutes: 30,
+    strictTimed: true, generated: false, originalHistoricSet: true, progress: state.progress,
+  });
+  const finished = finalizeAttempt(attempt, questionMap, true, attempt.startedAt + 1_800_000);
+  state = applyCompletedAttempt(state, finished);
+  return state;
+}
+
+test("a result with no answers at all is recognised as one", () => {
+  const blank = blankAttemptState().attempts[0];
+  assert.equal(isBlankResult(blank), true);
+  assert.equal(isBlankResult(completedAttempt), false, "a real sitting is not swept up with it");
+  // Still open, so there is nothing to remove yet.
+  assert.equal(isBlankResult({ ...blank, rawScore: null }), false);
+});
+
+test("a result can be removed from the history, and the analytics go with it", () => {
+  const state = blankAttemptState();
+  const removed: string[] = [];
+  const { rerender } = render(
+    <PaperHistoryView
+      state={state}
+      paperSets={paperSets}
+      filter="all"
+      setFilter={noop}
+      showScoreEstimate
+      onStart={noop}
+      onOpenAttempt={noop}
+      onDeleteAttempt={(id: string) => removed.push(id)}
+    />,
+  );
+
+  // The row itself offers it, named so it is clear which result is going.
+  const remove = screen.getAllByRole("button", { name: /^Remove the / })[0];
+  const confirmed: string[] = [];
+  const realConfirm = window.confirm;
+  window.confirm = (message?: string) => { confirmed.push(String(message)); return true; };
+  fireEvent.click(remove);
+  assert.deepEqual(removed, [state.attempts[0].attemptId]);
+  assert.match(confirmed[0], /not affected/, "and says what is not being deleted");
+
+  // And the blank ones can go in one press, which is the case that prompts this at all.
+  fireEvent.click(screen.getByRole("button", { name: /Remove it/ }));
+  assert.deepEqual(removed, [state.attempts[0].attemptId, state.attempts[0].attemptId]);
+  window.confirm = realConfirm;
+
+  // A host that does not support removal shows no dead controls.
+  rerender(
+    <PaperHistoryView state={state} paperSets={paperSets} filter="all" setFilter={noop} showScoreEstimate onStart={noop} onOpenAttempt={noop} />,
+  );
+  assert.equal(screen.queryByRole("button", { name: /^Remove the / }), null);
+  assert.equal(screen.queryByRole("button", { name: /Remove it/ }), null);
 });

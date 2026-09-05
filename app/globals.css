@@ -322,7 +322,10 @@ select { width: 100%; height: 40px; padding: 0 10px; font-size: 13px; }
 .exam-exit:hover { border-color: #a33b35; color: #a33b35; background: #fff7f6; }
 .exam-timer { justify-self: end; display: flex; align-items: center; gap: 8px; color: #0f604f; }.exam-timer span, .exam-timer small, .exam-timer strong { display: block; }.exam-timer small { color: #68746f; font-size: 11px; }.exam-timer strong { font-family: var(--font-geist-mono); font-size: 17px; margin-top: 1px; }.timer-low { color: #a33b35; }
 .multi-tab { background: #fff1cf; color: #82500a; padding: 10px 22px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid #e3c27b; font-size: 12px; }.multi-tab span, .multi-tab strong { display: block; }.multi-tab button { margin-left: auto; border: 0; background: transparent; cursor: pointer; }
-.exam-content { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 282px; gap: 16px; width: min(1180px, 100%); margin: 0 auto; padding: 19px 24px 94px; }
+/* The bottom padding clears the fixed footer, which is 74px tall. It was reserving 94,
+   and on a laptop or a tablet in landscape every one of those pixels comes out of the
+   question. */
+.exam-content { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 282px; gap: 16px; width: min(1180px, 100%); margin: 0 auto; padding: 19px 24px 84px; }
 .question-stage, .answer-panel { background: white; border: 1px solid #dbe0df; border-radius: 10px; }
 .question-stage { min-width: 0; padding: 13px; }.question-toolbar { min-height: 36px; display: flex; justify-content: space-between; align-items: center; padding: 0 4px 11px; border-bottom: 1px solid #e4e9e7; }.question-toolbar > div { display: flex; align-items: center; gap: 6px; }.flag-button { min-height: 30px; border: 1px solid #dbe0df; background: white; border-radius: 7px; display: flex; align-items: center; gap: 6px; padding: 0 9px; font-size: 12px; cursor: pointer; }.flag-button.flagged { color: #8e5b0b; background: #fff5dc; border-color: #e5c878; }.pace-ahead, .pace-behind { font-family: var(--font-geist-mono); font-size: 11px; }.pace-ahead { color: #0f604f; }.pace-behind { color: #a33b35; }
 /* The exam player's question frame now lives in scratchpad.css, where it is sized from

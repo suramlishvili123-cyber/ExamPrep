@@ -84,6 +84,10 @@ as an application and, after one signed-in visit, runs entirely offline.
   can be worked through properly rather than only looked at — the same tools, the same
   margins, and anything you add is saved back to that attempt. The whole feature is switched
   on and off from the toolbar, the W key, or Settings.
+- **Results you can tidy.** Any result can be removed from the history, and the analytics
+  follow it out; a session left running and submitted by the clock with nothing answered is
+  named as such and can be cleared in one press. Question progress and the retrieval queue
+  are never touched.
 - **A question you can actually read.** The question is magnified from 40% to 300% of the
   width that fits, with a Fit control that brings a whole tall paper onto one screen and
   Ctrl or Cmd with the wheel to zoom. The printed option list at the foot of a scan can be

@@ -40,6 +40,7 @@ import {
   Sun,
   Target,
   Timer,
+  Trash2,
   TrendingUp,
   TriangleAlert,
   UserRound,
@@ -2093,6 +2094,7 @@ export default function EsatApp() {
                   showScoreEstimate={state.settings.showScoreEstimate}
                   onStart={beginPaper}
                   onOpenAttempt={setOpenAttemptId}
+                  onDeleteAttempt={deleteAttempt}
                 />
               ) : null}
               {view === "settings" ? (
@@ -3587,7 +3589,19 @@ function MistakeGroup({ title, caption, tone, items, state, now, questionMap, on
   );
 }
 
-export function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstimate, onStart, onOpenAttempt }: {
+/**
+ * A session that was finished without a single answer being given.
+ *
+ * Almost always a session left running and submitted by the clock rather than one genuinely
+ * sat and failed, so it is worth naming: it counts for nothing, it drags the analytics down,
+ * and it is the one result a candidate reliably wants rid of.
+ */
+export function isBlankResult(attempt: Attempt): boolean {
+  const responses = Object.values(attempt.responses);
+  return attempt.rawScore !== null && responses.length > 0 && responses.every((response) => response.unanswered);
+}
+
+export function PaperHistoryView({ state, paperSets, filter, setFilter, showScoreEstimate, onStart, onOpenAttempt, onDeleteAttempt }: {
   state: StoredState;
   paperSets: PaperSet[];
   filter: HistoryFilter;
@@ -3595,8 +3609,11 @@ export function PaperHistoryView({ state, paperSets, filter, setFilter, showScor
   showScoreEstimate: boolean;
   onStart: (set: PaperSet) => void;
   onOpenAttempt: (attemptId: string) => void;
+  /** Remove a result from the history, the analytics and the account. */
+  onDeleteAttempt?: (attemptId: string) => void;
 }) {
   const completed = state.attempts.filter((attempt) => attempt.rawScore !== null);
+  const blanks = completed.filter(isBlankResult);
   const visible = completed.filter((attempt) => filter === "all" || attemptKind(attempt) === filter);
   const paperAttempts = completed.filter((attempt) => attempt.mode === "historic");
   const bestByPaper = new Map<string, Attempt>();
@@ -3635,6 +3652,25 @@ export function PaperHistoryView({ state, paperSets, filter, setFilter, showScor
               <button key={item.id} type="button" aria-pressed={filter === item.id} className={filter === item.id ? "selected" : ""} onClick={() => setFilter(item.id)}>{item.label}</button>
             ))}
           </div>
+          {onDeleteAttempt && blanks.length ? (
+            <div className="history-tidy">
+              <TriangleAlert size={17} />
+              <div>
+                <strong>{blanks.length} result{blanks.length === 1 ? " has" : "s have"} no answers at all.</strong>
+                <span>A session left running and submitted by the clock counts for nothing and pulls the analytics down with it.</span>
+              </div>
+              <button
+                type="button"
+                className="button button-secondary compact"
+                onClick={() => {
+                  if (!window.confirm(`Remove ${blanks.length} result${blanks.length === 1 ? "" : "s"} with no answers? Question progress and the retrieval queue are not affected.`)) return;
+                  for (const attempt of blanks) onDeleteAttempt(attempt.attemptId);
+                }}
+              >
+                <Trash2 size={15} /> Remove {blanks.length === 1 ? "it" : "them"}
+              </button>
+            </div>
+          ) : null}
           {visible.length ? (
             <section className="panel history-list">
               <div className="history-row header-row">
@@ -3651,7 +3687,22 @@ export function PaperHistoryView({ state, paperSets, filter, setFilter, showScor
                     <span>{Math.round(report.accuracy * 100)}%</span>
                     <span>{showScoreEstimate ? (report.estimate?.scaledScore.toFixed(1) ?? "—") : formatLongDuration(attempt.durationMs ?? 0)}</span>
                     <Pill tone={report.estimate?.tone ?? "neutral"}>{showScoreEstimate ? (report.estimate?.standing ?? "Raw only") : report.label}</Pill>
-                    <button onClick={() => onOpenAttempt(attempt.attemptId)}>Breakdown <ChevronRight size={15} /></button>
+                    <span className="history-actions">
+                      {onDeleteAttempt ? (
+                        <button
+                          type="button"
+                          className="history-remove"
+                          aria-label={`Remove the ${attemptTitle(attempt)} result of ${formatDate(attempt.endedAt)}`}
+                          title="Remove this result from the history and the analytics"
+                          onClick={() => {
+                            if (window.confirm("Remove this result from your history and analytics? Question progress and the retrieval queue are not affected.")) onDeleteAttempt(attempt.attemptId);
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      ) : null}
+                      <button onClick={() => onOpenAttempt(attempt.attemptId)}>Breakdown <ChevronRight size={15} /></button>
+                    </span>
                   </div>
                 );
               })}

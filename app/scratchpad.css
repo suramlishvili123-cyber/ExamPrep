@@ -28,11 +28,24 @@
  */
 .exam-content.is-writing { width: min(1660px, 100%); }
 
+/*
+ * Between a tablet and a small laptop the player is already at the full width of the screen,
+ * so its outer margin is the only thing left to give. Twenty-six pixels of whitespace becomes
+ * twenty-six pixels of paper, and nothing about the answer panel's text changes — which is
+ * why the margin goes rather than the panel, where the same width would start wrapping option
+ * text that has fractions in it.
+ */
+@media (min-width: 981px) and (max-width: 1200px) {
+  .exam-content { padding-inline: 14px; gap: 14px; }
+}
+
 .question-stage { display: flex; flex-direction: column; min-height: 0; }
 @media (min-width: 981px) {
-  /* Header, the player's own padding and the fixed footer. A few pixels of slack so no
-     state of the toolbars can push the document into a scroll of its own. */
-  .question-stage { max-height: calc(100dvh - 202px); }
+  /* The header (78), the player's own top padding (24) and the bottom padding that clears
+     the fixed footer (84), plus two pixels of slack so no state of the toolbars can push
+     the document into a scroll of its own. The shell has a min-height rather than a height,
+     so without this bound the frame simply grows and takes the page with it. */
+  .question-stage { max-height: calc(100dvh - 188px); }
 }
 
 .question-frame {
@@ -205,18 +218,27 @@
 .annotation-history button, .annotation-sizes button { padding: 0; }
 .annotation-close { margin-left: auto; }
 
-/* Below a tablet the tool names are dropped; the icons carry the meaning, and the labels
-   remain available to assistive technology through `title` and `aria-label`. */
-@media (max-width: 900px) {
+/*
+ * One row, always, on anything short of a large laptop.
+ *
+ * Wrapping is what a flex row does when it runs out of width, and it costs the question its
+ * height: on an iPad in landscape the tools took two rows — 91px rather than 46 — out of a
+ * writing surface that only had 420 to begin with. Height is the scarce dimension on a
+ * tablet and the whole point of the feature, so the row scrolls instead.
+ *
+ * That only works because of the order the controls are in. Pen, ink, nib and the history
+ * are touched constantly and come first, so they are the ones on screen; the paper-size
+ * groups are set once and sit past them, where scrolling to reach them costs nothing. The
+ * names go too — the icons carry the meaning, and the words remain available to assistive
+ * technology through `title` and `aria-label`.
+ *
+ * The breakpoint is measured rather than chosen: the labelled row needs 1159px, and the
+ * stage only has that much once the window is about 1500 wide. A common 1366 laptop is on
+ * the wrong side of it, which is exactly the machine that can least afford a second row.
+ */
+@media (max-width: 1500px) {
   .annotation-tools button span { display: none; }
   .annotation-tools button { padding: 0 8px; }
-  .annotation-close { padding: 0 10px; }
-}
-
-/* On a phone the tools wrap to three rows and take a third of the screen away from the
-   question. One scrolling row keeps every control at a size a thumb can hit while giving
-   the question its height back. */
-@media (max-width: 700px) {
   .annotation-tools {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -225,7 +247,7 @@
   }
   .annotation-tools::-webkit-scrollbar { display: none; }
   .annotation-group { flex: none; }
-  .annotation-close { margin-left: 6px; }
+  .annotation-close { margin-left: 6px; padding: 0 10px; }
 }
 
 .annotation-swatch { position: relative; width: 30px; min-width: 30px; padding: 0; }

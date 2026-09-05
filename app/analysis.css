@@ -48,7 +48,7 @@
 .history-filters button { min-height: 30px; padding: 0 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 13px; font-weight: 700; cursor: pointer; }
 .history-filters button.selected { border-color: var(--green); background: var(--green-soft); color: var(--green-2); }
 .history-list { display: grid; }
-.history-row { display: grid; grid-template-columns: 1.7fr 1fr .8fr .5fr .5fr .6fr .85fr .85fr; gap: 10px; align-items: center; min-height: 48px; border-top: 1px solid var(--line); font-size: 13px; }
+.history-row { display: grid; grid-template-columns: 1.7fr 1fr .8fr .5fr .5fr .6fr .85fr 1.05fr; gap: 10px; align-items: center; min-height: 48px; border-top: 1px solid var(--line); font-size: 13px; }
 .history-row:first-of-type { border-top: 0; }
 .history-row.header-row { min-height: 30px; color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
 .history-set strong, .history-set small { display: block; }
@@ -140,7 +140,7 @@
     overflow-x: auto;
     overscroll-behavior-x: contain;
   }
-  .history-row { min-width: 860px; }
+  .history-row { min-width: 900px; }
   .section-row { min-width: 680px; }
   .log-row { min-width: 760px; }
   .curve-row { grid-template-columns: 1fr 1fr 1.2fr; }
@@ -416,4 +416,43 @@
   .cause-modules { margin-left: auto; }
   .timing-row { grid-template-columns: 22px minmax(0, 1fr) 48px; row-gap: 4px; }
   .timing-outcome { grid-column: 2 / -1; }
+}
+
+/* Removing a result. A session left running and submitted by the clock counts for nothing,
+   drags the analytics down and is the one result a candidate reliably wants rid of. */
+.history-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.history-remove {
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+.history-remove:hover, .history-remove:focus-visible { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); background: color-mix(in srgb, var(--red) 8%, transparent); }
+
+.history-tidy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #e5c878;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #fff8e8 78%, var(--surface));
+  color: var(--ink);
+}
+.history-tidy > svg { flex: none; color: #a9791a; }
+.history-tidy div { display: grid; gap: 2px; font-size: 12.5px; }
+.history-tidy span { color: var(--muted); }
+.history-tidy button { margin-left: auto; flex: none; }
+@media (max-width: 700px) {
+  .history-tidy { flex-wrap: wrap; }
+  .history-tidy button { margin-left: 0; width: 100%; justify-content: center; }
 }

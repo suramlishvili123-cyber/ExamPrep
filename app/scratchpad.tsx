@@ -909,6 +909,12 @@ export function AnnotationToolbar({
         ))}
       </div>
 
+      <div className="annotation-group annotation-history" role="group" aria-label="Writing history">
+        <button type="button" onClick={onUndo} disabled={!status.canUndo} title="Undo" aria-label="Undo"><Undo2 size={16} /></button>
+        <button type="button" onClick={onRedo} disabled={!status.canRedo} title="Redo" aria-label="Redo"><Redo2 size={16} /></button>
+        <button type="button" onClick={onClear} disabled={!status.strokes} title="Erase everything on this question" aria-label="Erase everything on this question"><Trash2 size={16} /></button>
+      </div>
+
       {onExtraSpaceChange ? (
         <div className="annotation-group annotation-space" role="group" aria-label="Room to write below the question">
           <MoveVertical size={14} aria-hidden="true" />
@@ -947,11 +953,6 @@ export function AnnotationToolbar({
         </div>
       ) : null}
 
-      <div className="annotation-group annotation-history" role="group" aria-label="Writing history">
-        <button type="button" onClick={onUndo} disabled={!status.canUndo} title="Undo" aria-label="Undo"><Undo2 size={16} /></button>
-        <button type="button" onClick={onRedo} disabled={!status.canRedo} title="Redo" aria-label="Redo"><Redo2 size={16} /></button>
-        <button type="button" onClick={onClear} disabled={!status.strokes} title="Erase everything on this question" aria-label="Erase everything on this question"><Trash2 size={16} /></button>
-      </div>
 
       {onClose ? (
         <button type="button" className="annotation-close" onClick={onClose} title="Stop writing on the question (W)">Done</button>
