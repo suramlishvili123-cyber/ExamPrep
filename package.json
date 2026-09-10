@@ -25,8 +25,8 @@
     "test": "npm run validate:bank && npm run typecheck && npm run lint && npm run test:unit && npm run test:components && npm run build && npm run test:build"
   },
   "dependencies": {
-    "firebase": "^12.17.1",
-    "lucide-react": "^0.468.0",
+    "firebase": "^12.18.0",
+    "lucide-react": "^1.41.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
