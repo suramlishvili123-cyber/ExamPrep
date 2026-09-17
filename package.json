@@ -25,10 +25,10 @@
     "test": "npm run validate:bank && npm run typecheck && npm run lint && npm run test:unit && npm run test:components && npm run build && npm run test:build"
   },
   "dependencies": {
-    "firebase": "^12.17.1",
-    "lucide-react": "^0.468.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "firebase": "^12.19.0",
+    "lucide-react": "^1.46.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
@@ -37,8 +37,8 @@
     "@testing-library/react": "^16.3.2",
     "@types/jsdom": "^30.0.0",
     "@types/node": "22.19.19",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.0.5",
     "eslint": "9.39.4",
     "eslint-plugin-jsx-a11y": "6.10.2",
